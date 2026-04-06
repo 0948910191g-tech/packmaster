@@ -1,410 +1,401 @@
-{\rtf1\ansi\ansicpg874\cocoartf2867
-\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\froman\fcharset0 Times-Bold;}
-{\colortbl;\red255\green255\blue255;\red0\green0\blue0;}
-{\*\expandedcolortbl;;\cssrgb\c0\c0\c0;}
-\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
-\deftab720
-\pard\pardeftab720\partightenfactor0
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PackMaster V20 Ultimate</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-\f0\b\fs24 \cf0 \expnd0\expndtw0\kerning0
-\outl0\strokewidth0 \strokec2 <!DOCTYPE html>\
-<html lang="th">\
-<head>\
-  <meta charset="UTF-8">\
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">\
-  <title>PackMaster V20 Ultimate</title>\
-  \
-  <script src="https://cdn.tailwindcss.com"></script>\
-  \
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">\
-  \
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>\
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>\
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>\
-\
-  <script>\
-    tailwind.config = \{\
-      theme: \{ extend: \{ fontFamily: \{ sans: ['"Noto Sans Thai"', 'sans-serif'] \} \} \}\
-    \}\
-  </script>\
-  <style>\
-    @media print \{ \
-      @page \{ size: 100mm 150mm; margin: 0; \} \
-      body \{ background: white !important; \} \
-      .print-area \{ display: block !important; \}\
-      .no-print \{ display: none !important; \}\
-    \}\
-    body \{ font-family: 'Noto Sans Thai', sans-serif; \}\
-  </style>\
-</head>\
-<body class="bg-[#f8fafc] text-blue-950 selection:bg-blue-200">\
-  <div id="root"></div>\
-\
-  <script type="text/babel">\
-    const \{ useState, useEffect, useCallback, useMemo \} = React;\
-\
-    // --- EXTERNAL LIBRARIES LOADER ---\
-    const loadScript = (id, src) => \{\
-      return new Promise((resolve, reject) => \{\
-        if (document.getElementById(id)) return resolve();\
-        const script = document.createElement('script');\
-        script.id = id; script.src = src;\
-        script.onload = resolve; script.onerror = () => reject(new Error(`Failed to load $\{src\}`));\
-        document.head.appendChild(script);\
-      \});\
-    \};\
-\
-    const loadPdfJS = () => loadScript('pdfjs-lib', 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js').then(() => \{\
-      if (window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';\
-      return window.pdfjsLib;\
-    \});\
-\
-    const loadExportLibs = async () => \{\
-      await loadScript('html2canvas-lib', 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');\
-      await loadScript('jspdf-lib', 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');\
-    \};\
-\
-    // --- TOAST NOTIFICATION ---\
-    const Toast = (\{ message, type, onClose \}) => \{\
-      useEffect(() => \{ const timer = setTimeout(() => onClose(), 3000); return () => clearTimeout(timer); \}, [onClose]);\
-      return (\
-        <div className=\{`fixed top-6 right-6 z-[99999] flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-xl border animate-in slide-in-from-right-8 duration-300 $\{type === 'success' ? 'bg-white border-green-100 text-green-700' : 'bg-white border-red-100 text-red-600'\}`\}>\
-          <span className="text-xl">\{type === 'success' ? '\uc0\u9989 ' : '\u10060 '\}</span>\
-          <span className="font-bold text-sm tracking-wide">\{message\}</span>\
-        </div>\
-      );\
-    \};\
-\
-    // --- LABEL CARD ---\
-    const LabelCard = (\{ order, isExport = false \}) => \{\
-      if (!order || !order.pdfImage) return null;\
-      const isTiktok = order.platform === 'TIKTOK';\
-      return (\
-        <div className=\{`shrink-0 box-border $\{isExport ? '' : 'border-2 border-blue-50 shadow-xl shadow-blue-900/5 rounded-2xl'\}`\} style=\{\{ width: '100mm', height: '150mm', backgroundColor: '#ffffff', position: 'relative', overflow: 'hidden', pageBreakAfter: 'always', margin: 0, display: 'block' \}\}>\
-          <img src=\{order.pdfImage\} alt="Label Base" style=\{\{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'fill', zIndex: 0 \}\} crossOrigin="anonymous" />\
-          <div style=\{\{ position: 'absolute', zIndex: 10, boxSizing: 'border-box', bottom: '24px', left: '16px', right: '16px', height: isTiktok ? '14%' : '32%', border: '4px dashed #172554', borderRadius: isTiktok ? '14px' : '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' \}\}>\
-            <p style=\{\{ fontFamily: '"Noto Sans Thai", sans-serif', fontWeight: 800, color: '#172554', lineHeight: 1.15, margin: 0, textAlign: 'center', wordBreak: 'break-word', width: '100%', letterSpacing: '-0.02em', fontSize: isTiktok ? (order.shortName.length > 25 ? '18pt' : order.shortName.length > 15 ? '26pt' : '36pt') : (order.shortName.length > 25 ? '32pt' : order.shortName.length > 15 ? '48pt' : '62pt'), textShadow: '3px 3px 0 #fff, -3px -3px 0 #fff, 3px -3px 0 #fff, -3px 3px 0 #fff, 0 3px 0 #fff, 0 -3px 0 #fff, 3px 0 0 #fff, -3px 0 0 #fff, 2px 4px 8px rgba(23, 37, 84, 0.15)' \}\}>\
-              \{order.shortName\}\
-            </p>\
-          </div>\
-        </div>\
-      );\
-    \};\
-\
-    // --- MAIN APP ---\
-    function App() \{\
-      const [activeTab, setActiveTab] = useState('upload');\
-      const [orders, setOrders] = useState([]);\
-      const [skuRules, setSkuRules] = useState(() => \{\
-        try \{ const saved = localStorage.getItem('skuMappingRules'); if (saved) return JSON.parse(saved); \} catch (e) \{\} return [];\
-      \});\
-      const [newRule, setNewRule] = useState(\{ keyword: '', shortName: '' \});\
-      const [uploadError, setUploadError] = useState('');\
-      const [loadingStatus, setLoadingStatus] = useState(\{ active: false, current: 0, total: 0 \});\
-      const [exportStatus, setExportStatus] = useState(\{ active: false, current: 0, total: 0 \});\
-      const [previewMode, setPreviewMode] = useState('table');\
-      const [testInput, setTestInput] = useState('');\
-      const [testQty, setTestQty] = useState('1');\
-      const [toast, setToast] = useState(\{ show: false, message: '', type: 'success' \});\
-\
-      const showToast = (message, type = 'success') => setToast(\{ show: true, message, type \});\
-\
-      useEffect(() => \{ localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); \}, [skuRules]);\
-\
-      const getBaseMappedSku = useCallback((textToSearch) => \{\
-        const clean = (text) => \{\
-          if (!text) return '';\
-          return String(text).toLowerCase().replace(/[\\s\\n\\r\\t\\u200B-\\u200F\\uFEFF]/g, '').replace(/[\\u0E47-\\u0E4C]/g, '').replace(/\\u0E4D\\u0E32/g, '\\u0E33').replace(/[!"#$%&'()*+,\\-./:;<=>?@[\\\\\\]^_`\{|\}~]/g, '');\
-        \};\
-        const searchArea = clean(textToSearch);\
-        if (!searchArea) return '\uc0\u3652 \u3617 \u3656 \u3614 \u3610 \u3586 \u3657 \u3629 \u3617 \u3641 \u3621 ';\
-        const sortedRules = [...skuRules].sort((a, b) => b.keyword.length - a.keyword.length);\
-        for (const rule of sortedRules) \{\
-          const cleanKw = clean(rule.keyword);\
-          if (!cleanKw) continue;\
-          if (searchArea.includes(cleanKw)) return rule.shortName;\
-          const words = rule.keyword.split(/\\s+/).filter(w => w.length > 0);\
-          if (words.length > 1 && words.every(w => searchArea.includes(clean(w)))) return rule.shortName;\
-        \}\
-        return '\uc0\u3618 \u3633 \u3591 \u3652 \u3617 \u3656 \u3605 \u3633 \u3657 \u3591 \u3594 \u3639 \u3656 \u3629  (\u3648 \u3614 \u3636 \u3656 \u3617 \u3585 \u3598  SKU)';\
-      \}, [skuRules]);\
-\
-      const processPDF = async (file) => \{\
-        try \{\
-          const pdfjs = await loadPdfJS();\
-          const arrayBuffer = await file.arrayBuffer();\
-          const pdf = await pdfjs.getDocument(\{ data: arrayBuffer \}).promise;\
-          const pageCount = Math.min(pdf.numPages, 100);\
-          setLoadingStatus(\{ active: true, current: 0, total: pageCount \});\
-\
-          const newOrders = [];\
-          for (let i = 1; i <= pageCount; i++) \{\
-            setLoadingStatus(prev => (\{ ...prev, current: i \}));\
-            const page = await pdf.getPage(i);\
-            const textContent = await page.getTextContent();\
-            const fullText = textContent.items.map(item => item.str).join(' ');\
-\
-            const viewport = page.getViewport(\{ scale: 2.5 \}); \
-            const canvas = document.createElement('canvas');\
-            const context = canvas.getContext('2d');\
-            canvas.height = viewport.height; canvas.width = viewport.width;\
-            await page.render(\{ canvasContext: context, viewport \}).promise;\
-            const pdfImage = canvas.toDataURL('image/jpeg', 0.9);\
-\
-            let platform = 'SHOPEE';\
-            if (fullText.match(/Order\\s*ID/i) || fullText.match(/In\\s*transit/i)) platform = 'TIKTOK';\
-\
-            let productText = fullText;\
-            const pIndex = fullText.search(/(\uc0\u3594 \u3639 \u3656 \u3629 \u3626 \u3636 \u3609 \u3588 \u3657 \u3634 |Product\\s*Name|#\\s*\u3594 \u3639 \u3656 \u3629 \u3626 \u3636 \u3609 \u3588 \u3657 \u3634 |Item|\u3605 \u3633 \u3623 \u3648 \u3621 \u3639 \u3629 \u3585 )/i);\
-            if (pIndex !== -1) \{\
-                productText = fullText.substring(pIndex);\
-                const bottomMatch = productText.match(/(Qty\\s*Total|Total\\s*Qty|Shopee\\s*Order|Order\\s*ID|TH[A-Z0-9]\{9,\}|JT\\d\{9,\})/i);\
-                if (bottomMatch && bottomMatch.index > 20) productText = productText.substring(0, bottomMatch.index);\
-            \}\
-\
-            let extractedQty = '1';\
-            const qtyMatch = fullText.match(/(?:\uc0\u3592 \u3635 \u3609 \u3623 \u3609 \u3619 \u3623 \u3617 |Qty\\s*Total|Total\\s*Qty)\\D*(\\d+)/i);\
-            if (qtyMatch) extractedQty = qtyMatch[1];\
-            else \{ const lastNum = productText.match(/\\s(\\d+)\\s*$/); if (lastNum) extractedQty = lastNum[1]; \}\
-\
-            const trackingMatch = fullText.match(/(TH\\d\{10,\}|JT\\d\{10,\}|SPX[A-Z0-9]+|KER[A-Z0-9]+|KA[A-Z0-9]+|66\\d\{10,\}|82\\d\{10,\}|\\b\\d\{12\}\\b)/i);\
-            \
-            newOrders.push(\{ id: `label-$\{Date.now()\}-$\{i\}`, tracking: trackingMatch ? trackingMatch[0] : `PAGE-$\{i\}`, productText, quantity: extractedQty, pdfImage, platform \});\
-          \}\
-          setOrders(newOrders);\
-          setActiveTab('preview');\
-          showToast(`\uc0\u3626 \u3585 \u3633 \u3604 \u3586 \u3657 \u3629 \u3617 \u3641 \u3621 \u3626 \u3635 \u3648 \u3619 \u3655 \u3592  $\{newOrders.length\} \u3651 \u3610 `, 'success');\
-        \} catch (err) \{\
-          setUploadError('\uc0\u3648 \u3585 \u3636 \u3604 \u3586 \u3657 \u3629 \u3612 \u3636 \u3604 \u3614 \u3621 \u3634 \u3604 \u3651 \u3609 \u3585 \u3634 \u3619 \u3629 \u3656 \u3634 \u3609  PDF');\
-          showToast('\uc0\u3629 \u3656 \u3634 \u3609 \u3652 \u3615 \u3621 \u3660  PDF \u3652 \u3617 \u3656 \u3626 \u3635 \u3648 \u3619 \u3655 \u3592 ', 'error');\
-        \} finally \{\
-          setLoadingStatus(\{ active: false, current: 0, total: 0 \});\
-        \}\
-      \};\
-\
-      const handleFileUpload = async (e) => \{\
-        const file = e.target.files[0];\
-        if (!file) return;\
-        if (file.name.toLowerCase().endsWith('.pdf')) await processPDF(file);\
-        else setUploadError('\uc0\u3619 \u3629 \u3591 \u3619 \u3633 \u3610 \u3648 \u3593 \u3614 \u3634 \u3632 \u3652 \u3615 \u3621 \u3660  .pdf \u3648 \u3607 \u3656 \u3634 \u3609 \u3633 \u3657 \u3609 ');\
-        e.target.value = null;\
-      \};\
-\
-      const MappedOrders = useMemo(() => orders.map(o => \{\
-        const baseName = getBaseMappedSku(o.productText);\
-        const qty = parseInt(o.quantity, 10) || 1;\
-        let finalName = baseName;\
-        if (qty > 1 && !baseName.includes('\uc0\u3618 \u3633 \u3591 \u3652 \u3617 \u3656 \u3605 \u3633 \u3657 \u3591 \u3594 \u3639 \u3656 \u3629 ') && !baseName.includes('\u3652 \u3617 \u3656 \u3614 \u3610 \u3586 \u3657 \u3629 \u3617 \u3641 \u3621 ')) \{\
-          const match = baseName.match(/(.*?)(\\d+)([^\\d]*)$/);\
-          if (match) finalName = `$\{match[1]\}$\{parseInt(match[2], 10) * qty\}$\{match[3]\}`;\
-          else finalName = `$\{baseName\} x$\{qty\}`;\
-        \}\
-        return \{ ...o, shortName: finalName, originalQty: o.quantity \};\
-      \}), [orders, getBaseMappedSku]);\
-\
-      const handleExportPDF = async () => \{\
-        if (MappedOrders.length === 0) return;\
-        setExportStatus(\{ active: true, current: 0, total: MappedOrders.length \});\
-        try \{\
-          await loadExportLibs(); \
-          const pdf = new window.jspdf.jsPDF(\{ orientation: 'portrait', unit: 'mm', format: [100, 150] \});\
-          for (let i = 0; i < MappedOrders.length; i++) \{\
-            setExportStatus(prev => (\{ ...prev, current: i + 1 \}));\
-            const element = document.getElementById(`render-target-$\{MappedOrders[i].id\}`);\
-            if (element) \{\
-              const canvas = await window.html2canvas(element, \{ scale: 3, useCORS: true, logging: false, backgroundColor: '#ffffff' \});\
-              if (i > 0) pdf.addPage();\
-              pdf.addImage(canvas.toDataURL('image/jpeg', 0.98), 'JPEG', 0, 0, 100, 150);\
-            \}\
-          \}\
-          pdf.save(`PackMaster_Labels_$\{new Date().getTime()\}.pdf`);\
-          showToast('\uc0\u3604 \u3634 \u3623 \u3609 \u3660 \u3650 \u3627 \u3621 \u3604  PDF \u3648 \u3619 \u3637 \u3618 \u3610 \u3619 \u3657 \u3629 \u3618 ', 'success');\
-        \} catch (err) \{\
-          showToast('\uc0\u3626 \u3619 \u3657 \u3634 \u3591 \u3652 \u3615 \u3621 \u3660  PDF \u3621 \u3657 \u3617 \u3648 \u3627 \u3621 \u3623 ', 'error');\
-        \} finally \{\
-          setExportStatus(\{ active: false, current: 0, total: 0 \});\
-        \}\
-      \};\
-\
-      const handleExportRules = () => \{\
-        if (skuRules.length === 0) return showToast('\uc0\u3652 \u3617 \u3656 \u3617 \u3637 \u3586 \u3657 \u3629 \u3617 \u3641 \u3621 \u3651 \u3627 \u3657 \u3626 \u3656 \u3591 \u3629 \u3629 \u3585 ', 'error');\
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(skuRules));\
-        const dlAnchorElem = document.createElement('a');\
-        dlAnchorElem.setAttribute("href", dataStr);\
-        dlAnchorElem.setAttribute("download", `packmaster_rules_$\{new Date().toISOString().split('T')[0]\}.json`);\
-        dlAnchorElem.click();\
-        showToast('\uc0\u3626 \u3635 \u3619 \u3629 \u3591 \u3586 \u3657 \u3629 \u3617 \u3641 \u3621 \u3626 \u3635 \u3648 \u3619 \u3655 \u3592 ', 'success');\
-      \};\
-\
-      const handleImportRules = (e) => \{\
-        const file = e.target.files[0]; if (!file) return;\
-        const reader = new FileReader();\
-        reader.onload = (event) => \{\
-          try \{\
-            const importedRules = JSON.parse(event.target.result);\
-            if (Array.isArray(importedRules)) \{\
-              setSkuRules(prev => Array.from(new Map([...importedRules, ...prev].map(item => [item['keyword'], item])).values()));\
-              showToast(`\uc0\u3609 \u3635 \u3648 \u3586 \u3657 \u3634 \u3626 \u3635 \u3648 \u3619 \u3655 \u3592  $\{importedRules.length\} \u3586 \u3657 \u3629 `, 'success');\
-            \} else showToast('\uc0\u3619 \u3641 \u3611 \u3649 \u3610 \u3610 \u3652 \u3615 \u3621 \u3660 \u3652 \u3617 \u3656 \u3606 \u3641 \u3585 \u3605 \u3657 \u3629 \u3591 ', 'error');\
-          \} catch (err) \{ showToast('\uc0\u3652 \u3615 \u3621 \u3660 \u3648 \u3626 \u3637 \u3618 \u3627 \u3634 \u3618 ', 'error'); \}\
-        \};\
-        reader.readAsText(file); e.target.value = null;\
-      \};\
-\
-      const testResult = useMemo(() => \{\
-        if (!testInput) return null;\
-        const baseName = getBaseMappedSku(testInput); const qty = parseInt(testQty, 10) || 1;\
-        if (qty > 1 && !baseName.includes('\uc0\u3618 \u3633 \u3591 \u3652 \u3617 \u3656 \u3605 \u3633 \u3657 \u3591 \u3594 \u3639 \u3656 \u3629 ') && !baseName.includes('\u3652 \u3617 \u3656 \u3614 \u3610 \u3586 \u3657 \u3629 \u3617 \u3641 \u3621 ')) \{\
-          const match = baseName.match(/(.*?)(\\d+)([^\\d]*)$/);\
-          return match ? `$\{match[1]\}$\{parseInt(match[2], 10) * qty\}$\{match[3]\}` : `$\{baseName\} x$\{qty\}`;\
-        \}\
-        return baseName;\
-      \}, [testInput, testQty, getBaseMappedSku]);\
-\
-      return (\
-        <div className="min-h-screen bg-[#f8fafc] text-blue-950 font-sans relative">\
-          \{toast.show && <Toast message=\{toast.message\} type=\{toast.type\} onClose=\{() => setToast(\{ ...toast, show: false \})\} />\}\
-          \
-          \{exportStatus.active && (\
-            <div className="fixed inset-0 bg-blue-950/20 z-[9999] flex flex-col items-center justify-center no-print backdrop-blur-sm">\
-                <div className="bg-white p-12 rounded-[2rem] text-center shadow-2xl border border-blue-50 min-w-[360px]">\
-                    <span className="text-4xl animate-spin inline-block mb-4">\uc0\u9203 </span>\
-                    <h3 className="text-2xl font-black text-blue-950 mb-2">\uc0\u3585 \u3635 \u3621 \u3633 \u3591 \u3648 \u3605 \u3619 \u3637 \u3618 \u3617 \u3652 \u3615 \u3621 \u3660  PDF</h3>\
-                    <p className="text-blue-600/70 font-bold text-sm mb-8">\uc0\u3627 \u3609 \u3657 \u3634  \{exportStatus.current\} \u3592 \u3634 \u3585  \{exportStatus.total\}</p>\
-                    <div className="w-full bg-blue-50 rounded-full h-2.5 overflow-hidden"><div className="bg-blue-900 h-full transition-all duration-300 rounded-full" style=\{\{ width: `$\{(exportStatus.current / exportStatus.total) * 100\}%` \}\}></div></div>\
-                </div>\
-            </div>\
-          )\}\
-\
-          <div className="no-print flex h-screen overflow-hidden">\
-            <aside className="w-72 bg-white border-r border-blue-50 flex flex-col z-20 shadow-[4px_0_24px_rgba(23,37,84,0.02)]">\
-              <div className="p-8 border-b border-blue-50 flex items-center gap-4">\
-                <div className="bg-blue-950 p-2.5 rounded-[14px] text-white text-xl shadow-md shadow-blue-900/20">\uc0\u55357 \u56550 </div>\
-                <div><h1 className="font-black text-2xl tracking-tight text-blue-950 leading-none">PackMaster</h1><div className="mt-1.5"><span className="text-[9px] font-black text-blue-500 uppercase tracking-widest bg-blue-50 px-2 py-0.5 rounded-md">Navy Minimal</span></div></div>\
-              </div>\
-              <nav className="flex-1 p-5 space-y-2 mt-4">\
-                <button onClick=\{() => setActiveTab('upload')\} className=\{`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 border $\{activeTab === 'upload' ? 'bg-blue-50/80 border-blue-100 text-blue-900 font-bold shadow-sm' : 'border-transparent text-blue-950/60 hover:bg-slate-50 hover:text-blue-900 font-semibold'\}`\}><span className="text-xl">\uc0\u9729 \u65039 </span> <span className="text-[15px]">\u3629 \u3633 \u3611 \u3650 \u3627 \u3621 \u3604 \u3588 \u3635 \u3626 \u3633 \u3656 \u3591 \u3595 \u3639 \u3657 \u3629 </span></button>\
-                <button onClick=\{() => setActiveTab('settings')\} className=\{`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 border $\{activeTab === 'settings' ? 'bg-blue-50/80 border-blue-100 text-blue-900 font-bold shadow-sm' : 'border-transparent text-blue-950/60 hover:bg-slate-50 hover:text-blue-900 font-semibold'\}`\}><span className="text-xl">\uc0\u9881 \u65039 </span> <span className="text-[15px]">\u3605 \u3633 \u3657 \u3591 \u3588 \u3656 \u3634 \u3619 \u3627 \u3633 \u3626 \u3626 \u3636 \u3609 \u3588 \u3657 \u3634 </span></button>\
-                <button onClick=\{() => setActiveTab('preview')\} className=\{`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 border $\{activeTab === 'preview' ? 'bg-blue-50/80 border-blue-100 text-blue-900 font-bold shadow-sm' : 'border-transparent text-blue-950/60 hover:bg-slate-50 hover:text-blue-900 font-semibold'\}`\}><span className="text-xl">\uc0\u55357 \u56516 </span> <span className="text-[15px]">\u3614 \u3619 \u3637 \u3623 \u3636 \u3623  & \u3626 \u3633 \u3656 \u3591 \u3614 \u3636 \u3617 \u3614 \u3660 </span> \{orders.length > 0 && <span className="ml-auto bg-blue-900 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full shadow-sm">\{orders.length\}</span>\}</button>\
-              </nav>\
-            </aside>\
-\
-            <main className="flex-1 overflow-y-auto relative z-10">\
-              \{activeTab === 'upload' && (\
-                <div className="p-12 max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-500">\
-                  <div className="mb-10 text-center"><h2 className="text-4xl font-black text-blue-950 mb-4 tracking-tight">\uc0\u3592 \u3633 \u3604 \u3648 \u3605 \u3619 \u3637 \u3618 \u3617 \u3651 \u3610 \u3611 \u3632 \u3627 \u3609 \u3657 \u3634 </h2><p className="text-blue-950/60 text-lg font-medium">\u3649 \u3611 \u3621 \u3591 \u3651 \u3610 \u3649 \u3614 \u3655 \u3588 \u3586 \u3629 \u3591 \u3592 \u3634 \u3585  Shopee \u3649 \u3621 \u3632  TikTok \u3651 \u3627 \u3657 \u3629 \u3656 \u3634 \u3609 \u3591 \u3656 \u3634 \u3618 \u3651 \u3609 \u3588 \u3621 \u3636 \u3585 \u3648 \u3604 \u3637 \u3618 \u3623 </p></div>\
-                  <div className=\{`bg-white p-20 rounded-[3rem] border-2 transition-all duration-300 shadow-xl shadow-blue-900/5 $\{loadingStatus.active ? 'border-blue-200 bg-blue-50/30' : 'border-blue-50 hover:border-blue-100'\}`\}>\
-                    \{loadingStatus.active ? (\
-                      <div className="flex flex-col items-center py-4"><span className="text-6xl animate-spin inline-block mb-6">\uc0\u9203 </span><h3 className="text-xl font-black text-blue-950 mb-2">\u3585 \u3635 \u3621 \u3633 \u3591 \u3611 \u3619 \u3632 \u3617 \u3623 \u3621 \u3612 \u3621  PDF</h3><p className="text-blue-900/60 font-bold text-sm">\u3629 \u3656 \u3634 \u3609 \u3586 \u3657 \u3629 \u3617 \u3641 \u3621 \u3627 \u3609 \u3657 \u3634 \u3607 \u3637 \u3656  \{loadingStatus.current\} \u3592 \u3634 \u3585  \{loadingStatus.total\}</p></div>\
-                    ) : (\
-                      <div className="text-center py-4">\
-                        <div className="w-24 h-24 bg-blue-50/80 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-blue-100/50 text-4xl shadow-sm">\uc0\u9729 \u65039 </div>\
-                        <h3 className="text-2xl font-black mb-3 text-blue-950">\uc0\u3623 \u3634 \u3591 \u3652 \u3615 \u3621 \u3660  PDF \u3586 \u3629 \u3591 \u3588 \u3640 \u3603 \u3605 \u3619 \u3591 \u3609 \u3637 \u3657 </h3>\
-                        <p className="text-blue-950/50 font-semibold text-sm mb-10">\uc0\u3619 \u3629 \u3591 \u3619 \u3633 \u3610 \u3626 \u3641 \u3591 \u3626 \u3640 \u3604  100 \u3651 \u3610 \u3605 \u3656 \u3629 \u3585 \u3634 \u3619 \u3629 \u3633 \u3611 \u3650 \u3627 \u3621 \u3604 </p>\
-                        <label className="bg-blue-950 hover:bg-blue-900 text-white px-10 py-4 rounded-2xl cursor-pointer font-bold text-sm transition-all inline-flex items-center gap-3 shadow-lg shadow-blue-900/20 active:scale-95"><span>\uc0\u55357 \u56549 </span> \u3648 \u3621 \u3639 \u3629 \u3585 \u3652 \u3615 \u3621 \u3660 \u3629 \u3633 \u3611 \u3650 \u3627 \u3621 \u3604  <input type="file" accept=".pdf" className="hidden" onChange=\{handleFileUpload\} /></label>\
-                        \{uploadError && <div className="mt-8 p-4 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center gap-2 border border-red-100 font-bold text-sm"><span>\uc0\u9888 \u65039 </span> \{uploadError\}</div>\}\
-                      </div>\
-                    )\}\
-                  </div>\
-                </div>\
-              )\}\
-\
-              \{activeTab === 'settings' && (\
-                <div className="p-12 max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-500">\
-                  <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">\
-                    <div><h2 className="text-4xl font-black text-blue-950 mb-3 tracking-tight">\uc0\u3588 \u3621 \u3633 \u3591 \u3588 \u3635 \u3624 \u3633 \u3614 \u3607 \u3660 </h2><p className="text-blue-950/60 text-base font-semibold">\u3605 \u3633 \u3657 \u3591 \u3588 \u3656 \u3634 \u3585 \u3634 \u3619 \u3649 \u3611 \u3621 \u3591 \u3594 \u3639 \u3656 \u3629 \u3626 \u3636 \u3609 \u3588 \u3657 \u3634  \u3619 \u3632 \u3610 \u3610 \u3592 \u3632 \u3610 \u3633 \u3609 \u3607 \u3638 \u3585 \u3629 \u3633 \u3605 \u3650 \u3609 \u3617 \u3633 \u3605 \u3636 </p></div>\
-                    <div className="flex gap-3">\
-                      <label className="bg-white border-2 border-blue-50 text-blue-950 hover:border-blue-100 hover:bg-blue-50/30 px-5 py-3 rounded-2xl text-sm font-bold cursor-pointer transition-all flex items-center gap-2 shadow-sm"><span>\uc0\u55357 \u56548 </span> \u3609 \u3635 \u3648 \u3586 \u3657 \u3634  <input type="file" accept=".json" className="hidden" onChange=\{handleImportRules\} /></label>\
-                      <button onClick=\{handleExportRules\} className="bg-white border-2 border-blue-50 text-blue-950 hover:border-blue-100 hover:bg-blue-50/30 px-5 py-3 rounded-2xl text-sm font-bold transition-all flex items-center gap-2 shadow-sm"><span>\uc0\u55357 \u56510 </span> \u3626 \u3635 \u3619 \u3629 \u3591 \u3586 \u3657 \u3629 \u3617 \u3641 \u3621 </button>\
-                    </div>\
-                  </div>\
-                  \
-                  <div className="bg-white rounded-[2.5rem] shadow-xl shadow-blue-900/5 border-2 border-blue-50 overflow-hidden mb-10">\
-                    <div className="p-10 border-b-2 border-blue-50 bg-blue-50/20">\
-                      <form onSubmit=\{(e) => \{ e.preventDefault(); if (!newRule.keyword.trim() || !newRule.shortName.trim()) return; setSkuRules([\{ ...newRule, id: Date.now() \}, ...skuRules]); setNewRule(\{ keyword: '', shortName: '' \}); showToast('\uc0\u3648 \u3614 \u3636 \u3656 \u3617 \u3585 \u3598 \u3651 \u3627 \u3617 \u3656 \u3626 \u3635 \u3648 \u3619 \u3655 \u3592 ', 'success'); \}\} className="flex flex-col md:flex-row gap-6 items-end">\
-                        <div className="flex-1 w-full"><label className="block text-[11px] font-black text-blue-950/50 mb-3 uppercase tracking-widest pl-2">1. \uc0\u3588 \u3635 \u3607 \u3637 \u3656 \u3605 \u3657 \u3629 \u3591 \u3585 \u3634 \u3619 \u3588 \u3657 \u3609 \u3627 \u3634  (Keyword)</label><input type="text" value=\{newRule.keyword\} onChange=\{(e) => setNewRule(\{...newRule, keyword: e.target.value\})\} placeholder="\u3648 \u3594 \u3656 \u3609  baby Wipes 10" className="w-full border-2 border-blue-100 bg-white px-6 py-4 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-900 outline-none transition-all text-base font-bold text-blue-950" /></div>\
-                        <div className="flex-1 w-full"><label className="block text-[11px] font-black text-blue-950/50 mb-3 uppercase tracking-widest pl-2">2. \uc0\u3594 \u3639 \u3656 \u3629 \u3618 \u3656 \u3629 \u3607 \u3637 \u3656 \u3605 \u3657 \u3629 \u3591 \u3585 \u3634 \u3619  (1 \u3594 \u3636 \u3657 \u3609 )</label><input type="text" value=\{newRule.shortName\} onChange=\{(e) => setNewRule(\{...newRule, shortName: e.target.value\})\} placeholder="\u3648 \u3594 \u3656 \u3609  \u3648 \u3604 \u3657 \u3591 \u3617 \u3656 \u3623 \u3591  10" className="w-full border-2 border-blue-100 bg-white px-6 py-4 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-900 outline-none transition-all text-base font-bold text-blue-950" /></div>\
-                        <button type="submit" disabled=\{!newRule.keyword || !newRule.shortName\} className="bg-blue-950 hover:bg-blue-900 disabled:opacity-50 text-white px-8 py-4 rounded-2xl font-bold transition-all shadow-lg shadow-blue-900/20 h-[60px] flex items-center gap-2 active:scale-95"><span>\uc0\u10133 </span> \u3648 \u3614 \u3636 \u3656 \u3617 </button>\
-                      </form>\
-                    </div>\
-                    <div className="max-h-[400px] overflow-y-auto">\
-                        <table className="w-full text-left">\
-                        <thead><tr className="text-blue-950/40 text-[10px] font-black uppercase tracking-widest bg-blue-50/30 border-b-2 border-blue-50"><th className="px-10 py-5">No.</th><th className="px-10 py-5">Keyword</th><th className="px-10 py-5">Base SKU</th><th className="px-10 py-5 text-right"></th></tr></thead>\
-                        <tbody className="divide-y-2 divide-blue-50/50">\{skuRules.map((rule, idx) => (<tr key=\{rule.id\} className="bg-white hover:bg-blue-50/40 transition-colors group"><td className="px-10 py-5 text-sm font-black text-blue-950/30">\{idx + 1\}</td><td className="px-10 py-5 font-mono text-[15px] font-bold text-blue-950/80">\{rule.keyword\}</td><td className="px-10 py-5"><span className="text-blue-900 font-black text-[15px] bg-blue-100/50 border border-blue-200/50 px-4 py-1.5 rounded-xl">\{rule.shortName\}</span></td><td className="px-10 py-5 text-right"><button onClick=\{() => setSkuRules(skuRules.filter(r => r.id !== rule.id))\} className="text-blue-950/20 hover:text-red-500 hover:bg-red-50 p-2.5 rounded-xl transition-all"><span>\uc0\u55357 \u56785 \u65039 </span></button></td></tr>))\}\
-                        \{skuRules.length === 0 && <tr><td colSpan="4" className="p-24 text-center text-blue-950/30 text-sm font-bold">\uc0\u3652 \u3617 \u3656 \u3617 \u3637 \u3586 \u3657 \u3629 \u3617 \u3641 \u3621 \u3588 \u3621 \u3633 \u3591 \u3588 \u3635 \u3624 \u3633 \u3614 \u3607 \u3660 </td></tr>\}\
-                        </tbody>\
-                        </table>\
-                    </div>\
-                  </div>\
-\
-                  <div className="bg-white border-2 border-blue-50 p-10 rounded-[2.5rem] shadow-xl shadow-blue-900/5 relative overflow-hidden">\
-                    <div className="relative z-10">\
-                      <h3 className="text-xl font-black mb-6 flex items-center gap-3 text-blue-950"><span>\uc0\u55358 \u56814 </span> \u3607 \u3604 \u3626 \u3629 \u3610 \u3619 \u3632 \u3610 \u3610 \u3588 \u3635 \u3609 \u3623 \u3603 \u3618 \u3629 \u3604 </h3>\
-                      <div className="flex flex-col md:flex-row gap-5 mb-8">\
-                          <input type="text" value=\{testInput\} onChange=\{(e) => setTestInput(e.target.value)\} placeholder="\uc0\u3623 \u3634 \u3591 \u3594 \u3639 \u3656 \u3629 \u3626 \u3636 \u3609 \u3588 \u3657 \u3634 \u3648 \u3605 \u3655 \u3617 \u3654  \u3648 \u3614 \u3639 \u3656 \u3629 \u3607 \u3604 \u3626 \u3629 \u3610 ..." className="flex-1 border-2 border-blue-100 px-6 py-4 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-900 text-base font-bold text-blue-950 placeholder:text-blue-950/30 transition-all" />\
-                          <div className="flex items-center gap-4 border-2 border-blue-100 px-5 py-3 rounded-2xl bg-blue-50/30"><span className="text-[11px] font-black text-blue-500 uppercase tracking-widest">QTY</span><input type="number" min="1" value=\{testQty\} onChange=\{(e) => setTestQty(e.target.value)\} className="w-16 bg-transparent outline-none text-blue-950 text-center text-xl font-black" /></div>\
-                      </div>\
-                      <div className="bg-blue-50/50 border-2 border-blue-100 p-8 rounded-3xl flex items-center justify-between">\
-                        <span className="text-blue-950/40 font-black text-[11px] uppercase tracking-widest">Result</span>\
-                        \{testInput ? (testResult !== '\uc0\u3618 \u3633 \u3591 \u3652 \u3617 \u3656 \u3605 \u3633 \u3657 \u3591 \u3594 \u3639 \u3656 \u3629  (\u3648 \u3614 \u3636 \u3656 \u3617 \u3585 \u3598  SKU)' && testResult !== '\u3652 \u3617 \u3656 \u3614 \u3610 \u3586 \u3657 \u3629 \u3617 \u3641 \u3621 ' ? (<div className="flex items-center gap-4"><span className="text-4xl font-black text-blue-950 tracking-tight">\{testResult\}</span></div>) : (<div className="flex items-center gap-2"><span className="text-sm font-bold text-red-500 bg-red-50 px-4 py-2 rounded-xl">\u3652 \u3617 \u3656 \u3614 \u3610 \u3588 \u3637 \u3618 \u3660 \u3648 \u3623 \u3636 \u3619 \u3660 \u3604 </span></div>)) : <span className="text-4xl font-black text-blue-950/10">-</span>\}\
-                      </div>\
-                    </div>\
-                  </div>\
-                </div>\
-              )\}\
-\
-              \{activeTab === 'preview' && (\
-                <div className="p-12 max-w-[1400px] mx-auto animate-in fade-in slide-in-from-bottom-8 duration-500">\
-                  <div className="flex flex-col xl:flex-row justify-between items-center mb-12 gap-8">\
-                    <div className="text-center xl:text-left"><h2 className="text-4xl font-black text-blue-950 mb-2 tracking-tight">\uc0\u3619 \u3637 \u3623 \u3636 \u3623 \u3649 \u3621 \u3632 \u3614 \u3636 \u3617 \u3614 \u3660 </h2><p className="text-blue-950/60 text-base font-semibold">\u3605 \u3619 \u3623 \u3592 \u3626 \u3629 \u3610 \u3588 \u3623 \u3634 \u3617 \u3606 \u3641 \u3585 \u3605 \u3657 \u3629 \u3591  \{orders.length\} \u3619 \u3634 \u3618 \u3585 \u3634 \u3619 </p></div>\
-                    <div className="flex flex-wrap justify-center items-center gap-4">\
-                       <div className="bg-white border-2 border-blue-50 p-1.5 rounded-2xl flex gap-1 mr-2 shadow-sm">\
-                         <button onClick=\{() => setPreviewMode('table')\} className=\{`px-6 py-2.5 rounded-[12px] font-bold text-sm transition-all $\{previewMode === 'table' ? 'bg-blue-50 text-blue-900 shadow-sm border border-blue-100' : 'text-blue-950/50 hover:text-blue-900 border border-transparent'\}`\}>\uc0\u3605 \u3634 \u3619 \u3634 \u3591 \u3626 \u3619 \u3640 \u3611 </button>\
-                         <button onClick=\{() => setPreviewMode('labels')\} className=\{`px-6 py-2.5 rounded-[12px] font-bold text-sm transition-all $\{previewMode === 'labels' ? 'bg-blue-50 text-blue-900 shadow-sm border border-blue-100' : 'text-blue-950/50 hover:text-blue-900 border border-transparent'\}`\}>\uc0\u3651 \u3610 \u3611 \u3632 \u3627 \u3609 \u3657 \u3634 </button>\
-                       </div>\
-                       <button onClick=\{() => \{ setOrders([]); showToast('\uc0\u3621 \u3657 \u3634 \u3591 \u3586 \u3657 \u3629 \u3617 \u3641 \u3621 \u3626 \u3635 \u3648 \u3619 \u3655 \u3592 '); \}\} disabled=\{orders.length === 0\} className="bg-white border-2 border-blue-50 hover:bg-red-50 hover:border-red-100 hover:text-red-600 text-blue-950/60 disabled:opacity-50 px-5 py-3 rounded-2xl font-bold text-sm shadow-sm flex items-center gap-2 transition-all"><span>\u55357 \u56580 </span> \u3621 \u3657 \u3634 \u3591 \u3586 \u3657 \u3629 \u3617 \u3641 \u3621 </button>\
-                       <button onClick=\{handleExportPDF\} disabled=\{exportStatus.active || orders.length === 0\} className="bg-white border-2 border-blue-50 hover:border-blue-100 disabled:opacity-50 text-blue-900 px-6 py-3 rounded-2xl font-bold text-sm shadow-sm flex items-center gap-2 transition-all active:scale-95"><span>\uc0\u55357 \u56549 </span> Save PDF</button>\
-                       <button onClick=\{() => window.print()\} disabled=\{orders.length === 0\} className="bg-blue-950 hover:bg-blue-900 disabled:opacity-50 text-white px-8 py-3 rounded-2xl font-bold text-sm shadow-lg shadow-blue-900/20 flex items-center gap-2 transition-all active:scale-95"><span>\uc0\u55357 \u56744 \u65039 </span> \u3614 \u3636 \u3617 \u3614 \u3660 </button>\
-                    </div>\
-                  </div>\
-\
-                  \{orders.length === 0 ? (\
-                    <div className="bg-white p-32 rounded-[3rem] text-center border-2 border-blue-50 flex flex-col items-center justify-center shadow-sm">\
-                      <span className="text-6xl mb-6 opacity-30">\uc0\u55357 \u56516 </span><h3 className="font-black text-2xl text-blue-950/30">\u3618 \u3633 \u3591 \u3652 \u3617 \u3656 \u3617 \u3637 \u3586 \u3657 \u3629 \u3617 \u3641 \u3621 \u3626 \u3635 \u3627 \u3619 \u3633 \u3610 \u3614 \u3636 \u3617 \u3614 \u3660 </h3><p className="text-blue-950/30 text-sm mt-2 font-medium">\u3650 \u3611 \u3619 \u3604 \u3629 \u3633 \u3611 \u3650 \u3627 \u3621 \u3604 \u3652 \u3615 \u3621 \u3660 \u3651 \u3609 \u3648 \u3617 \u3609 \u3641 \u3649 \u3619 \u3585 </p>\
-                    </div>\
-                  ) : previewMode === 'table' ? (\
-                    <div className="bg-white rounded-[2.5rem] shadow-xl shadow-blue-900/5 overflow-hidden no-print border-2 border-blue-50">\
-                      <table className="w-full text-left">\
-                        <thead><tr className="bg-blue-50/50 text-blue-950/50 uppercase tracking-widest text-[10px] font-black border-b-2 border-blue-50"><th className="px-10 py-6">Tracking</th><th className="px-10 py-6 text-center">Qty</th><th className="px-10 py-6">Output Label</th></tr></thead>\
-                        <tbody className="divide-y-2 divide-blue-50/50">\{MappedOrders.map((order) => (<tr key=\{order.id\} className="hover:bg-blue-50/30 transition-colors"><td className="px-10 py-6 font-mono text-[15px] font-bold text-blue-950/60">\{order.tracking\}</td><td className="px-10 py-6 text-center font-black text-2xl text-blue-950/40">x\{order.originalQty\}</td><td className="px-10 py-6"><span className=\{`font-black text-2xl px-5 py-2 rounded-xl inline-block $\{order.shortName.includes('\uc0\u3618 \u3633 \u3591 \u3652 \u3617 \u3656 \u3605 \u3633 \u3657 \u3591 \u3594 \u3639 \u3656 \u3629 ') ? 'text-red-500 bg-red-50' : 'text-blue-900 bg-blue-100/50'\}`\}>\{order.shortName\}</span></td></tr>))\}</tbody>\
-                      </table>\
-                    </div>\
-                  ) : (\
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-10 justify-items-center pb-20 no-print">\
-                      \{MappedOrders.map((order) => (<div key=\{`prev-$\{order.id\}`\} className="transform hover:scale-[1.01] transition-transform duration-200"><LabelCard order=\{order\} /></div>))\}\
-                    </div>\
-                  )\}\
-                </div>\
-              )\}\
-            </main>\
-          </div>\
-\
-          <div className="fixed pointer-events-none" style=\{\{ top: 0, left: '-9999px', width: '100mm', zIndex: -100 \}\}>\
-            \{MappedOrders.map((order) => (\
-              <div key=\{`render-arena-$\{order.id\}`\} id=\{`render-target-$\{order.id\}`\} style=\{\{ position: 'relative', width: '100mm', height: '150mm', backgroundColor: 'white' \}\}>\
-                <LabelCard order=\{order\} isExport=\{true\} />\
-              </div>\
-            ))\}\
-          </div>\
-          <div className="hidden print-area w-full text-black">\
-            \{MappedOrders.map((order) => (<LabelCard key=\{`print-$\{order.id\}`\} order=\{order\} isExport=\{true\} />))\}\
-          </div>\
-        </div>\
-      );\
-    \}\
-\
-    const root = ReactDOM.createRoot(document.getElementById('root'));\
-    root.render(<App />);\
-  </script>\
-</body>\
-</html>}
+  <script>
+    tailwind.config = {
+      theme: { extend: { fontFamily: { sans: ['"Noto Sans Thai"', 'sans-serif'] } } }
+    }
+  </script>
+  <style>
+    @media print { 
+      @page { size: 100mm 150mm; margin: 0; } 
+      body { background: white !important; } 
+      .print-area { display: block !important; }
+      .no-print { display: none !important; }
+    }
+    body { font-family: 'Noto Sans Thai', sans-serif; }
+  </style>
+</head>
+<body class="bg-[#f8fafc] text-blue-950 selection:bg-blue-200">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useMemo } = React;
+
+    // --- EXTERNAL LIBRARIES LOADER ---
+    const loadScript = (id, src) => {
+      return new Promise((resolve, reject) => {
+        if (document.getElementById(id)) return resolve();
+        const script = document.createElement('script');
+        script.id = id; script.src = src;
+        script.onload = resolve; script.onerror = () => reject(new Error(`Failed to load ${src}`));
+        document.head.appendChild(script);
+      });
+    };
+
+    const loadPdfJS = () => loadScript('pdfjs-lib', 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js').then(() => {
+      if (window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      return window.pdfjsLib;
+    });
+
+    const loadExportLibs = async () => {
+      await loadScript('html2canvas-lib', 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+      await loadScript('jspdf-lib', 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+    };
+
+    // --- TOAST NOTIFICATION ---
+    const Toast = ({ message, type, onClose }) => {
+      useEffect(() => { const timer = setTimeout(() => onClose(), 3000); return () => clearTimeout(timer); }, [onClose]);
+      return (
+        <div className={`fixed top-6 right-6 z-[99999] flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-xl border animate-in slide-in-from-right-8 duration-300 ${type === 'success' ? 'bg-white border-green-100 text-green-700' : 'bg-white border-red-100 text-red-600'}`}>
+          <span className="text-xl">{type === 'success' ? '✅' : '❌'}</span>
+          <span className="font-bold text-sm tracking-wide">{message}</span>
+        </div>
+      );
+    };
+
+    // --- LABEL CARD ---
+    const LabelCard = ({ order, isExport = false }) => {
+      if (!order || !order.pdfImage) return null;
+      const isTiktok = order.platform === 'TIKTOK';
+      return (
+        <div className={`shrink-0 box-border ${isExport ? '' : 'border-2 border-blue-50 shadow-xl shadow-blue-900/5 rounded-2xl'}`} style={{ width: '100mm', height: '150mm', backgroundColor: '#ffffff', position: 'relative', overflow: 'hidden', pageBreakAfter: 'always', margin: 0, display: 'block' }}>
+          <img src={order.pdfImage} alt="Label Base" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'fill', zIndex: 0 }} crossOrigin="anonymous" />
+          <div style={{ position: 'absolute', zIndex: 10, boxSizing: 'border-box', bottom: '24px', left: '16px', right: '16px', height: isTiktok ? '14%' : '32%', border: '4px dashed #172554', borderRadius: isTiktok ? '14px' : '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+            <p style={{ fontFamily: '"Noto Sans Thai", sans-serif', fontWeight: 800, color: '#172554', lineHeight: 1.15, margin: 0, textAlign: 'center', wordBreak: 'break-word', width: '100%', letterSpacing: '-0.02em', fontSize: isTiktok ? (order.shortName.length > 25 ? '18pt' : order.shortName.length > 15 ? '26pt' : '36pt') : (order.shortName.length > 25 ? '32pt' : order.shortName.length > 15 ? '48pt' : '62pt'), textShadow: '3px 3px 0 #fff, -3px -3px 0 #fff, 3px -3px 0 #fff, -3px 3px 0 #fff, 0 3px 0 #fff, 0 -3px 0 #fff, 3px 0 0 #fff, -3px 0 0 #fff, 2px 4px 8px rgba(23, 37, 84, 0.15)' }}>
+              {order.shortName}
+            </p>
+          </div>
+        </div>
+      );
+    };
+
+    // --- MAIN APP ---
+    function App() {
+      const [activeTab, setActiveTab] = useState('upload');
+      const [orders, setOrders] = useState([]);
+      const [skuRules, setSkuRules] = useState(() => {
+        try { const saved = localStorage.getItem('skuMappingRules'); if (saved) return JSON.parse(saved); } catch (e) {} return [];
+      });
+      const [newRule, setNewRule] = useState({ keyword: '', shortName: '' });
+      const [uploadError, setUploadError] = useState('');
+      const [loadingStatus, setLoadingStatus] = useState({ active: false, current: 0, total: 0 });
+      const [exportStatus, setExportStatus] = useState({ active: false, current: 0, total: 0 });
+      const [previewMode, setPreviewMode] = useState('table');
+      const [testInput, setTestInput] = useState('');
+      const [testQty, setTestQty] = useState('1');
+      const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+
+      const showToast = (message, type = 'success') => setToast({ show: true, message, type });
+
+      useEffect(() => { localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); }, [skuRules]);
+
+      const getBaseMappedSku = useCallback((textToSearch) => {
+        const clean = (text) => {
+          if (!text) return '';
+          return String(text).toLowerCase().replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '').replace(/[\u0E47-\u0E4C]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
+        };
+        const searchArea = clean(textToSearch);
+        if (!searchArea) return 'ไม่พบข้อมูล';
+        const sortedRules = [...skuRules].sort((a, b) => b.keyword.length - a.keyword.length);
+        for (const rule of sortedRules) {
+          const cleanKw = clean(rule.keyword);
+          if (!cleanKw) continue;
+          if (searchArea.includes(cleanKw)) return rule.shortName;
+          const words = rule.keyword.split(/\s+/).filter(w => w.length > 0);
+          if (words.length > 1 && words.every(w => searchArea.includes(clean(w)))) return rule.shortName;
+        }
+        return 'ยังไม่ตั้งชื่อ (เพิ่มกฎ SKU)';
+      }, [skuRules]);
+
+      const processPDF = async (file) => {
+        try {
+          const pdfjs = await loadPdfJS();
+          const arrayBuffer = await file.arrayBuffer();
+          const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+          const pageCount = Math.min(pdf.numPages, 100);
+          setLoadingStatus({ active: true, current: 0, total: pageCount });
+
+          const newOrders = [];
+          for (let i = 1; i <= pageCount; i++) {
+            setLoadingStatus(prev => ({ ...prev, current: i }));
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            const fullText = textContent.items.map(item => item.str).join(' ');
+
+            const viewport = page.getViewport({ scale: 2.5 }); 
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.height = viewport.height; canvas.width = viewport.width;
+            await page.render({ canvasContext: context, viewport }).promise;
+            const pdfImage = canvas.toDataURL('image/jpeg', 0.9);
+
+            let platform = 'SHOPEE';
+            if (fullText.match(/Order\s*ID/i) || fullText.match(/In\s*transit/i)) platform = 'TIKTOK';
+
+            let productText = fullText;
+            const pIndex = fullText.search(/(ชื่อสินค้า|Product\s*Name|#\s*ชื่อสินค้า|Item|ตัวเลือก)/i);
+            if (pIndex !== -1) {
+                productText = fullText.substring(pIndex);
+                const bottomMatch = productText.match(/(Qty\s*Total|Total\s*Qty|Shopee\s*Order|Order\s*ID|TH[A-Z0-9]{9,}|JT\d{9,})/i);
+                if (bottomMatch && bottomMatch.index > 20) productText = productText.substring(0, bottomMatch.index);
+            }
+
+            let extractedQty = '1';
+            const qtyMatch = fullText.match(/(?:จำนวนรวม|Qty\s*Total|Total\s*Qty)\D*(\d+)/i);
+            if (qtyMatch) extractedQty = qtyMatch[1];
+            else { const lastNum = productText.match(/\s(\d+)\s*$/); if (lastNum) extractedQty = lastNum[1]; }
+
+            const trackingMatch = fullText.match(/(TH\d{10,}|JT\d{10,}|SPX[A-Z0-9]+|KER[A-Z0-9]+|KA[A-Z0-9]+|66\d{10,}|82\d{10,}|\b\d{12}\b)/i);
+            
+            newOrders.push({ id: `label-${Date.now()}-${i}`, tracking: trackingMatch ? trackingMatch[0] : `PAGE-${i}`, productText, quantity: extractedQty, pdfImage, platform });
+          }
+          setOrders(newOrders);
+          setActiveTab('preview');
+          showToast(`สกัดข้อมูลสำเร็จ ${newOrders.length} ใบ`, 'success');
+        } catch (err) {
+          setUploadError('เกิดข้อผิดพลาดในการอ่าน PDF');
+          showToast('อ่านไฟล์ PDF ไม่สำเร็จ', 'error');
+        } finally {
+          setLoadingStatus({ active: false, current: 0, total: 0 });
+        }
+      };
+
+      const handleFileUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (file.name.toLowerCase().endsWith('.pdf')) await processPDF(file);
+        else setUploadError('รองรับเฉพาะไฟล์ .pdf เท่านั้น');
+        e.target.value = null;
+      };
+
+      const MappedOrders = useMemo(() => orders.map(o => {
+        const baseName = getBaseMappedSku(o.productText);
+        const qty = parseInt(o.quantity, 10) || 1;
+        let finalName = baseName;
+        if (qty > 1 && !baseName.includes('ยังไม่ตั้งชื่อ') && !baseName.includes('ไม่พบข้อมูล')) {
+          const match = baseName.match(/(.*?)(\d+)([^\d]*)$/);
+          if (match) finalName = `${match[1]}${parseInt(match[2], 10) * qty}${match[3]}`;
+          else finalName = `${baseName} x${qty}`;
+        }
+        return { ...o, shortName: finalName, originalQty: o.quantity };
+      }), [orders, getBaseMappedSku]);
+
+      const handleExportPDF = async () => {
+        if (MappedOrders.length === 0) return;
+        setExportStatus({ active: true, current: 0, total: MappedOrders.length });
+        try {
+          await loadExportLibs(); 
+          const pdf = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'mm', format: [100, 150] });
+          for (let i = 0; i < MappedOrders.length; i++) {
+            setExportStatus(prev => ({ ...prev, current: i + 1 }));
+            const element = document.getElementById(`render-target-${MappedOrders[i].id}`);
+            if (element) {
+              const canvas = await window.html2canvas(element, { scale: 3, useCORS: true, logging: false, backgroundColor: '#ffffff' });
+              if (i > 0) pdf.addPage();
+              pdf.addImage(canvas.toDataURL('image/jpeg', 0.98), 'JPEG', 0, 0, 100, 150);
+            }
+          }
+          pdf.save(`PackMaster_Labels_${new Date().getTime()}.pdf`);
+          showToast('ดาวน์โหลด PDF เรียบร้อย', 'success');
+        } catch (err) {
+          showToast('สร้างไฟล์ PDF ล้มเหลว', 'error');
+        } finally {
+          setExportStatus({ active: false, current: 0, total: 0 });
+        }
+      };
+
+      const handleExportRules = () => {
+        if (skuRules.length === 0) return showToast('ไม่มีข้อมูลให้ส่งออก', 'error');
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(skuRules));
+        const dlAnchorElem = document.createElement('a');
+        dlAnchorElem.setAttribute("href", dataStr);
+        dlAnchorElem.setAttribute("download", `packmaster_rules_${new Date().toISOString().split('T')[0]}.json`);
+        dlAnchorElem.click();
+        showToast('สำรองข้อมูลสำเร็จ', 'success');
+      };
+
+      const handleImportRules = (e) => {
+        const file = e.target.files[0]; if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const importedRules = JSON.parse(event.target.result);
+            if (Array.isArray(importedRules)) {
+              setSkuRules(prev => Array.from(new Map([...importedRules, ...prev].map(item => [item['keyword'], item])).values()));
+              showToast(`นำเข้าสำเร็จ ${importedRules.length} ข้อ`, 'success');
+            } else showToast('รูปแบบไฟล์ไม่ถูกต้อง', 'error');
+          } catch (err) { showToast('ไฟล์เสียหาย', 'error'); }
+        };
+        reader.readAsText(file); e.target.value = null;
+      };
+
+      const testResult = useMemo(() => {
+        if (!testInput) return null;
+        const baseName = getBaseMappedSku(testInput); const qty = parseInt(testQty, 10) || 1;
+        if (qty > 1 && !baseName.includes('ยังไม่ตั้งชื่อ') && !baseName.includes('ไม่พบข้อมูล')) {
+          const match = baseName.match(/(.*?)(\d+)([^\d]*)$/);
+          return match ? `${match[1]}${parseInt(match[2], 10) * qty}${match[3]}` : `${baseName} x${qty}`;
+        }
+        return baseName;
+      }, [testInput, testQty, getBaseMappedSku]);
+
+      return (
+        <div className="min-h-screen bg-[#f8fafc] text-blue-950 font-sans relative">
+          {toast.show && <Toast message={toast.message} type={toast.type} onClose={() => setToast({ ...toast, show: false })} />}
+          
+          {exportStatus.active && (
+            <div className="fixed inset-0 bg-blue-950/20 z-[9999] flex flex-col items-center justify-center no-print backdrop-blur-sm">
+                <div className="bg-white p-12 rounded-[2rem] text-center shadow-2xl border border-blue-50 min-w-[360px]">
+                    <span className="text-4xl animate-spin inline-block mb-4">⏳</span>
+                    <h3 className="text-2xl font-black text-blue-950 mb-2">กำลังเตรียมไฟล์ PDF</h3>
+                    <p className="text-blue-600/70 font-bold text-sm mb-8">หน้า {exportStatus.current} จาก {exportStatus.total}</p>
+                    <div className="w-full bg-blue-50 rounded-full h-2.5 overflow-hidden"><div className="bg-blue-900 h-full transition-all duration-300 rounded-full" style={{ width: `${(exportStatus.current / exportStatus.total) * 100}%` }}></div></div>
+                </div>
+            </div>
+          )}
+
+          <div className="no-print flex h-screen overflow-hidden">
+            <aside className="w-72 bg-white border-r border-blue-50 flex flex-col z-20 shadow-[4px_0_24px_rgba(23,37,84,0.02)]">
+              <div className="p-8 border-b border-blue-50 flex items-center gap-4">
+                <div className="bg-blue-950 p-2.5 rounded-[14px] text-white text-xl shadow-md shadow-blue-900/20">📦</div>
+                <div><h1 className="font-black text-2xl tracking-tight text-blue-950 leading-none">PackMaster</h1><div className="mt-1.5"><span className="text-[9px] font-black text-blue-500 uppercase tracking-widest bg-blue-50 px-2 py-0.5 rounded-md">Navy Minimal</span></div></div>
+              </div>
+              <nav className="flex-1 p-5 space-y-2 mt-4">
+                <button onClick={() => setActiveTab('upload')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 border ${activeTab === 'upload' ? 'bg-blue-50/80 border-blue-100 text-blue-900 font-bold shadow-sm' : 'border-transparent text-blue-950/60 hover:bg-slate-50 hover:text-blue-900 font-semibold'}`}><span className="text-xl">☁️</span> <span className="text-[15px]">อัปโหลดคำสั่งซื้อ</span></button>
+                <button onClick={() => setActiveTab('settings')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 border ${activeTab === 'settings' ? 'bg-blue-50/80 border-blue-100 text-blue-900 font-bold shadow-sm' : 'border-transparent text-blue-950/60 hover:bg-slate-50 hover:text-blue-900 font-semibold'}`}><span className="text-xl">⚙️</span> <span className="text-[15px]">ตั้งค่ารหัสสินค้า</span></button>
+                <button onClick={() => setActiveTab('preview')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 border ${activeTab === 'preview' ? 'bg-blue-50/80 border-blue-100 text-blue-900 font-bold shadow-sm' : 'border-transparent text-blue-950/60 hover:bg-slate-50 hover:text-blue-900 font-semibold'}`}><span className="text-xl">📄</span> <span className="text-[15px]">พรีวิว & สั่งพิมพ์</span> {orders.length > 0 && <span className="ml-auto bg-blue-900 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full shadow-sm">{orders.length}</span>}</button>
+              </nav>
+            </aside>
+
+            <main className="flex-1 overflow-y-auto relative z-10">
+              {activeTab === 'upload' && (
+                <div className="p-12 max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-500">
+                  <div className="mb-10 text-center"><h2 className="text-4xl font-black text-blue-950 mb-4 tracking-tight">จัดเตรียมใบปะหน้า</h2><p className="text-blue-950/60 text-lg font-medium">แปลงใบแพ็คของจาก Shopee และ TikTok ให้อ่านง่ายในคลิกเดียว</p></div>
+                  <div className={`bg-white p-20 rounded-[3rem] border-2 transition-all duration-300 shadow-xl shadow-blue-900/5 ${loadingStatus.active ? 'border-blue-200 bg-blue-50/30' : 'border-blue-50 hover:border-blue-100'}`}>
+                    {loadingStatus.active ? (
+                      <div className="flex flex-col items-center py-4"><span className="text-6xl animate-spin inline-block mb-6">⏳</span><h3 className="text-xl font-black text-blue-950 mb-2">กำลังประมวลผล PDF</h3><p className="text-blue-900/60 font-bold text-sm">อ่านข้อมูลหน้าที่ {loadingStatus.current} จาก {loadingStatus.total}</p></div>
+                    ) : (
+                      <div className="text-center py-4">
+                        <div className="w-24 h-24 bg-blue-50/80 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-blue-100/50 text-4xl shadow-sm">☁️</div>
+                        <h3 className="text-2xl font-black mb-3 text-blue-950">วางไฟล์ PDF ของคุณตรงนี้</h3>
+                        <p className="text-blue-950/50 font-semibold text-sm mb-10">รองรับสูงสุด 100 ใบต่อการอัปโหลด</p>
+                        <label className="bg-blue-950 hover:bg-blue-900 text-white px-10 py-4 rounded-2xl cursor-pointer font-bold text-sm transition-all inline-flex items-center gap-3 shadow-lg shadow-blue-900/20 active:scale-95"><span>📥</span> เลือกไฟล์อัปโหลด <input type="file" accept=".pdf" className="hidden" onChange={handleFileUpload} /></label>
+                        {uploadError && <div className="mt-8 p-4 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center gap-2 border border-red-100 font-bold text-sm"><span>⚠️</span> {uploadError}</div>}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'settings' && (
+                <div className="p-12 max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-500">
+                  <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
+                    <div><h2 className="text-4xl font-black text-blue-950 mb-3 tracking-tight">คลังคำศัพท์</h2><p className="text-blue-950/60 text-base font-semibold">ตั้งค่าการแปลงชื่อสินค้า ระบบจะบันทึกอัตโนมัติ</p></div>
+                    <div className="flex gap-3">
+                      <label className="bg-white border-2 border-blue-50 text-blue-950 hover:border-blue-100 hover:bg-blue-50/30 px-5 py-3 rounded-2xl text-sm font-bold cursor-pointer transition-all flex items-center gap-2 shadow-sm"><span>📤</span> นำเข้า <input type="file" accept=".json" className="hidden" onChange={handleImportRules} /></label>
+                      <button onClick={handleExportRules} className="bg-white border-2 border-blue-50 text-blue-950 hover:border-blue-100 hover:bg-blue-50/30 px-5 py-3 rounded-2xl text-sm font-bold transition-all flex items-center gap-2 shadow-sm"><span>💾</span> สำรองข้อมูล</button>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-white rounded-[2.5rem] shadow-xl shadow-blue-900/5 border-2 border-blue-50 overflow-hidden mb-10">
+                    <div className="p-10 border-b-2 border-blue-50 bg-blue-50/20">
+                      <form onSubmit={(e) => { e.preventDefault(); if (!newRule.keyword.trim() || !newRule.shortName.trim()) return; setSkuRules([{ ...newRule, id: Date.now() }, ...skuRules]); setNewRule({ keyword: '', shortName: '' }); showToast('เพิ่มกฎใหม่สำเร็จ', 'success'); }} className="flex flex-col md:flex-row gap-6 items-end">
+                        <div className="flex-1 w-full"><label className="block text-[11px] font-black text-blue-950/50 mb-3 uppercase tracking-widest pl-2">1. คำที่ต้องการค้นหา (Keyword)</label><input type="text" value={newRule.keyword} onChange={(e) => setNewRule({...newRule, keyword: e.target.value})} placeholder="เช่น baby Wipes 10" className="w-full border-2 border-blue-100 bg-white px-6 py-4 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-900 outline-none transition-all text-base font-bold text-blue-950" /></div>
+                        <div className="flex-1 w-full"><label className="block text-[11px] font-black text-blue-950/50 mb-3 uppercase tracking-widest pl-2">2. ชื่อย่อที่ต้องการ (1 ชิ้น)</label><input type="text" value={newRule.shortName} onChange={(e) => setNewRule({...newRule, shortName: e.target.value})} placeholder="เช่น เด้งม่วง 10" className="w-full border-2 border-blue-100 bg-white px-6 py-4 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-900 outline-none transition-all text-base font-bold text-blue-950" /></div>
+                        <button type="submit" disabled={!newRule.keyword || !newRule.shortName} className="bg-blue-950 hover:bg-blue-900 disabled:opacity-50 text-white px-8 py-4 rounded-2xl font-bold transition-all shadow-lg shadow-blue-900/20 h-[60px] flex items-center gap-2 active:scale-95"><span>➕</span> เพิ่ม</button>
+                      </form>
+                    </div>
+                    <div className="max-h-[400px] overflow-y-auto">
+                        <table className="w-full text-left">
+                        <thead><tr className="text-blue-950/40 text-[10px] font-black uppercase tracking-widest bg-blue-50/30 border-b-2 border-blue-50"><th className="px-10 py-5">No.</th><th className="px-10 py-5">Keyword</th><th className="px-10 py-5">Base SKU</th><th className="px-10 py-5 text-right"></th></tr></thead>
+                        <tbody className="divide-y-2 divide-blue-50/50">{skuRules.map((rule, idx) => (<tr key={rule.id} className="bg-white hover:bg-blue-50/40 transition-colors group"><td className="px-10 py-5 text-sm font-black text-blue-950/30">{idx + 1}</td><td className="px-10 py-5 font-mono text-[15px] font-bold text-blue-950/80">{rule.keyword}</td><td className="px-10 py-5"><span className="text-blue-900 font-black text-[15px] bg-blue-100/50 border border-blue-200/50 px-4 py-1.5 rounded-xl">{rule.shortName}</span></td><td className="px-10 py-5 text-right"><button onClick={() => setSkuRules(skuRules.filter(r => r.id !== rule.id))} className="text-blue-950/20 hover:text-red-500 hover:bg-red-50 p-2.5 rounded-xl transition-all"><span>🗑️</span></button></td></tr>))}
+                        {skuRules.length === 0 && <tr><td colSpan="4" className="p-24 text-center text-blue-950/30 text-sm font-bold">ไม่มีข้อมูลคลังคำศัพท์</td></tr>}
+                        </tbody>
+                        </table>
+                    </div>
+                  </div>
+
+                  <div className="bg-white border-2 border-blue-50 p-10 rounded-[2.5rem] shadow-xl shadow-blue-900/5 relative overflow-hidden">
+                    <div className="relative z-10">
+                      <h3 className="text-xl font-black mb-6 flex items-center gap-3 text-blue-950"><span>🧮</span> ทดสอบระบบคำนวณยอด</h3>
+                      <div className="flex flex-col md:flex-row gap-5 mb-8">
+                          <input type="text" value={testInput} onChange={(e) => setTestInput(e.target.value)} placeholder="วางชื่อสินค้าเต็มๆ เพื่อทดสอบ..." className="flex-1 border-2 border-blue-100 px-6 py-4 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-900 text-base font-bold text-blue-950 placeholder:text-blue-950/30 transition-all" />
+                          <div className="flex items-center gap-4 border-2 border-blue-100 px-5 py-3 rounded-2xl bg-blue-50/30"><span className="text-[11px] font-black text-blue-500 uppercase tracking-widest">QTY</span><input type="number" min="1" value={testQty} onChange={(e) => setTestQty(e.target.value)} className="w-16 bg-transparent outline-none text-blue-950 text-center text-xl font-black" /></div>
+                      </div>
+                      <div className="bg-blue-50/50 border-2 border-blue-100 p-8 rounded-3xl flex items-center justify-between">
+                        <span className="text-blue-950/40 font-black text-[11px] uppercase tracking-widest">Result</span>
+                        {testInput ? (testResult !== 'ยังไม่ตั้งชื่อ (เพิ่มกฎ SKU)' && testResult !== 'ไม่พบข้อมูล' ? (<div className="flex items-center gap-4"><span className="text-4xl font-black text-blue-950 tracking-tight">{testResult}</span></div>) : (<div className="flex items-center gap-2"><span className="text-sm font-bold text-red-500 bg-red-50 px-4 py-2 rounded-xl">ไม่พบคีย์เวิร์ด</span></div>)) : <span className="text-4xl font-black text-blue-950/10">-</span>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'preview' && (
+                <div className="p-12 max-w-[1400px] mx-auto animate-in fade-in slide-in-from-bottom-8 duration-500">
+                  <div className="flex flex-col xl:flex-row justify-between items-center mb-12 gap-8">
+                    <div className="text-center xl:text-left"><h2 className="text-4xl font-black text-blue-950 mb-2 tracking-tight">รีวิวและพิมพ์</h2><p className="text-blue-950/60 text-base font-semibold">ตรวจสอบความถูกต้อง {orders.length} รายการ</p></div>
+                    <div className="flex flex-wrap justify-center items-center gap-4">
+                       <div className="bg-white border-2 border-blue-50 p-1.5 rounded-2xl flex gap-1 mr-2 shadow-sm">
+                         <button onClick={() => setPreviewMode('table')} className={`px-6 py-2.5 rounded-[12px] font-bold text-sm transition-all ${previewMode === 'table' ? 'bg-blue-50 text-blue-900 shadow-sm border border-blue-100' : 'text-blue-950/50 hover:text-blue-900 border border-transparent'}`}>ตารางสรุป</button>
+                         <button onClick={() => setPreviewMode('labels')} className={`px-6 py-2.5 rounded-[12px] font-bold text-sm transition-all ${previewMode === 'labels' ? 'bg-blue-50 text-blue-900 shadow-sm border border-blue-100' : 'text-blue-950/50 hover:text-blue-900 border border-transparent'}`}>ใบปะหน้า</button>
+                       </div>
+                       <button onClick={() => { setOrders([]); showToast('ล้างข้อมูลสำเร็จ'); }} disabled={orders.length === 0} className="bg-white border-2 border-blue-50 hover:bg-red-50 hover:border-red-100 hover:text-red-600 text-blue-950/60 disabled:opacity-50 px-5 py-3 rounded-2xl font-bold text-sm shadow-sm flex items-center gap-2 transition-all"><span>🔄</span> ล้างข้อมูล</button>
+                       <button onClick={handleExportPDF} disabled={exportStatus.active || orders.length === 0} className="bg-white border-2 border-blue-50 hover:border-blue-100 disabled:opacity-50 text-blue-900 px-6 py-3 rounded-2xl font-bold text-sm shadow-sm flex items-center gap-2 transition-all active:scale-95"><span>📥</span> Save PDF</button>
+                       <button onClick={() => window.print()} disabled={orders.length === 0} className="bg-blue-950 hover:bg-blue-900 disabled:opacity-50 text-white px-8 py-3 rounded-2xl font-bold text-sm shadow-lg shadow-blue-900/20 flex items-center gap-2 transition-all active:scale-95"><span>🖨️</span> พิมพ์</button>
+                    </div>
+                  </div>
+
+                  {orders.length === 0 ? (
+                    <div className="bg-white p-32 rounded-[3rem] text-center border-2 border-blue-50 flex flex-col items-center justify-center shadow-sm">
+                      <span className="text-6xl mb-6 opacity-30">📄</span><h3 className="font-black text-2xl text-blue-950/30">ยังไม่มีข้อมูลสำหรับพิมพ์</h3><p className="text-blue-950/30 text-sm mt-2 font-medium">โปรดอัปโหลดไฟล์ในเมนูแรก</p>
+                    </div>
+                  ) : previewMode === 'table' ? (
+                    <div className="bg-white rounded-[2.5rem] shadow-xl shadow-blue-900/5 overflow-hidden no-print border-2 border-blue-50">
+                      <table className="w-full text-left">
+                        <thead><tr className="bg-blue-50/50 text-blue-950/50 uppercase tracking-widest text-[10px] font-black border-b-2 border-blue-50"><th className="px-10 py-6">Tracking</th><th className="px-10 py-6 text-center">Qty</th><th className="px-10 py-6">Output Label</th></tr></thead>
+                        <tbody className="divide-y-2 divide-blue-50/50">{MappedOrders.map((order) => (<tr key={order.id} className="hover:bg-blue-50/30 transition-colors"><td className="px-10 py-6 font-mono text-[15px] font-bold text-blue-950/60">{order.tracking}</td><td className="px-10 py-6 text-center font-black text-2xl text-blue-950/40">x{order.originalQty}</td><td className="px-10 py-6"><span className={`font-black text-2xl px-5 py-2 rounded-xl inline-block ${order.shortName.includes('ยังไม่ตั้งชื่อ') ? 'text-red-500 bg-red-50' : 'text-blue-900 bg-blue-100/50'}`}>{order.shortName}</span></td></tr>))}</tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-10 justify-items-center pb-20 no-print">
+                      {MappedOrders.map((order) => (<div key={`prev-${order.id}`} className="transform hover:scale-[1.01] transition-transform duration-200"><LabelCard order={order} /></div>))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </main>
+          </div>
+
+          <div className="fixed pointer-events-none" style={{ top: 0, left: '-9999px', width: '100mm', zIndex: -100 }}>
+            {MappedOrders.map((order) => (
+              <div key={`render-arena-${order.id}`} id={`render-target-${order.id}`} style={{ position: 'relative', width: '100mm', height: '150mm', backgroundColor: 'white' }}>
+                <LabelCard order={order} isExport={true} />
+              </div>
+            ))}
+          </div>
+          <div className="hidden print-area w-full text-black">
+            {MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`} order={order} isExport={true} />))}
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
