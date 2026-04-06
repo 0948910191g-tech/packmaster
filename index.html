@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V20.4 Ultimate (Shopee QTY Radar Fix)</title>
+  <title>PackMaster V20.5 Ultimate (Shopee Hidden QTY Radar)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -154,6 +154,7 @@
               let platform = 'SHOPEE';
               if (fullText.match(/Order\s*ID/i) || fullText.match(/In\s*transit/i)) platform = 'TIKTOK';
 
+              // หั่นเอาเฉพาะช่วงตารางสินค้า เพื่อสแกนหาตัวเลขที่แม่นยำที่สุด
               let productText = fullText;
               const pIndex = fullText.search(/(ชื่อสินค้า|Product\s*Name|#\s*ชื่อสินค้า|Item|ตัวเลือก)/i);
               if (pIndex !== -1) {
@@ -162,19 +163,21 @@
                   if (bottomMatch && bottomMatch.index > 20) productText = productText.substring(0, bottomMatch.index);
               }
 
-              // ซ่อมระบบดึง QTY ขั้นสุดยอด (อุดช่องโหว่ Shopee ซ่อนคำว่า จำนวนรวม)
+              // ระบบสแกนหาจำนวน V20.5 (ตาเหยี่ยว ไม่พึ่งคำว่า จำนวนรวม)
               let extractedQty = '1';
               const explicitTotal = fullText.match(/(?:จ[ำํา]+นวนรวม|Qty\s*Total|Total\s*Qty)[^\d]*(\d+)/i);
               
               if (explicitTotal) {
-                  extractedQty = explicitTotal[1]; // ดึงจากบรรทัดสรุปยอด
-              } else if (platform === 'SHOPEE' && fullText.match(/(\d+)\s*Shopee\s*Order\s*No/i)) {
-                  extractedQty = fullText.match(/(\d+)\s*Shopee\s*Order\s*No/i)[1]; // ดึงเลขหน้าคำว่า Shopee Order No
-              } else if (platform === 'TIKTOK' && fullText.match(/(\d+)\s*Order\s*ID/i)) {
-                  extractedQty = fullText.match(/(\d+)\s*Order\s*ID/i)[1]; // ดึงเลขหน้าคำว่า Order ID
+                  // ถ้าโชคดี Shopee/TikTok โชว์ยอดรวมชัดเจน ก็ดึงมาใช้เลย
+                  extractedQty = explicitTotal[1]; 
               } else {
-                  const lastNum = productText.match(/(\d+)\s*$/);
-                  if (lastNum) extractedQty = lastNum[1];
+                  // ถ้าโดนซ่อนยอดรวม ให้ไปควานหา "ตัวเลขตัวสุดท้าย" ในตารางสินค้าแทน!
+                  if (productText) {
+                      const nums = productText.match(/\b(\d+)\b/g);
+                      if (nums && nums.length > 0) {
+                          extractedQty = nums[nums.length - 1]; // เลขตัวสุดท้ายคือ QTY แน่นอน
+                      }
+                  }
               }
 
               const trackingMatch = fullText.match(/(TH\d{10,}|JT\d{10,}|SPX[A-Z0-9]+|KER[A-Z0-9]+|KA[A-Z0-9]+|66\d{10,}|82\d{10,}|\b\d{12}\b)/i);
@@ -205,16 +208,10 @@
         const totalQty = parseInt(o.quantity, 10) || 1;
         
         let isMixedOrder = false;
-        if (o.platform === 'SHOPEE') {
-            const itemQtyMatch = o.productText.match(/[^\d](\d+)\s*จ[ำํา]+นวนรวม/i);
-            if (itemQtyMatch && parseInt(itemQtyMatch[1], 10) !== totalQty) {
-                isMixedOrder = true;
-            }
-        } else if (o.platform === 'TIKTOK') {
-            const itemQtyMatch = o.productText.match(/[^\d](\d+)\s*(?:Qty\s*Total|Total\s*Qty)/i);
-            if (itemQtyMatch && parseInt(itemQtyMatch[1], 10) !== totalQty) {
-                isMixedOrder = true;
-            }
+        
+        // เช็คคละสินค้า: Shopee มีรายการที่ 1 และ 2 โผล่มาในบิลเดียว
+        if (o.platform === 'SHOPEE' && /\b1\s+\(.*?\b2\s+\(/is.test(o.productText)) {
+            isMixedOrder = true;
         }
 
         let finalName = '';
