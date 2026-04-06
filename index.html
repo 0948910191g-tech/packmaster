@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V20 Ultimate (Upgraded)</title>
+  <title>PackMaster V20.1 Ultimate (Shopee Fixed & Large Text)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -67,7 +67,8 @@
         <div className={`shrink-0 box-border ${isExport ? '' : 'border-2 border-blue-50 shadow-xl shadow-blue-900/5 rounded-2xl'}`} style={{ width: '100mm', height: '150mm', backgroundColor: '#ffffff', position: 'relative', overflow: 'hidden', pageBreakAfter: 'always', margin: 0, display: 'block' }}>
           <img src={order.pdfImage} alt="Label Base" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'fill', zIndex: 0 }} crossOrigin="anonymous" />
           <div style={{ position: 'absolute', zIndex: 10, boxSizing: 'border-box', bottom: '24px', left: '16px', right: '16px', height: isTiktok ? '14%' : '32%', border: '4px dashed #172554', borderRadius: isTiktok ? '14px' : '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-            <p style={{ fontFamily: '"Noto Sans Thai", sans-serif', fontWeight: 800, color: '#172554', lineHeight: 1.15, margin: 0, textAlign: 'center', wordBreak: 'break-word', width: '100%', letterSpacing: '-0.02em', fontSize: isTiktok ? (order.shortName.length > 25 ? '18pt' : order.shortName.length > 15 ? '26pt' : '36pt') : (order.shortName.length > 25 ? '32pt' : order.shortName.length > 15 ? '48pt' : '62pt'), textShadow: '3px 3px 0 #fff, -3px -3px 0 #fff, 3px -3px 0 #fff, -3px 3px 0 #fff, 0 3px 0 #fff, 0 -3px 0 #fff, 3px 0 0 #fff, -3px 0 0 #fff, 2px 4px 8px rgba(23, 37, 84, 0.15)' }}>
+            {/* แก้ไขขนาดตัวอักษรให้บิ๊กเบึ้มตามคำขอ ขยายขึ้น 30-40% เพื่อให้เต็มกรอบ DASHED BOX */}
+            <p style={{ fontFamily: '"Noto Sans Thai", sans-serif', fontWeight: 800, color: '#172554', lineHeight: 1.15, margin: 0, textAlign: 'center', wordBreak: 'break-word', width: '100%', letterSpacing: '-0.02em', fontSize: isTiktok ? (order.shortName.length > 25 ? '18pt' : order.shortName.length > 15 ? '26pt' : '36pt') : (order.shortName.length > 25 ? '48pt' : order.shortName.length > 15 ? '64pt' : '80pt'), textShadow: '3px 3px 0 #fff, -3px -3px 0 #fff, 3px -3px 0 #fff, -3px 3px 0 #fff, 0 3px 0 #fff, 0 -3px 0 #fff, 3px 0 0 #fff, -3px 0 0 #fff, 2px 4px 8px rgba(23, 37, 84, 0.15)' }}>
               {order.shortName}
             </p>
           </div>
@@ -82,7 +83,7 @@
         try { const saved = localStorage.getItem('skuMappingRules'); if (saved) return JSON.parse(saved); } catch (e) {} return [];
       });
       const [newRule, setNewRule] = useState({ keyword: '', shortName: '' });
-      const [editingId, setEditingId] = useState(null); // เพิ่ม state สำหรับโหมดแก้ไข
+      const [editingId, setEditingId] = useState(null); 
       
       const [uploadError, setUploadError] = useState('');
       const [loadingStatus, setLoadingStatus] = useState({ active: false, current: 0, total: 0 });
@@ -114,7 +115,6 @@
         return 'ยังไม่ตั้งชื่อ (เพิ่มกฎ SKU)';
       }, [skuRules]);
 
-      // อัปเกรดระบบอัปโหลด ให้รองรับหลายไฟล์ และบวกเพิ่มจากของเดิม
       const handleFileUpload = async (e) => {
         const files = Array.from(e.target.files);
         if (files.length === 0) return;
@@ -135,7 +135,6 @@
             const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
             
             for (let i = 1; i <= pdf.numPages; i++) {
-              // ตรวจสอบว่าเกิน 100 ใบรวมกับของเดิมหรือยัง
               if (orders.length + allNewOrders.length >= 100) {
                 reachedLimit = true;
                 showToast('จำกัดสูงสุดที่ 100 ใบ เพื่อป้องกันเบราว์เซอร์ค้างค่ะ', 'error');
@@ -177,7 +176,7 @@
           }
           
           if (allNewOrders.length > 0) {
-            setOrders(prev => [...prev, ...allNewOrders]); // นำไปต่อท้ายของเก่า
+            setOrders(prev => [...prev, ...allNewOrders]); 
             setActiveTab('preview');
             showToast(`เพิ่มข้อมูลสำเร็จ ${allNewOrders.length} ใบ`, 'success');
           } else if (!reachedLimit) {
@@ -190,7 +189,7 @@
           setLoadingStatus({ active: false, current: 0, total: 0 });
         }
         
-        e.target.value = null; // รีเซ็ต input file
+        e.target.value = null; 
       };
 
       const MappedOrders = useMemo(() => orders.map(o => {
@@ -198,7 +197,9 @@
         const qty = parseInt(o.quantity, 10) || 1;
         let finalName = baseName;
         if (qty > 1 && !baseName.includes('ยังไม่ตั้งชื่อ') && !baseName.includes('ไม่พบข้อมูล')) {
-          const match = baseName.match(/(.*?)(\d+)([^\d]*)$/);
+          {/* ซ่อมระบบคูณฝั่ง Shopee: ลบช่องว่างล่องหนและ Trim ทิ้งให้เกลี้ยงก่อนคูณเสมอ */}
+          const cleanBaseName = baseName.trim().replace(/\u00A0/g, ' '); 
+          const match = cleanBaseName.match(/(.*?)(\d+)([^\d]*)$/);
           if (match) finalName = `${match[1]}${parseInt(match[2], 10) * qty}${match[3]}`;
           else finalName = `${baseName} x${qty}`;
         }
@@ -229,7 +230,6 @@
         }
       };
 
-      // ซ่อมระบบ Export สำหรับ Mac/Safari โดยใช้ Blob
       const handleExportRules = () => {
         if (skuRules.length === 0) return showToast('ไม่มีข้อมูลให้ส่งออก', 'error');
         const blob = new Blob([JSON.stringify(skuRules, null, 2)], { type: "application/json" });
@@ -260,7 +260,6 @@
         reader.readAsText(file); e.target.value = null;
       };
 
-      // เพิ่มระบบจัดการ Form แก้ไข/เพิ่ม
       const handleSubmitRule = (e) => {
         e.preventDefault(); 
         if (!newRule.keyword.trim() || !newRule.shortName.trim()) return;
@@ -290,7 +289,9 @@
         if (!testInput) return null;
         const baseName = getBaseMappedSku(testInput); const qty = parseInt(testQty, 10) || 1;
         if (qty > 1 && !baseName.includes('ยังไม่ตั้งชื่อ') && !baseName.includes('ไม่พบข้อมูล')) {
-          const match = baseName.match(/(.*?)(\d+)([^\d]*)$/);
+          {/* ซ่อมระบบคูณหน้าทดสอบ: ลบช่องว่างล่องหนและ Trim ทิ้งเกลี้ยงก่อนคูณ */}
+          const cleanBaseName = baseName.trim().replace(/\u00A0/g, ' '); 
+          const match = cleanBaseName.match(/(.*?)(\d+)([^\d]*)$/);
           return match ? `${match[1]}${parseInt(match[2], 10) * qty}${match[3]}` : `${baseName} x${qty}`;
         }
         return baseName;
