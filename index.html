@@ -3,20 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V20 Ultimate</title>
+  <title>PackMaster V20 Ultimate (Upgraded)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
-  
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-  
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <script>
-    tailwind.config = {
-      theme: { extend: { fontFamily: { sans: ['"Noto Sans Thai"', 'sans-serif'] } } }
-    }
+    tailwind.config = { theme: { extend: { fontFamily: { sans: ['"Noto Sans Thai"', 'sans-serif'] } } } }
   </script>
   <style>
     @media print { 
@@ -34,7 +30,6 @@
   <script type="text/babel">
     const { useState, useEffect, useCallback, useMemo } = React;
 
-    // --- EXTERNAL LIBRARIES LOADER ---
     const loadScript = (id, src) => {
       return new Promise((resolve, reject) => {
         if (document.getElementById(id)) return resolve();
@@ -55,7 +50,6 @@
       await loadScript('jspdf-lib', 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
     };
 
-    // --- TOAST NOTIFICATION ---
     const Toast = ({ message, type, onClose }) => {
       useEffect(() => { const timer = setTimeout(() => onClose(), 3000); return () => clearTimeout(timer); }, [onClose]);
       return (
@@ -66,7 +60,6 @@
       );
     };
 
-    // --- LABEL CARD ---
     const LabelCard = ({ order, isExport = false }) => {
       if (!order || !order.pdfImage) return null;
       const isTiktok = order.platform === 'TIKTOK';
@@ -82,7 +75,6 @@
       );
     };
 
-    // --- MAIN APP ---
     function App() {
       const [activeTab, setActiveTab] = useState('upload');
       const [orders, setOrders] = useState([]);
@@ -90,6 +82,8 @@
         try { const saved = localStorage.getItem('skuMappingRules'); if (saved) return JSON.parse(saved); } catch (e) {} return [];
       });
       const [newRule, setNewRule] = useState({ keyword: '', shortName: '' });
+      const [editingId, setEditingId] = useState(null); // เพิ่ม state สำหรับโหมดแก้ไข
+      
       const [uploadError, setUploadError] = useState('');
       const [loadingStatus, setLoadingStatus] = useState({ active: false, current: 0, total: 0 });
       const [exportStatus, setExportStatus] = useState({ active: false, current: 0, total: 0 });
@@ -120,65 +114,83 @@
         return 'ยังไม่ตั้งชื่อ (เพิ่มกฎ SKU)';
       }, [skuRules]);
 
-      const processPDF = async (file) => {
+      // อัปเกรดระบบอัปโหลด ให้รองรับหลายไฟล์ และบวกเพิ่มจากของเดิม
+      const handleFileUpload = async (e) => {
+        const files = Array.from(e.target.files);
+        if (files.length === 0) return;
+
+        let allNewOrders = [];
+        let reachedLimit = false;
+        
+        setLoadingStatus({ active: true, current: 0, total: 'หลายไฟล์' });
+
         try {
           const pdfjs = await loadPdfJS();
-          const arrayBuffer = await file.arrayBuffer();
-          const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
-          const pageCount = Math.min(pdf.numPages, 100);
-          setLoadingStatus({ active: true, current: 0, total: pageCount });
-
-          const newOrders = [];
-          for (let i = 1; i <= pageCount; i++) {
-            setLoadingStatus(prev => ({ ...prev, current: i }));
-            const page = await pdf.getPage(i);
-            const textContent = await page.getTextContent();
-            const fullText = textContent.items.map(item => item.str).join(' ');
-
-            const viewport = page.getViewport({ scale: 2.5 }); 
-            const canvas = document.createElement('canvas');
-            const context = canvas.getContext('2d');
-            canvas.height = viewport.height; canvas.width = viewport.width;
-            await page.render({ canvasContext: context, viewport }).promise;
-            const pdfImage = canvas.toDataURL('image/jpeg', 0.9);
-
-            let platform = 'SHOPEE';
-            if (fullText.match(/Order\s*ID/i) || fullText.match(/In\s*transit/i)) platform = 'TIKTOK';
-
-            let productText = fullText;
-            const pIndex = fullText.search(/(ชื่อสินค้า|Product\s*Name|#\s*ชื่อสินค้า|Item|ตัวเลือก)/i);
-            if (pIndex !== -1) {
-                productText = fullText.substring(pIndex);
-                const bottomMatch = productText.match(/(Qty\s*Total|Total\s*Qty|Shopee\s*Order|Order\s*ID|TH[A-Z0-9]{9,}|JT\d{9,})/i);
-                if (bottomMatch && bottomMatch.index > 20) productText = productText.substring(0, bottomMatch.index);
-            }
-
-            let extractedQty = '1';
-            const qtyMatch = fullText.match(/(?:จำนวนรวม|Qty\s*Total|Total\s*Qty)\D*(\d+)/i);
-            if (qtyMatch) extractedQty = qtyMatch[1];
-            else { const lastNum = productText.match(/\s(\d+)\s*$/); if (lastNum) extractedQty = lastNum[1]; }
-
-            const trackingMatch = fullText.match(/(TH\d{10,}|JT\d{10,}|SPX[A-Z0-9]+|KER[A-Z0-9]+|KA[A-Z0-9]+|66\d{10,}|82\d{10,}|\b\d{12}\b)/i);
+          
+          for (const file of files) {
+            if (reachedLimit) break;
+            if (!file.name.toLowerCase().endsWith('.pdf')) continue;
             
-            newOrders.push({ id: `label-${Date.now()}-${i}`, tracking: trackingMatch ? trackingMatch[0] : `PAGE-${i}`, productText, quantity: extractedQty, pdfImage, platform });
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+            
+            for (let i = 1; i <= pdf.numPages; i++) {
+              // ตรวจสอบว่าเกิน 100 ใบรวมกับของเดิมหรือยัง
+              if (orders.length + allNewOrders.length >= 100) {
+                reachedLimit = true;
+                showToast('จำกัดสูงสุดที่ 100 ใบ เพื่อป้องกันเบราว์เซอร์ค้างค่ะ', 'error');
+                break;
+              }
+              
+              setLoadingStatus(prev => ({ ...prev, current: prev.current + 1 }));
+              const page = await pdf.getPage(i);
+              const textContent = await page.getTextContent();
+              const fullText = textContent.items.map(item => item.str).join(' ');
+
+              const viewport = page.getViewport({ scale: 2.5 }); 
+              const canvas = document.createElement('canvas');
+              const context = canvas.getContext('2d');
+              canvas.height = viewport.height; canvas.width = viewport.width;
+              await page.render({ canvasContext: context, viewport }).promise;
+              const pdfImage = canvas.toDataURL('image/jpeg', 0.9);
+
+              let platform = 'SHOPEE';
+              if (fullText.match(/Order\s*ID/i) || fullText.match(/In\s*transit/i)) platform = 'TIKTOK';
+
+              let productText = fullText;
+              const pIndex = fullText.search(/(ชื่อสินค้า|Product\s*Name|#\s*ชื่อสินค้า|Item|ตัวเลือก)/i);
+              if (pIndex !== -1) {
+                  productText = fullText.substring(pIndex);
+                  const bottomMatch = productText.match(/(Qty\s*Total|Total\s*Qty|Shopee\s*Order|Order\s*ID|TH[A-Z0-9]{9,}|JT\d{9,})/i);
+                  if (bottomMatch && bottomMatch.index > 20) productText = productText.substring(0, bottomMatch.index);
+              }
+
+              let extractedQty = '1';
+              const qtyMatch = fullText.match(/(?:จำนวนรวม|Qty\s*Total|Total\s*Qty)\D*(\d+)/i);
+              if (qtyMatch) extractedQty = qtyMatch[1];
+              else { const lastNum = productText.match(/\s(\d+)\s*$/); if (lastNum) extractedQty = lastNum[1]; }
+
+              const trackingMatch = fullText.match(/(TH\d{10,}|JT\d{10,}|SPX[A-Z0-9]+|KER[A-Z0-9]+|KA[A-Z0-9]+|66\d{10,}|82\d{10,}|\b\d{12}\b)/i);
+              
+              allNewOrders.push({ id: `label-${Date.now()}-${allNewOrders.length}-${i}`, tracking: trackingMatch ? trackingMatch[0] : `PAGE-${i}`, productText, quantity: extractedQty, pdfImage, platform });
+            }
           }
-          setOrders(newOrders);
-          setActiveTab('preview');
-          showToast(`สกัดข้อมูลสำเร็จ ${newOrders.length} ใบ`, 'success');
+          
+          if (allNewOrders.length > 0) {
+            setOrders(prev => [...prev, ...allNewOrders]); // นำไปต่อท้ายของเก่า
+            setActiveTab('preview');
+            showToast(`เพิ่มข้อมูลสำเร็จ ${allNewOrders.length} ใบ`, 'success');
+          } else if (!reachedLimit) {
+             setUploadError('ไม่พบข้อมูล PDF ที่รองรับ');
+          }
         } catch (err) {
           setUploadError('เกิดข้อผิดพลาดในการอ่าน PDF');
           showToast('อ่านไฟล์ PDF ไม่สำเร็จ', 'error');
         } finally {
           setLoadingStatus({ active: false, current: 0, total: 0 });
         }
-      };
-
-      const handleFileUpload = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        if (file.name.toLowerCase().endsWith('.pdf')) await processPDF(file);
-        else setUploadError('รองรับเฉพาะไฟล์ .pdf เท่านั้น');
-        e.target.value = null;
+        
+        e.target.value = null; // รีเซ็ต input file
       };
 
       const MappedOrders = useMemo(() => orders.map(o => {
@@ -217,13 +229,16 @@
         }
       };
 
+      // ซ่อมระบบ Export สำหรับ Mac/Safari โดยใช้ Blob
       const handleExportRules = () => {
         if (skuRules.length === 0) return showToast('ไม่มีข้อมูลให้ส่งออก', 'error');
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(skuRules));
+        const blob = new Blob([JSON.stringify(skuRules, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
         const dlAnchorElem = document.createElement('a');
-        dlAnchorElem.setAttribute("href", dataStr);
-        dlAnchorElem.setAttribute("download", `packmaster_rules_${new Date().toISOString().split('T')[0]}.json`);
+        dlAnchorElem.href = url;
+        dlAnchorElem.download = `packmaster_rules_${new Date().toISOString().split('T')[0]}.json`;
         dlAnchorElem.click();
+        URL.revokeObjectURL(url);
         showToast('สำรองข้อมูลสำเร็จ', 'success');
       };
 
@@ -234,12 +249,41 @@
           try {
             const importedRules = JSON.parse(event.target.result);
             if (Array.isArray(importedRules)) {
-              setSkuRules(prev => Array.from(new Map([...importedRules, ...prev].map(item => [item['keyword'], item])).values()));
+              setSkuRules(prev => {
+                const merged = [...importedRules, ...prev];
+                return Array.from(new Map(merged.map(item => [item.keyword, item])).values());
+              });
               showToast(`นำเข้าสำเร็จ ${importedRules.length} ข้อ`, 'success');
             } else showToast('รูปแบบไฟล์ไม่ถูกต้อง', 'error');
           } catch (err) { showToast('ไฟล์เสียหาย', 'error'); }
         };
         reader.readAsText(file); e.target.value = null;
+      };
+
+      // เพิ่มระบบจัดการ Form แก้ไข/เพิ่ม
+      const handleSubmitRule = (e) => {
+        e.preventDefault(); 
+        if (!newRule.keyword.trim() || !newRule.shortName.trim()) return;
+        
+        if (editingId) {
+            setSkuRules(prev => prev.map(r => r.id === editingId ? { ...newRule, id: editingId } : r));
+            setEditingId(null);
+            showToast('แก้ไขกฎสำเร็จ', 'success');
+        } else {
+            setSkuRules([{ ...newRule, id: Date.now() }, ...skuRules]);
+            showToast('เพิ่มกฎใหม่สำเร็จ', 'success');
+        }
+        setNewRule({ keyword: '', shortName: '' });
+      };
+
+      const handleEditClick = (rule) => {
+        setNewRule({ keyword: rule.keyword, shortName: rule.shortName });
+        setEditingId(rule.id);
+      };
+
+      const cancelEdit = () => {
+        setNewRule({ keyword: '', shortName: '' });
+        setEditingId(null);
       };
 
       const testResult = useMemo(() => {
@@ -286,13 +330,13 @@
                   <div className="mb-10 text-center"><h2 className="text-4xl font-black text-blue-950 mb-4 tracking-tight">จัดเตรียมใบปะหน้า</h2><p className="text-blue-950/60 text-lg font-medium">แปลงใบแพ็คของจาก Shopee และ TikTok ให้อ่านง่ายในคลิกเดียว</p></div>
                   <div className={`bg-white p-20 rounded-[3rem] border-2 transition-all duration-300 shadow-xl shadow-blue-900/5 ${loadingStatus.active ? 'border-blue-200 bg-blue-50/30' : 'border-blue-50 hover:border-blue-100'}`}>
                     {loadingStatus.active ? (
-                      <div className="flex flex-col items-center py-4"><span className="text-6xl animate-spin inline-block mb-6">⏳</span><h3 className="text-xl font-black text-blue-950 mb-2">กำลังประมวลผล PDF</h3><p className="text-blue-900/60 font-bold text-sm">อ่านข้อมูลหน้าที่ {loadingStatus.current} จาก {loadingStatus.total}</p></div>
+                      <div className="flex flex-col items-center py-4"><span className="text-6xl animate-spin inline-block mb-6">⏳</span><h3 className="text-xl font-black text-blue-950 mb-2">กำลังประมวลผล PDF</h3><p className="text-blue-900/60 font-bold text-sm">อ่านข้อมูลหน้าที่ {loadingStatus.current} (รวมหลายไฟล์)</p></div>
                     ) : (
                       <div className="text-center py-4">
                         <div className="w-24 h-24 bg-blue-50/80 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-blue-100/50 text-4xl shadow-sm">☁️</div>
-                        <h3 className="text-2xl font-black mb-3 text-blue-950">วางไฟล์ PDF ของคุณตรงนี้</h3>
-                        <p className="text-blue-950/50 font-semibold text-sm mb-10">รองรับสูงสุด 100 ใบต่อการอัปโหลด</p>
-                        <label className="bg-blue-950 hover:bg-blue-900 text-white px-10 py-4 rounded-2xl cursor-pointer font-bold text-sm transition-all inline-flex items-center gap-3 shadow-lg shadow-blue-900/20 active:scale-95"><span>📥</span> เลือกไฟล์อัปโหลด <input type="file" accept=".pdf" className="hidden" onChange={handleFileUpload} /></label>
+                        <h3 className="text-2xl font-black mb-3 text-blue-950">เลือกไฟล์ PDF ของคุณตรงนี้</h3>
+                        <p className="text-blue-950/50 font-semibold text-sm mb-10">รองรับการอัปโหลดหลายไฟล์พร้อมกัน (สูงสุด 100 ใบ)</p>
+                        <label className="bg-blue-950 hover:bg-blue-900 text-white px-10 py-4 rounded-2xl cursor-pointer font-bold text-sm transition-all inline-flex items-center gap-3 shadow-lg shadow-blue-900/20 active:scale-95"><span>📥</span> เลือกไฟล์ PDF <input type="file" accept=".pdf" multiple className="hidden" onChange={handleFileUpload} /></label>
                         {uploadError && <div className="mt-8 p-4 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center gap-2 border border-red-100 font-bold text-sm"><span>⚠️</span> {uploadError}</div>}
                       </div>
                     )}
@@ -310,18 +354,21 @@
                     </div>
                   </div>
                   
-                  <div className="bg-white rounded-[2.5rem] shadow-xl shadow-blue-900/5 border-2 border-blue-50 overflow-hidden mb-10">
-                    <div className="p-10 border-b-2 border-blue-50 bg-blue-50/20">
-                      <form onSubmit={(e) => { e.preventDefault(); if (!newRule.keyword.trim() || !newRule.shortName.trim()) return; setSkuRules([{ ...newRule, id: Date.now() }, ...skuRules]); setNewRule({ keyword: '', shortName: '' }); showToast('เพิ่มกฎใหม่สำเร็จ', 'success'); }} className="flex flex-col md:flex-row gap-6 items-end">
+                  <div className={`bg-white rounded-[2.5rem] shadow-xl border-2 overflow-hidden mb-10 transition-colors ${editingId ? 'shadow-blue-500/10 border-blue-200' : 'shadow-blue-900/5 border-blue-50'}`}>
+                    <div className={`p-10 border-b-2 transition-colors ${editingId ? 'bg-blue-100/50 border-blue-200' : 'bg-blue-50/20 border-blue-50'}`}>
+                      <form onSubmit={handleSubmitRule} className="flex flex-col md:flex-row gap-6 items-end">
                         <div className="flex-1 w-full"><label className="block text-[11px] font-black text-blue-950/50 mb-3 uppercase tracking-widest pl-2">1. คำที่ต้องการค้นหา (Keyword)</label><input type="text" value={newRule.keyword} onChange={(e) => setNewRule({...newRule, keyword: e.target.value})} placeholder="เช่น baby Wipes 10" className="w-full border-2 border-blue-100 bg-white px-6 py-4 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-900 outline-none transition-all text-base font-bold text-blue-950" /></div>
                         <div className="flex-1 w-full"><label className="block text-[11px] font-black text-blue-950/50 mb-3 uppercase tracking-widest pl-2">2. ชื่อย่อที่ต้องการ (1 ชิ้น)</label><input type="text" value={newRule.shortName} onChange={(e) => setNewRule({...newRule, shortName: e.target.value})} placeholder="เช่น เด้งม่วง 10" className="w-full border-2 border-blue-100 bg-white px-6 py-4 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-900 outline-none transition-all text-base font-bold text-blue-950" /></div>
-                        <button type="submit" disabled={!newRule.keyword || !newRule.shortName} className="bg-blue-950 hover:bg-blue-900 disabled:opacity-50 text-white px-8 py-4 rounded-2xl font-bold transition-all shadow-lg shadow-blue-900/20 h-[60px] flex items-center gap-2 active:scale-95"><span>➕</span> เพิ่ม</button>
+                        <div className="flex gap-2">
+                            <button type="submit" disabled={!newRule.keyword || !newRule.shortName} className={`${editingId ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20' : 'bg-blue-950 hover:bg-blue-900 shadow-blue-900/20'} disabled:opacity-50 text-white px-8 py-4 rounded-2xl font-bold transition-all shadow-lg h-[60px] flex items-center gap-2 active:scale-95`}><span>{editingId ? '💾' : '➕'}</span> {editingId ? 'บันทึก' : 'เพิ่ม'}</button>
+                            {editingId && <button type="button" onClick={cancelEdit} className="bg-white border-2 border-blue-100 text-blue-900 hover:bg-blue-50 px-5 py-4 rounded-2xl font-bold transition-all h-[60px] flex items-center gap-2 active:scale-95">ยกเลิก</button>}
+                        </div>
                       </form>
                     </div>
                     <div className="max-h-[400px] overflow-y-auto">
                         <table className="w-full text-left">
                         <thead><tr className="text-blue-950/40 text-[10px] font-black uppercase tracking-widest bg-blue-50/30 border-b-2 border-blue-50"><th className="px-10 py-5">No.</th><th className="px-10 py-5">Keyword</th><th className="px-10 py-5">Base SKU</th><th className="px-10 py-5 text-right"></th></tr></thead>
-                        <tbody className="divide-y-2 divide-blue-50/50">{skuRules.map((rule, idx) => (<tr key={rule.id} className="bg-white hover:bg-blue-50/40 transition-colors group"><td className="px-10 py-5 text-sm font-black text-blue-950/30">{idx + 1}</td><td className="px-10 py-5 font-mono text-[15px] font-bold text-blue-950/80">{rule.keyword}</td><td className="px-10 py-5"><span className="text-blue-900 font-black text-[15px] bg-blue-100/50 border border-blue-200/50 px-4 py-1.5 rounded-xl">{rule.shortName}</span></td><td className="px-10 py-5 text-right"><button onClick={() => setSkuRules(skuRules.filter(r => r.id !== rule.id))} className="text-blue-950/20 hover:text-red-500 hover:bg-red-50 p-2.5 rounded-xl transition-all"><span>🗑️</span></button></td></tr>))}
+                        <tbody className="divide-y-2 divide-blue-50/50">{skuRules.map((rule, idx) => (<tr key={rule.id} className={`bg-white hover:bg-blue-50/40 transition-colors group ${editingId === rule.id ? 'opacity-30' : ''}`}><td className="px-10 py-5 text-sm font-black text-blue-950/30">{idx + 1}</td><td className="px-10 py-5 font-mono text-[15px] font-bold text-blue-950/80">{rule.keyword}</td><td className="px-10 py-5"><span className="text-blue-900 font-black text-[15px] bg-blue-100/50 border border-blue-200/50 px-4 py-1.5 rounded-xl">{rule.shortName}</span></td><td className="px-10 py-5 text-right flex justify-end gap-2"><button onClick={() => handleEditClick(rule)} className="text-blue-950/30 hover:text-blue-600 hover:bg-blue-50 p-2.5 rounded-xl transition-all"><span>✏️</span></button><button onClick={() => setSkuRules(skuRules.filter(r => r.id !== rule.id))} className="text-blue-950/30 hover:text-red-500 hover:bg-red-50 p-2.5 rounded-xl transition-all"><span>🗑️</span></button></td></tr>))}
                         {skuRules.length === 0 && <tr><td colSpan="4" className="p-24 text-center text-blue-950/30 text-sm font-bold">ไม่มีข้อมูลคลังคำศัพท์</td></tr>}
                         </tbody>
                         </table>
@@ -347,13 +394,13 @@
               {activeTab === 'preview' && (
                 <div className="p-12 max-w-[1400px] mx-auto animate-in fade-in slide-in-from-bottom-8 duration-500">
                   <div className="flex flex-col xl:flex-row justify-between items-center mb-12 gap-8">
-                    <div className="text-center xl:text-left"><h2 className="text-4xl font-black text-blue-950 mb-2 tracking-tight">รีวิวและพิมพ์</h2><p className="text-blue-950/60 text-base font-semibold">ตรวจสอบความถูกต้อง {orders.length} รายการ</p></div>
+                    <div className="text-center xl:text-left"><h2 className="text-4xl font-black text-blue-950 mb-2 tracking-tight">รีวิวและพิมพ์</h2><p className="text-blue-950/60 text-base font-semibold">ตรวจสอบความถูกต้อง {orders.length} รายการ (อัลบั้มสะสม)</p></div>
                     <div className="flex flex-wrap justify-center items-center gap-4">
                        <div className="bg-white border-2 border-blue-50 p-1.5 rounded-2xl flex gap-1 mr-2 shadow-sm">
                          <button onClick={() => setPreviewMode('table')} className={`px-6 py-2.5 rounded-[12px] font-bold text-sm transition-all ${previewMode === 'table' ? 'bg-blue-50 text-blue-900 shadow-sm border border-blue-100' : 'text-blue-950/50 hover:text-blue-900 border border-transparent'}`}>ตารางสรุป</button>
                          <button onClick={() => setPreviewMode('labels')} className={`px-6 py-2.5 rounded-[12px] font-bold text-sm transition-all ${previewMode === 'labels' ? 'bg-blue-50 text-blue-900 shadow-sm border border-blue-100' : 'text-blue-950/50 hover:text-blue-900 border border-transparent'}`}>ใบปะหน้า</button>
                        </div>
-                       <button onClick={() => { setOrders([]); showToast('ล้างข้อมูลสำเร็จ'); }} disabled={orders.length === 0} className="bg-white border-2 border-blue-50 hover:bg-red-50 hover:border-red-100 hover:text-red-600 text-blue-950/60 disabled:opacity-50 px-5 py-3 rounded-2xl font-bold text-sm shadow-sm flex items-center gap-2 transition-all"><span>🔄</span> ล้างข้อมูล</button>
+                       <button onClick={() => { setOrders([]); showToast('ล้างข้อมูลอัลบั้มสำเร็จ'); }} disabled={orders.length === 0} className="bg-white border-2 border-blue-50 hover:bg-red-50 hover:border-red-100 hover:text-red-600 text-blue-950/60 disabled:opacity-50 px-5 py-3 rounded-2xl font-bold text-sm shadow-sm flex items-center gap-2 transition-all"><span>🔄</span> ล้างข้อมูล</button>
                        <button onClick={handleExportPDF} disabled={exportStatus.active || orders.length === 0} className="bg-white border-2 border-blue-50 hover:border-blue-100 disabled:opacity-50 text-blue-900 px-6 py-3 rounded-2xl font-bold text-sm shadow-sm flex items-center gap-2 transition-all active:scale-95"><span>📥</span> Save PDF</button>
                        <button onClick={() => window.print()} disabled={orders.length === 0} className="bg-blue-950 hover:bg-blue-900 disabled:opacity-50 text-white px-8 py-3 rounded-2xl font-bold text-sm shadow-lg shadow-blue-900/20 flex items-center gap-2 transition-all active:scale-95"><span>🖨️</span> พิมพ์</button>
                     </div>
