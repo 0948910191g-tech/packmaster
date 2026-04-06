@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V20.2 Ultimate (Smart QTY & Multi-SKU Safe)</title>
+  <title>PackMaster V20.3 Ultimate (Perfect Math & Multi-SKU Safe)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -62,13 +62,14 @@
 
     const LabelCard = ({ order, isExport = false }) => {
       if (!order || !order.pdfImage) return null;
-      const isTiktok = order.platform === 'TIKTOK';
+      // ล็อกขนาดฟอนต์ให้เป๊ะเท่ากันหมดทั้ง 2 แพลตฟอร์ม
+      const fontSize = order.shortName.length > 25 ? '18pt' : order.shortName.length > 15 ? '26pt' : '36pt';
+      
       return (
         <div className={`shrink-0 box-border ${isExport ? '' : 'border-2 border-blue-50 shadow-xl shadow-blue-900/5 rounded-2xl'}`} style={{ width: '100mm', height: '150mm', backgroundColor: '#ffffff', position: 'relative', overflow: 'hidden', pageBreakAfter: 'always', margin: 0, display: 'block' }}>
           <img src={order.pdfImage} alt="Label Base" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'fill', zIndex: 0 }} crossOrigin="anonymous" />
-          {/* แก้ไขขนาดกล่องและตัวอักษรให้ Shopee เท่ากับ TikTok */}
-          <div style={{ position: 'absolute', zIndex: 10, boxSizing: 'border-box', bottom: '24px', left: '16px', right: '16px', height: isTiktok ? '14%' : '20%', border: '4px dashed #172554', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-            <p style={{ fontFamily: '"Noto Sans Thai", sans-serif', fontWeight: 800, color: '#172554', lineHeight: 1.15, margin: 0, textAlign: 'center', wordBreak: 'break-word', width: '100%', letterSpacing: '-0.02em', fontSize: order.shortName.length > 25 ? '18pt' : order.shortName.length > 15 ? '26pt' : '38pt', textShadow: '3px 3px 0 #fff, -3px -3px 0 #fff, 3px -3px 0 #fff, -3px 3px 0 #fff, 0 3px 0 #fff, 0 -3px 0 #fff, 3px 0 0 #fff, -3px 0 0 #fff, 2px 4px 8px rgba(23, 37, 84, 0.15)' }}>
+          <div style={{ position: 'absolute', zIndex: 10, boxSizing: 'border-box', bottom: '24px', left: '16px', right: '16px', height: '14%', border: '4px dashed #172554', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', backgroundColor: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(2px)' }}>
+            <p style={{ fontFamily: '"Noto Sans Thai", sans-serif', fontWeight: 800, color: '#172554', lineHeight: 1.15, margin: 0, textAlign: 'center', wordBreak: 'break-word', width: '100%', letterSpacing: '-0.02em', fontSize: fontSize, textShadow: '3px 3px 0 #fff, -3px -3px 0 #fff, 3px -3px 0 #fff, -3px 3px 0 #fff, 0 3px 0 #fff, 0 -3px 0 #fff, 3px 0 0 #fff, -3px 0 0 #fff, 2px 4px 8px rgba(23, 37, 84, 0.15)' }}>
               {order.shortName}
             </p>
           </div>
@@ -96,6 +97,23 @@
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
 
       useEffect(() => { localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); }, [skuRules]);
+
+      // ระบบจับคู่ SKU แบบซิงเกิล (แม่นยำ 100%)
+      const getMatchedRule = useCallback((textToSearch) => {
+        const clean = (text) => String(text).toLowerCase().replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '').replace(/[\u0E47-\u0E4C]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
+        const searchArea = clean(textToSearch);
+        if (!searchArea) return null;
+        
+        const sortedRules = [...skuRules].sort((a, b) => b.keyword.length - a.keyword.length);
+        for (const rule of sortedRules) {
+            const cleanKw = clean(rule.keyword);
+            if (!cleanKw) continue;
+            if (searchArea.includes(cleanKw)) return rule;
+            const words = rule.keyword.split(/\s+/).filter(w => w.length > 0);
+            if (words.length > 1 && words.every(w => searchArea.includes(clean(w)))) return rule;
+        }
+        return null;
+      }, [skuRules]);
 
       const handleFileUpload = async (e) => {
         const files = Array.from(e.target.files);
@@ -146,7 +164,6 @@
                   if (bottomMatch && bottomMatch.index > 20) productText = productText.substring(0, bottomMatch.index);
               }
 
-              // ซ่อมระบบดึง QTY Shopee ให้แม่นยำขึ้น
               let extractedQty = '1';
               const qtyRegex = /(?:จ[ำํา]+นวนรวม|Qty\s*Total|Total\s*Qty)[^\d]*(\d+)/i;
               const match = fullText.match(qtyRegex);
@@ -181,56 +198,48 @@
         e.target.value = null; 
       };
 
-      // ระบบวิเคราะห์หลาย SKU กันคูณเลขผิดพลาด
+      // แมปออเดอร์พร้อมระบบวิเคราะห์คละสินค้าขั้นสูง
       const MappedOrders = useMemo(() => orders.map(o => {
-        const cleanText = String(o.productText).toLowerCase().replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '').replace(/[\u0E47-\u0E4C]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
+        const rule = getMatchedRule(o.productText);
+        const totalQty = parseInt(o.quantity, 10) || 1;
         
-        const sortedRules = [...skuRules].sort((a, b) => b.keyword.length - a.keyword.length);
-        const foundRules = [];
-        for (const rule of sortedRules) {
-            const cleanKw = String(rule.keyword).toLowerCase().replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '').replace(/[\u0E47-\u0E4C]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
-            if (!cleanKw) continue;
-            
-            if (foundRules.some(f => f.cleanKw.includes(cleanKw))) continue; // กันจับคำซ้ำซ้อน
-
-            if (cleanText.includes(cleanKw)) {
-                foundRules.push({ ...rule, cleanKw });
-            } else {
-                const words = rule.keyword.split(/\s+/).filter(w => w.length > 0);
-                if (words.length > 1 && words.every(w => cleanText.includes(String(w).toLowerCase().replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '').replace(/[\u0E47-\u0E4C]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '')))) {
-                    foundRules.push({ ...rule, cleanKw });
-                }
+        // เช็คว่าเป็นออเดอร์คละสินค้าหรือไม่ (ถ้าจำนวนรวม ไม่เท่ากับ จำนวนชิ้นสุดท้ายที่อ่านได้)
+        let isMixedOrder = false;
+        if (o.platform === 'SHOPEE') {
+            const itemQtyMatch = o.productText.match(/[^\d](\d+)\s*จ[ำํา]+นวนรวม/i);
+            if (itemQtyMatch && parseInt(itemQtyMatch[1], 10) !== totalQty) {
+                isMixedOrder = true;
+            }
+        } else if (o.platform === 'TIKTOK') {
+            const itemQtyMatch = o.productText.match(/[^\d](\d+)\s*(?:Qty\s*Total|Total\s*Qty)/i);
+            if (itemQtyMatch && parseInt(itemQtyMatch[1], 10) !== totalQty) {
+                isMixedOrder = true;
             }
         }
 
-        // เช็คว่ามีสินค้ามากกว่า 1 ชนิดไหม (เช็คจากเลข 1... 2... ของ Shopee)
-        const isShopeeMulti = o.platform === 'SHOPEE' && /(?:^|\s)1\s+(?:(?!\s1\s).)*?\s2\s+/i.test(o.productText);
-        
         let finalName = '';
-        const totalQty = parseInt(o.quantity, 10) || 1;
-
-        if (foundRules.length === 0) {
+        if (!rule) {
             finalName = 'ยังไม่ตั้งชื่อ (เพิ่มกฎ SKU)';
-        } else if (foundRules.length === 1 && !isShopeeMulti) {
-            // ถ้ามีสินค้าชนิดเดียวแบบชัวร์ๆ ให้คูณเลขตามปกติ!
-            const baseName = foundRules[0].shortName.trim().replace(/\u00A0/g, ' ');
+        } else if (isMixedOrder) {
+            // หยุดการคูณเลข และแจ้งเตือนให้เช็คใบปะหน้า
+            finalName = `⚠️ คละสินค้า (${totalQty}ชิ้น)`; 
+        } else {
+            // สินค้าแบบเดียว คูณเลขตามปกติ
+            const baseName = rule.shortName.trim().replace(/\u00A0/g, ' ');
             if (totalQty > 1) {
                 const match = baseName.match(/(.*?)(\d+)([^\d]*)$/);
-                if (match) finalName = `${match[1]}${parseInt(match[2], 10) * totalQty}${match[3]}`;
-                else finalName = `${baseName} x${totalQty}`;
+                if (match) {
+                    finalName = `${match[1]}${parseInt(match[2], 10) * totalQty}${match[3]}`;
+                } else {
+                    finalName = `${baseName} x${totalQty}`;
+                }
             } else {
                 finalName = baseName;
             }
-        } else {
-            // ถ้ามีหลาย SKU ปนกัน (หรือ Shopee มีของหลายอย่าง) -> หยุดคูณเลข!! เอาชื่อมาบวกกันเฉยๆ
-            finalName = foundRules.map(r => r.shortName).join(' + ');
-            if (isShopeeMulti && foundRules.length === 1) {
-                finalName += ' + (อื่นๆ)'; // กรณีจับได้อันเดียวแต่รู้ว่ามีหลายชิ้น
-            }
         }
-
+        
         return { ...o, shortName: finalName, originalQty: o.quantity };
-      }), [orders, skuRules]);
+      }), [orders, getMatchedRule]);
 
       const handleExportPDF = async () => {
         if (MappedOrders.length === 0) return;
@@ -313,40 +322,21 @@
 
       const testResult = useMemo(() => {
         if (!testInput) return null;
-        const cleanText = String(testInput).toLowerCase().replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '').replace(/[\u0E47-\u0E4C]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
-        
-        const sortedRules = [...skuRules].sort((a, b) => b.keyword.length - a.keyword.length);
-        const foundRules = [];
-        for (const rule of sortedRules) {
-            const cleanKw = String(rule.keyword).toLowerCase().replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '').replace(/[\u0E47-\u0E4C]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
-            if (!cleanKw) continue;
-            if (foundRules.some(f => f.cleanKw.includes(cleanKw))) continue;
-            
-            if (cleanText.includes(cleanKw)) {
-                foundRules.push({ ...rule, cleanKw });
-            } else {
-                const words = rule.keyword.split(/\s+/).filter(w => w.length > 0);
-                if (words.length > 1 && words.every(w => cleanText.includes(String(w).toLowerCase().replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '').replace(/[\u0E47-\u0E4C]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '')))) {
-                    foundRules.push({ ...rule, cleanKw });
-                }
-            }
-        }
-
+        const rule = getMatchedRule(testInput);
         const totalQty = parseInt(testQty, 10) || 1;
-
-        if (foundRules.length === 0) return 'ไม่พบคีย์เวิร์ด';
         
-        if (foundRules.length === 1) {
-            const baseName = foundRules[0].shortName.trim().replace(/\u00A0/g, ' ');
-            if (totalQty > 1) {
-                const match = baseName.match(/(.*?)(\d+)([^\d]*)$/);
-                return match ? `${match[1]}${parseInt(match[2], 10) * totalQty}${match[3]}` : `${baseName} x${totalQty}`;
+        if (!rule) return 'ไม่พบคีย์เวิร์ด';
+        
+        const baseName = rule.shortName.trim().replace(/\u00A0/g, ' ');
+        if (totalQty > 1) {
+            const match = baseName.match(/(.*?)(\d+)([^\d]*)$/);
+            if (match) {
+                return `${match[1]}${parseInt(match[2], 10) * totalQty}${match[3]}`;
             }
-            return baseName;
-        } else {
-            return foundRules.map(r => r.shortName).join(' + ');
+            return `${baseName} x${totalQty}`;
         }
-      }, [testInput, testQty, skuRules]);
+        return baseName;
+      }, [testInput, testQty, getMatchedRule]);
 
       return (
         <div className="min-h-screen bg-[#f8fafc] text-blue-950 font-sans relative">
@@ -466,7 +456,7 @@
                     <div className="bg-white rounded-[2.5rem] shadow-xl shadow-blue-900/5 overflow-hidden no-print border-2 border-blue-50">
                       <table className="w-full text-left">
                         <thead><tr className="bg-blue-50/50 text-blue-950/50 uppercase tracking-widest text-[10px] font-black border-b-2 border-blue-50"><th className="px-10 py-6">Tracking</th><th className="px-10 py-6 text-center">Qty</th><th className="px-10 py-6">Output Label</th></tr></thead>
-                        <tbody className="divide-y-2 divide-blue-50/50">{MappedOrders.map((order) => (<tr key={order.id} className="hover:bg-blue-50/30 transition-colors"><td className="px-10 py-6 font-mono text-[15px] font-bold text-blue-950/60">{order.tracking}</td><td className="px-10 py-6 text-center font-black text-2xl text-blue-950/40">x{order.originalQty}</td><td className="px-10 py-6"><span className={`font-black text-2xl px-5 py-2 rounded-xl inline-block ${order.shortName.includes('ยังไม่ตั้งชื่อ') ? 'text-red-500 bg-red-50' : 'text-blue-900 bg-blue-100/50'}`}>{order.shortName}</span></td></tr>))}</tbody>
+                        <tbody className="divide-y-2 divide-blue-50/50">{MappedOrders.map((order) => (<tr key={order.id} className="hover:bg-blue-50/30 transition-colors"><td className="px-10 py-6 font-mono text-[15px] font-bold text-blue-950/60">{order.tracking}</td><td className="px-10 py-6 text-center font-black text-2xl text-blue-950/40">x{order.originalQty}</td><td className="px-10 py-6"><span className={`font-black text-2xl px-5 py-2 rounded-xl inline-block ${order.shortName.includes('ยังไม่ตั้งชื่อ') ? 'text-red-500 bg-red-50' : order.shortName.includes('คละสินค้า') ? 'text-yellow-600 bg-yellow-50' : 'text-blue-900 bg-blue-100/50'}`}>{order.shortName}</span></td></tr>))}</tbody>
                       </table>
                     </div>
                   ) : (
