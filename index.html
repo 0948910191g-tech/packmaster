@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V20.3 Ultimate (Perfect Math & Multi-SKU Safe)</title>
+  <title>PackMaster V20.4 Ultimate (Shopee QTY Radar Fix)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -62,7 +62,6 @@
 
     const LabelCard = ({ order, isExport = false }) => {
       if (!order || !order.pdfImage) return null;
-      // ล็อกขนาดฟอนต์ให้เป๊ะเท่ากันหมดทั้ง 2 แพลตฟอร์ม
       const fontSize = order.shortName.length > 25 ? '18pt' : order.shortName.length > 15 ? '26pt' : '36pt';
       
       return (
@@ -98,7 +97,6 @@
 
       useEffect(() => { localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); }, [skuRules]);
 
-      // ระบบจับคู่ SKU แบบซิงเกิล (แม่นยำ 100%)
       const getMatchedRule = useCallback((textToSearch) => {
         const clean = (text) => String(text).toLowerCase().replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '').replace(/[\u0E47-\u0E4C]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
         const searchArea = clean(textToSearch);
@@ -137,7 +135,7 @@
             for (let i = 1; i <= pdf.numPages; i++) {
               if (orders.length + allNewOrders.length >= 100) {
                 reachedLimit = true;
-                showToast('จำกัดสูงสุดที่ 100 ใบ เพื่อป้องกันเบราว์เซอร์ค้างค่ะ', 'error');
+                showToast('จำกัดสูงสุดที่ 100 ใบ', 'error');
                 break;
               }
               
@@ -164,14 +162,18 @@
                   if (bottomMatch && bottomMatch.index > 20) productText = productText.substring(0, bottomMatch.index);
               }
 
+              // ซ่อมระบบดึง QTY ขั้นสุดยอด (อุดช่องโหว่ Shopee ซ่อนคำว่า จำนวนรวม)
               let extractedQty = '1';
-              const qtyRegex = /(?:จ[ำํา]+นวนรวม|Qty\s*Total|Total\s*Qty)[^\d]*(\d+)/i;
-              const match = fullText.match(qtyRegex);
+              const explicitTotal = fullText.match(/(?:จ[ำํา]+นวนรวม|Qty\s*Total|Total\s*Qty)[^\d]*(\d+)/i);
               
-              if (match) {
-                  extractedQty = match[1];
+              if (explicitTotal) {
+                  extractedQty = explicitTotal[1]; // ดึงจากบรรทัดสรุปยอด
+              } else if (platform === 'SHOPEE' && fullText.match(/(\d+)\s*Shopee\s*Order\s*No/i)) {
+                  extractedQty = fullText.match(/(\d+)\s*Shopee\s*Order\s*No/i)[1]; // ดึงเลขหน้าคำว่า Shopee Order No
+              } else if (platform === 'TIKTOK' && fullText.match(/(\d+)\s*Order\s*ID/i)) {
+                  extractedQty = fullText.match(/(\d+)\s*Order\s*ID/i)[1]; // ดึงเลขหน้าคำว่า Order ID
               } else {
-                  const lastNum = productText.match(/\s(\d+)\s*(?:Shopee|Order|In\s*transit|$)/i);
+                  const lastNum = productText.match(/(\d+)\s*$/);
                   if (lastNum) extractedQty = lastNum[1];
               }
 
@@ -198,12 +200,10 @@
         e.target.value = null; 
       };
 
-      // แมปออเดอร์พร้อมระบบวิเคราะห์คละสินค้าขั้นสูง
       const MappedOrders = useMemo(() => orders.map(o => {
         const rule = getMatchedRule(o.productText);
         const totalQty = parseInt(o.quantity, 10) || 1;
         
-        // เช็คว่าเป็นออเดอร์คละสินค้าหรือไม่ (ถ้าจำนวนรวม ไม่เท่ากับ จำนวนชิ้นสุดท้ายที่อ่านได้)
         let isMixedOrder = false;
         if (o.platform === 'SHOPEE') {
             const itemQtyMatch = o.productText.match(/[^\d](\d+)\s*จ[ำํา]+นวนรวม/i);
@@ -221,10 +221,8 @@
         if (!rule) {
             finalName = 'ยังไม่ตั้งชื่อ (เพิ่มกฎ SKU)';
         } else if (isMixedOrder) {
-            // หยุดการคูณเลข และแจ้งเตือนให้เช็คใบปะหน้า
             finalName = `⚠️ คละสินค้า (${totalQty}ชิ้น)`; 
         } else {
-            // สินค้าแบบเดียว คูณเลขตามปกติ
             const baseName = rule.shortName.trim().replace(/\u00A0/g, ' ');
             if (totalQty > 1) {
                 const match = baseName.match(/(.*?)(\d+)([^\d]*)$/);
