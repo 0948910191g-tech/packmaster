@@ -3,13 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V22 Ultimate (Auto-Heal & Bug Catcher)</title>
+  <title>PackMaster V23 Ultimate (Stable Core & Perfect Radar)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
   <script>
     tailwind.config = { theme: { extend: { fontFamily: { sans: ['"Noto Sans Thai"', 'sans-serif'] } } } }
@@ -28,27 +32,12 @@
   <div id="root"></div>
 
   <script type="text/babel">
+    // ตั้งค่า Worker ของ PDF.js ทันที ป้องกันการโหลดพลาด
+    if (window.pdfjsLib) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
     const { useState, useEffect, useCallback, useMemo } = React;
-
-    const loadScript = (id, src) => {
-      return new Promise((resolve, reject) => {
-        if (document.getElementById(id)) return resolve();
-        const script = document.createElement('script');
-        script.id = id; script.src = src;
-        script.onload = resolve; script.onerror = () => reject(new Error(`โหลดสคริปต์ล้มเหลว: ${src} (อาจโดน AdBlock บล็อก)`));
-        document.head.appendChild(script);
-      });
-    };
-
-    const loadPdfJS = () => loadScript('pdfjs-lib', 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js').then(() => {
-      if (window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-      return window.pdfjsLib;
-    });
-
-    const loadExportLibs = async () => {
-      await loadScript('html2canvas-lib', 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
-      await loadScript('jspdf-lib', 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
-    };
 
     const Toast = ({ message, type, onClose }) => {
       useEffect(() => { const timer = setTimeout(() => onClose(), 3000); return () => clearTimeout(timer); }, [onClose]);
@@ -121,10 +110,11 @@
         let reachedLimit = false;
         
         setLoadingStatus({ active: true, current: 0, total: 'หลายไฟล์' });
-        setUploadError(''); // เคลียร์ error เก่าก่อนเสมอ
+        setUploadError(''); 
 
         try {
-          const pdfjs = await loadPdfJS();
+          const pdfjs = window.pdfjsLib;
+          if (!pdfjs) throw new Error("โหลดระบบอ่าน PDF ไม่สำเร็จ กรุณารีเฟรชหน้าเว็บ");
           
           for (const file of files) {
             if (reachedLimit) break;
@@ -155,29 +145,31 @@
               let platform = 'SHOPEE';
               if (fullText.match(/Order\s*ID/i) || fullText.match(/In\s*transit/i)) platform = 'TIKTOK';
 
-              // --- ระบบดูดยอด V21 (Ironclad QTY Radar - ป้องกันปี 2026 ขั้นเด็ดขาด!) ---
+              // --- ระบบดูดยอด V23 (เอาวันที่และรหัสไปรษณีย์ออกให้เกลี้ยงก่อนหาเลข) ---
+              let safeText = fullText.replace(/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/g, ' '); // ลบวันที่
+              safeText = safeText.replace(/\b\d{4,}\b/g, ' '); // ลบเลข 4 หลักขึ้นไป
+              
               let extractedQty = '1';
               
-              // 1. ลองหาคำว่า "จำนวนรวม" ตรงๆ ก่อน (เอาเฉพาะที่เลขไม่เกิน 3 หลัก)
-              const explicitTotal = fullText.match(/(?:จ[ำํา]+นวนรวม|Qty\s*Total|Total\s*Qty)[^\d]*(\d{1,3})\b/i);
-              if (explicitTotal) {
-                  extractedQty = explicitTotal[1];
+              // ลองหายอดรวมแบบตรงๆ ก่อน
+              const explicitMatch = safeText.match(/(?:จ[ำํา]+นวนรวม|Qty\s*Total|Total\s*Qty)[^\d]*(\d{1,3})\b/i);
+              
+              if (explicitMatch) {
+                  extractedQty = explicitMatch[1];
               } else {
-                  // 2. ถ้าไม่มี "จำนวนรวม" ให้สกัดเฉพาะโซนสินค้าออกมา
-                  let pt = fullText;
+                  // ถ้าไม่เจอยอดรวม ให้ใช้ลอจิกมองคอลัมน์ขวาสุดของคุณเกม
+                  let pt = safeText;
+                  
+                  // สกัดเอาเฉพาะโซนสินค้า
                   const pIdx = pt.search(/(ชื่อสินค้า|Product\s*Name|#\s*ชื่อสินค้า)/i);
                   if (pIdx !== -1) pt = pt.substring(pIdx);
 
-                  // 3. ตัดส่วนท้ายทิ้ง เพื่อไม่ให้ไปโดนวันที่ หรือ Order ID
+                  // ตัดส่วนท้ายของบิลทิ้ง เพื่อความชัวร์
                   const bIdx = pt.search(/(Shopee\s*Order|Order\s*ID|In\s*transit|หมายเหตุ|PICKUP\s*DATE|SHIP\s*BY)/i);
                   if (bIdx > 20) pt = pt.substring(0, bIdx);
 
-                  // 4. ล้างข้อมูลขยะ (เตะวันที่ 2026 และเลขยาวๆ ทิ้งให้หมด!)
-                  pt = pt.replace(/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/g, ' '); // ลบรูปแบบวันที่
-                  pt = pt.replace(/\b\d{4,}\b/g, ' '); // ลบตัวเลขที่มี 4 หลักขึ้นไปทิ้ง (เช่น 2026, 10140)
-                  pt = pt.replace(/(จ[ำํา]+นวน|Qty)/gi, ' '); // ลบคำหัวตารางทิ้ง
-                  
-                  // 5. คว้าตัวเลขตัวสุดท้ายที่เหลือรอดอยู่ (ซึ่งรับประกันว่าเป็น 1-3 หลักแน่นอน)
+                  // ลบคำหัวตารางทิ้ง แล้วคว้าเลขตัวสุดท้ายที่เหลืออยู่!
+                  pt = pt.replace(/(จ[ำํา]+นวน|Qty)/gi, ' ');
                   const nums = pt.match(/\b(\d{1,3})\b/g);
                   if (nums && nums.length > 0) {
                       extractedQty = nums[nums.length - 1];
@@ -200,13 +192,7 @@
           }
         } catch (err) {
           console.error(err);
-          // แสกนหา Error แบบละเอียดเพื่อแจ้งผู้ใช้
           let errMsg = err.message || err.toString();
-          if (errMsg.includes('Failed to load') || errMsg.includes('fetch')) {
-             errMsg = 'อินเทอร์เน็ตอาจถูกบล็อก (ลองเช็คว่าเปิด AdBlock หรือแอนตี้ไวรัสทิ้งไว้ไหมคะ?)';
-          } else if (errMsg.includes('File') || errMsg.includes('read') || errMsg.includes('Buffer')) {
-             errMsg = 'Windows บล็อกการอ่านไฟล์ (ลองเช็คว่าเปิดไฟล์ PDF นี้ค้างในโปรแกรมอื่นอยู่รึเปล่าคะ)';
-          }
           setUploadError(`ระบบขัดข้อง: ${errMsg}`);
           showToast('อ่านไฟล์ไม่สำเร็จ', 'error');
         } finally {
@@ -251,7 +237,6 @@
         if (MappedOrders.length === 0) return;
         setExportStatus({ active: true, current: 0, total: MappedOrders.length });
         try {
-          await loadExportLibs(); 
           const pdf = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'mm', format: [100, 150] });
           for (let i = 0; i < MappedOrders.length; i++) {
             setExportStatus(prev => ({ ...prev, current: i + 1 }));
