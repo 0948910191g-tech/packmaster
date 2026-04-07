@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V28 Ultimate (Thermal Burn-in Fix)</title>
+  <title>PackMaster V29 Ultimate (The Absolute Final Fix)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -55,7 +55,6 @@
     const LabelCard = ({ order, isExport = false, thermalMode = true }) => {
       const [displayImg, setDisplayImg] = useState(order.pdfImage);
 
-      // เวทมนตร์ V28: ย้อมสีฝังลงในเนื้อภาพ (Burn-in) ป้องกันโปรแกรมทำ PDF ตาบอดสี
       useEffect(() => {
         if (!order || !order.pdfImage) return;
         
@@ -72,11 +71,9 @@
           cvs.height = img.height;
           const ctx = cvs.getContext('2d');
           
-          // สั่งย้อมสีขาวดำ+เพิ่มคอนทราสต์จัดๆ ลงใน Canvas ตรงๆ เลย
           ctx.filter = 'grayscale(100%) brightness(80%) contrast(200%)';
           ctx.drawImage(img, 0, 0);
           
-          // บีบอัดออกมาเป็นรูปใหม่ที่สีฝังแน่นแล้ว
           setDisplayImg(cvs.toDataURL('image/jpeg', 0.9));
         };
         img.src = order.pdfImage;
@@ -180,23 +177,29 @@
               let platform = 'SHOPEE';
               if (fullText.match(/Order\s*ID/i) || fullText.match(/In\s*transit/i)) platform = 'TIKTOK';
 
+              // >>> ใส่ตัวแปร productText กลับมาแล้วค่ะ ห้ามลบทิ้งอีกนะดาวเอ๊ย! <<<
+              let productText = fullText;
+              const pIndex = fullText.search(/(ชื่อสินค้า|Product\s*Name|#\s*ชื่อสินค้า|Item|ตัวเลือก)/i);
+              if (pIndex !== -1) {
+                  productText = fullText.substring(pIndex);
+                  const bottomMatch = productText.match(/(Qty\s*Total|Total\s*Qty|Shopee\s*Order|Order\s*ID|TH[A-Z0-9]{9,}|JT\d{9,})/i);
+                  if (bottomMatch && bottomMatch.index > 20) productText = productText.substring(0, bottomMatch.index);
+              }
+
               let extractedQty = '1';
               
-              // ลองหายอดรวมแบบตรงๆ ก่อน
               const explicitMatch = fullText.match(/(?:จ[ำํา]+นวนรวม|Qty\s*Total|Total\s*Qty)[^\d]*(\d{1,3})\b/i);
               
               if (explicitMatch) {
                   extractedQty = explicitMatch[1];
               } else {
-                  // ลอจิกตีคอกจับโจร
                   let zone = fullText;
                   
                   const startMatch = zone.match(/(?:ตัวเลือกสินค้า\s*จ[ำํา]+นวน|จ[ำํา]+นวน|Qty)/i);
                   if (startMatch) {
                       zone = zone.substring(startMatch.index + startMatch[0].length);
-                  } else {
-                      const pIndex = fullText.search(/(ชื่อสินค้า|Product\s*Name|#\s*ชื่อสินค้า)/i);
-                      if (pIndex !== -1) zone = fullText.substring(pIndex);
+                  } else if (pIndex !== -1) {
+                      zone = fullText.substring(pIndex);
                   }
 
                   const endMatch = zone.match(/(Shopee\s*Order|Order\s*ID|In\s*transit|หมายเหตุ|PICKUP|SHIP\s*BY|TH\d{10,})/i);
@@ -273,7 +276,6 @@
         if (MappedOrders.length === 0) return;
         setExportStatus({ active: true, current: 0, total: MappedOrders.length });
         
-        // รอให้ภาพย้อมสีเสร็จก่อนค่อยเริ่ม Capture PDF (ดีเลย์นิดนึง)
         await new Promise(resolve => setTimeout(resolve, 800));
 
         try {
