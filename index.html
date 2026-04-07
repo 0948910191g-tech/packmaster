@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V21 Ultimate (Ironclad QTY Radar)</title>
+  <title>PackMaster V22 Ultimate (Auto-Heal & Bug Catcher)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -35,7 +35,7 @@
         if (document.getElementById(id)) return resolve();
         const script = document.createElement('script');
         script.id = id; script.src = src;
-        script.onload = resolve; script.onerror = () => reject(new Error(`Failed to load ${src}`));
+        script.onload = resolve; script.onerror = () => reject(new Error(`โหลดสคริปต์ล้มเหลว: ${src} (อาจโดน AdBlock บล็อก)`));
         document.head.appendChild(script);
       });
     };
@@ -121,6 +121,7 @@
         let reachedLimit = false;
         
         setLoadingStatus({ active: true, current: 0, total: 'หลายไฟล์' });
+        setUploadError(''); // เคลียร์ error เก่าก่อนเสมอ
 
         try {
           const pdfjs = await loadPdfJS();
@@ -195,11 +196,19 @@
             setActiveTab('preview');
             showToast(`เพิ่มข้อมูลสำเร็จ ${allNewOrders.length} ใบ`, 'success');
           } else if (!reachedLimit) {
-             setUploadError('ไม่พบข้อมูล PDF ที่รองรับ');
+             setUploadError('ไม่พบข้อมูล PDF ที่รองรับ กรุณาตรวจไฟล์อีกครั้งค่ะ');
           }
         } catch (err) {
-          setUploadError('เกิดข้อผิดพลาดในการอ่าน PDF');
-          showToast('อ่านไฟล์ PDF ไม่สำเร็จ', 'error');
+          console.error(err);
+          // แสกนหา Error แบบละเอียดเพื่อแจ้งผู้ใช้
+          let errMsg = err.message || err.toString();
+          if (errMsg.includes('Failed to load') || errMsg.includes('fetch')) {
+             errMsg = 'อินเทอร์เน็ตอาจถูกบล็อก (ลองเช็คว่าเปิด AdBlock หรือแอนตี้ไวรัสทิ้งไว้ไหมคะ?)';
+          } else if (errMsg.includes('File') || errMsg.includes('read') || errMsg.includes('Buffer')) {
+             errMsg = 'Windows บล็อกการอ่านไฟล์ (ลองเช็คว่าเปิดไฟล์ PDF นี้ค้างในโปรแกรมอื่นอยู่รึเปล่าคะ)';
+          }
+          setUploadError(`ระบบขัดข้อง: ${errMsg}`);
+          showToast('อ่านไฟล์ไม่สำเร็จ', 'error');
         } finally {
           setLoadingStatus({ active: false, current: 0, total: 0 });
         }
