@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V46 Ultimate (The Iron Wall)</title>
+  <title>PackMaster V47 Ultimate (The Iron Dome)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -135,7 +135,7 @@
       useEffect(() => { localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); }, [skuRules]);
       useEffect(() => { localStorage.setItem('thermalMode', JSON.stringify(thermalMode)); }, [thermalMode]);
 
-      // V46: ระบบค้นหาตัวคลาสสิกที่เป๊ะที่สุด (อิสระและยืดหยุ่นที่สุดสำหรับบอส)
+      // ระบบค้นหาตัวคลาสสิกที่เป๊ะที่สุด (อิสระและยืดหยุ่นที่สุดสำหรับบอส)
       const getMatchedRule = useCallback((textToSearch) => {
         const clean = (text) => String(text).toLowerCase().replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '').replace(/[\u0E47-\u0E4C]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
         const searchArea = clean(textToSearch);
@@ -199,12 +199,11 @@
 
               let zone = fullText;
               
-              // V46: กำแพงเหล็กสกัดกั้น "ที่อยู่ลูกค้า & Order ID" แบบเด็ดขาด (รองรับตัวหนังสือเว้นวรรค ชื่ อ สิ น ค้ า)
+              // ตัดส่วนหัวบิลทิ้ง
               const tableStartRegex = /(?:ชื่[\s\u200B]*อ[\s\u200B]*สิ[\s\u200B]*น[\s\u200B]*ค้[\s\u200B]*า|P[\s\u200B]*r[\s\u200B]*o[\s\u200B]*d[\s\u200B]*u[\s\u200B]*c[\s\u200B]*t[\s\u200B]*N[\s\u200B]*a[\s\u200B]*m[\s\u200B]*e|#\s*ชื่[\s\u200B]*อ)/i;
               const tableStartMatch = zone.match(tableStartRegex);
               if (tableStartMatch) {
                   zone = zone.substring(tableStartMatch.index);
-                  // ข้ามหัวคอลัมน์ไปเพื่อเอาแต่เนื้อสินค้าล้วนๆ
                   const headerEndMatch = zone.match(/(?:ตั[\s\u200B]*ว[\s\u200B]*เ[\s\u200B]*ลื[\s\u200B]*อ[\s\u200B]*ก|จ[\s\u200B]*[ำํา]+[\s\u200B]*น[\s\u200B]*ว[\s\u200B]*น|Q[\s\u200B]*t[\s\u200B]*y)/i);
                   if (headerEndMatch) {
                       zone = zone.substring(headerEndMatch.index + headerEndMatch[0].length);
@@ -218,8 +217,15 @@
                   zone = zone.substring(0, endMatch.index);
               }
 
+              // V47 The Iron Dome: คลีนขยะแบบสิ้นซาก บล็อกรหัสคำสั่งซื้อและบ้านเลขที่ 1000%
               zone = zone.replace(/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/g, ' '); 
-              zone = zone.replace(/\b\d{4,}\b/g, ' '); 
+              zone = zone.replace(/\b(?:TH|JT|SPX)[A-Z0-9]+\b/gi, ' '); 
+              zone = zone.replace(/\b\d{6}[A-Z0-9]{5,}\b/gi, ' '); 
+              zone = zone.replace(/\b\d{13,}\b/g, ' '); 
+              zone = zone.replace(/\b\d{5}\b/g, ' '); 
+              zone = zone.replace(/\b0\d{8,9}\b/g, ' '); 
+              zone = zone.replace(/\b\d{1,4}\/\d{1,4}\b/g, ' '); 
+              zone = zone.replace(/(?:เลขที่|หมู่ที่|หมู่|ม\.|ซอย|ซ\.|บ้านเลขที่)\s*\d+/g, ' '); 
 
               let parsedItems = [];
 
@@ -237,7 +243,6 @@
                       let itemStr = '';
                       
                       if (nextMatch) {
-                          // โลจิกกันสับผิด
                           if (nextMatch.index + nextMatch[0].length >= remainingText.length - 2) {
                               itemStr = remainingText.substring(currentMatch.index + currentMatch[0].length);
                               remainingText = '';
@@ -251,11 +256,10 @@
                       }
                       
                       let itemQty = 1;
-                      // ลบเลข Qty ท้ายสุดทิ้งอย่างปลอดภัย
                       const tailMatch = itemStr.match(/\s+(\d{1,4})\s*$/);
                       if (tailMatch) {
                           itemQty = parseInt(tailMatch[1], 10);
-                          itemStr = itemStr.substring(0, tailMatch.index).trim();
+                          // ไม่ตัดเลข Qty ทิ้งแล้ว เพื่อรักษาคำว่า 24 ใน Hoya 24
                       } else {
                           const nums = itemStr.match(/\b(\d{1,4})\b/g); 
                           if (nums && nums.length > 0) {
@@ -271,11 +275,9 @@
                   let itemQty = 1;
                   let itemStr = zone.trim();
                   
-                  // เตะเลข Qty ท้ายบิล TikTok ทิ้ง เพื่อป้องกันการอ่านเป็นชื่อสินค้า
                   const tailMatch = itemStr.match(/\s+(\d{1,4})\s*$/);
                   if (tailMatch) {
                       itemQty = parseInt(tailMatch[1], 10);
-                      itemStr = itemStr.substring(0, tailMatch.index).trim();
                   } else {
                       const nums = itemStr.match(/\b(\d{1,4})\b/g);
                       if (nums && nums.length > 0) {
@@ -285,7 +287,7 @@
                   parsedItems.push({ text: itemStr, qty: itemQty });
               }
 
-              // ยืนยันยอดรวมให้เป๊ะที่สุด
+              // ยืนยันยอดรวมให้เป๊ะที่สุดจากท้ายบิล
               if (parsedItems.length === 1) {
                   const cleanForQty = fullText.replace(/[\s\u200B-\u200D\uFEFF]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').toLowerCase();
                   const explicitMatch = cleanForQty.match(/(?:จ[ำํา]นวนรวม|qtytotal|totalqty|ยอดรวม)[\:]?(\d{1,4})(?![\d])/);
