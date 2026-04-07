@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V34 Ultimate (The Genius Splitter)</title>
+  <title>PackMaster V35 Ultimate (The Masterpiece)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -77,7 +77,7 @@
 
       if (!order || !order.pdfImage) return null;
       
-      // V34: ระบบย่อขนาดฟอนต์อัตโนมัติเมื่อมีหลายบรรทัด กันตกขอบ 1,000%
+      // V35: ระบบย่อขนาดฟอนต์อัตโนมัติ ห้ามตกขอบเด็ดขาดเมื่อมีหลายบรรทัด
       const itemCount = order.displayItems.length;
       let maxLen = Math.max(...order.displayItems.map(t => t.length), 0);
       
@@ -90,8 +90,8 @@
           fontSize = maxLen > 20 ? '16pt' : '22pt';
           lineHeight = 1.1;
       } else {
-          fontSize = '13pt'; 
-          lineHeight = 1.0;
+          fontSize = '14pt'; 
+          lineHeight = 1.1;
       }
 
       return (
@@ -132,7 +132,7 @@
       useEffect(() => { localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); }, [skuRules]);
       useEffect(() => { localStorage.setItem('thermalMode', JSON.stringify(thermalMode)); }, [thermalMode]);
 
-      // ดึงกฎข้อที่ตรงที่สุดเพียง 1 ข้อต่อ 1 รายการ
+      // ดึงกฎที่ตรงที่สุด
       const getMatchedRule = useCallback((textToSearch) => {
         const clean = (text) => String(text).toLowerCase().replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '').replace(/[\u0E47-\u0E4C]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
         const searchArea = clean(textToSearch);
@@ -213,35 +213,45 @@
 
               let parsedItems = [];
 
-              // V34: ระบบหั่นแยกรถเข็นสินค้าของ Shopee แบบป้องกันการสับผิดตัว (ต้องมีตัวหนังสือตามหลัง)
+              // V35: ระบบหั่นฉลาดขั้นเทพ (ป้องกันการสับเลข QTY ท้ายบิล)
               if (platform === 'SHOPEE') {
                   let remainingText = zone.trim();
                   let currentItemNum = 1;
                   
                   while (remainingText.length > 0 && currentItemNum < 20) {
                       let currentPrefixRegex = new RegExp(`(?:^|\\s)${currentItemNum}\\s+`);
-                      
-                      // V34 เวทมนตร์: ตัดบรรทัดใหม่เฉพาะเมื่อเลขข้อตามด้วยอักขระยาวเกิน 5 ตัวเท่านั้น (กันโดน Qty ท้ายบิลหลอก)
-                      let nextPrefixRegex = new RegExp(`(?:^|\\s)${currentItemNum + 1}\\s+(?=.{5,})`); 
-                      
                       let currentMatch = remainingText.match(currentPrefixRegex);
                       if (!currentMatch) break; 
                       
+                      let nextPrefixRegex = new RegExp(`(?:^|\\s)${currentItemNum + 1}\\s+`); 
                       let nextMatch = remainingText.match(nextPrefixRegex);
                       let itemStr = '';
                       
                       if (nextMatch) {
-                          itemStr = remainingText.substring(currentMatch.index + currentMatch[0].length, nextMatch.index);
-                          remainingText = remainingText.substring(nextMatch.index);
+                          // โลจิกกันสับผิด: ถ้าเลขถัดไปอยู่ใกล้จุดจบของข้อความเกินไป (ห่างไม่เกิน 2 ตัวอักษร) แสดงว่าเป็น QTY ห้ามตัด!
+                          if (nextMatch.index + nextMatch[0].length >= remainingText.length - 2) {
+                              itemStr = remainingText.substring(currentMatch.index + currentMatch[0].length);
+                              remainingText = '';
+                          } else {
+                              itemStr = remainingText.substring(currentMatch.index + currentMatch[0].length, nextMatch.index);
+                              remainingText = remainingText.substring(nextMatch.index);
+                          }
                       } else {
                           itemStr = remainingText.substring(currentMatch.index + currentMatch[0].length);
                           remainingText = '';
                       }
                       
                       let itemQty = 1;
-                      const nums = itemStr.match(/\b(\d{1,3})\b/g); 
-                      if (nums && nums.length > 0) {
-                          itemQty = parseInt(nums[nums.length - 1], 10);
+                      // ดึงจำนวนชิ้นจากท้ายบรรทัดเป๊ะๆ
+                      const qtyMatch = itemStr.match(/\s(\d{1,3})$/);
+                      if (qtyMatch) {
+                          itemQty = parseInt(qtyMatch[1], 10);
+                          itemStr = itemStr.substring(0, qtyMatch.index).trim();
+                      } else {
+                          const nums = itemStr.match(/\b(\d{1,3})\b/g); 
+                          if (nums && nums.length > 0) {
+                              itemQty = parseInt(nums[nums.length - 1], 10);
+                          }
                       }
                       parsedItems.push({ text: itemStr, qty: itemQty });
                       currentItemNum++;
@@ -258,7 +268,7 @@
                   parsedItems.push({ text: zone, qty: itemQty });
               }
 
-              // V34 ไม้ตายขั้นสุด: ถ้าวิเคราะห์แล้วพบว่าเป็นสินค้า 1 รายการแน่นอน ให้ไปคว้ารวมยอดจากคำว่า "จำนวนรวม" มาบังคับใช้เลย! (ปลอดภัย 1000%)
+              // คอนเฟิร์มยอดรวมเพื่อความชัวร์ (ถ้ามีรายการเดียว ดึงยอดรวมมาโปะเลย ปลอดภัย 1000%)
               if (parsedItems.length === 1) {
                   const cleanForQty = fullText.replace(/[\s\u200B-\u200D\uFEFF]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').toLowerCase();
                   const explicitMatch = cleanForQty.match(/(?:จ[ำํา]นวนรวม|qtytotal|totalqty|ยอดรวม)[\:]?(\d{1,3})(?![\d])/);
@@ -292,17 +302,19 @@
         e.target.value = null; 
       };
 
-      // V34: ระบบรวม SKU ที่ซ้ำกัน และแยกบรรทัดกรณีไม่ซ้ำ (Smart Stack)
+      // V35: ยุบรวม SKU ซ้ำ & สร้างบรรทัดใหม่เมื่อ SKU ไม่ซ้ำ
       const MappedOrders = useMemo(() => orders.map(o => {
         let skuMap = new Map(); 
         let hasUnmatched = false;
 
+        // วนลูปเช็ครายการสินค้าที่ตัดมาได้ทีละบรรทัด
         o.parsedItems.forEach(item => {
             const rule = getMatchedRule(item.text);
             if (rule) {
                 const baseName = rule.shortName.trim().replace(/\u00A0/g, ' ');
                 const currentQty = skuMap.get(baseName) || 0;
-                skuMap.set(baseName, currentQty + item.qty); // เอาจำนวนมาบวกกันถ้าชื่อซ้ำ
+                // ถ้า SKU ซ้ำกัน ให้เอาเลขจำนวน (Qty) มาบวกกันเลย
+                skuMap.set(baseName, currentQty + item.qty); 
             } else {
                 hasUnmatched = true;
             }
@@ -310,9 +322,11 @@
 
         let finalDisplayItems = [];
         
+        // เอาของที่บวกรวมเสร็จแล้ว มาจัดเรียงเป็นบรรทัด
         skuMap.forEach((qty, baseName) => {
             let displayName = baseName;
             if (qty > 1) {
+                // คำนวณคูณเลขให้สวยงาม
                 const match = baseName.match(/(.*?)(\d+)([^\d]*)$/);
                 if (match) {
                     displayName = `${match[1]}${parseInt(match[2], 10) * qty}${match[3]}`;
