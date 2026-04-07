@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V48.4 Ultimate (The Flawless Core)</title>
+  <title>PackMaster V48.5 Ultimate (The Masterpiece)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -139,7 +139,7 @@
       useEffect(() => { localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); }, [skuRules]);
       useEffect(() => { localStorage.setItem('thermalMode', JSON.stringify(thermalMode)); }, [thermalMode]);
 
-      // V48.3: ระบบค้นหาแบบ 2-Pass Scan ป้องกันเลขขยะ
+      // V48.5: ระบบค้นหาแบบ 2-Pass Scan 
       const getMatchedRule = useCallback((textToSearch) => {
         const clean = (text) => String(text).toLowerCase().replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '').replace(/[\u0E47-\u0E4C]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
         const searchArea = clean(textToSearch);
@@ -289,8 +289,17 @@
                       }
                   }
                   
-                  // V48.4: แก้กลับมาใช้ itemStr (ข้อความเฉพาะโซนสินค้า) เพื่อไม่ให้สแกนไปโดนรหัส ปณ. หรือ Routing Code ในที่อยู่ลูกค้า!
-                  parsedItems.push({ text: itemStr, qty: itemQty });
+                  // --- V48.5: ใช้ข้อความเต็มหน้า (Full Text) เพื่อแก้ปัญหา PDF อ่านสลับบรรทัด ---
+                  // แต่เพิ่มนักฆ่ารหัสคัดแยก (Routing Code Assassin) เพื่อป้องกันเลขประหลาดตีกับ SKU!
+                  let safeText = fullText;
+                  safeText = safeText.replace(/\b[A-Z]\d\s+[A-Z0-9]+-\d+\b/gi, ' '); // A1 W91-38, P2 21-17, etc.
+                  safeText = safeText.replace(/\b[A-Z]\d-\([A-Z0-9.]+\)\b/gi, ' '); // B2-(HOU.1)
+                  safeText = safeText.replace(/\b\d{3}[A-Z]\b/gi, ' '); // 004C, 001D, 003F
+                  safeText = safeText.replace(/\b\d{5}\b/g, ' '); // รหัสไปรษณีย์
+                  safeText = safeText.replace(/\b0\d{8,9}\b/g, ' '); // เบอร์โทร
+                  safeText = safeText.replace(/(?:PICK-UP|COD|DROP-OFF|HOME|ROS|Shopee|TikTok\s*Shop)/gi, ' ');
+                  
+                  parsedItems.push({ text: safeText, qty: itemQty });
               }
 
               if (parsedItems.length === 1 && platform !== 'TIKTOK') {
@@ -303,7 +312,7 @@
 
               const trackingMatch = fullText.match(/(TH\d{10,}|JT\d{10,}|SPX[A-Z0-9]+|KER[A-Z0-9]+|KA[A-Z0-9]+|66\d{10,}|82\d{10,}|\b\d{12}\b)/i);
               
-              // --- V48.2: ระบบรวมออเดอร์ข้ามหน้าแบบแสดงผลครบ 2 หน้า (The Absolute Core Update) ---
+              // --- V48.5: ระบบรวมออเดอร์ข้ามหน้าแบบแสดงผลครบ 2 หน้า ---
               let currentOrderId = null;
               let orderMatch = fullText.match(/(?:Shopee\s*Order\s*No\.?|Order\s*ID)[\s:]*([A-Z0-9]+)/i);
               if (orderMatch) {
