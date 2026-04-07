@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V48.1 Ultimate (The Absolute Core)</title>
+  <title>PackMaster V48.2 Ultimate (The Absolute Core)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -77,8 +77,8 @@
 
       if (!order || !order.pdfImage) return null;
       
-      const itemCount = order.displayItems.length;
-      let maxLen = Math.max(...order.displayItems.map(t => t.length), 0);
+      const itemCount = order.displayItems ? order.displayItems.length : 0;
+      let maxLen = itemCount > 0 ? Math.max(...order.displayItems.map(t => t.length), 0) : 0;
       
       let fontSize = '42pt';
       let lineHeight = 1.2;
@@ -100,13 +100,17 @@
       return (
         <div className={`shrink-0 box-border ${isExport ? '' : 'border-2 border-blue-50 shadow-xl shadow-blue-900/5 rounded-2xl'}`} style={{ width: '100mm', height: '150mm', backgroundColor: '#ffffff', position: 'relative', overflow: 'hidden', pageBreakAfter: 'always', margin: 0, display: 'block' }}>
           <img src={displayImg} alt="Label Base" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'fill', zIndex: 0 }} />
-          <div style={{ position: 'absolute', zIndex: 10, boxSizing: 'border-box', bottom: '24px', left: '16px', right: '16px', height: '18%', border: '4px dashed #172554', borderRadius: '14px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '8px', gap: '4px', backgroundColor: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(2px)', overflow: 'hidden' }}>
-            {order.displayItems.map((text, idx) => (
-              <p key={idx} style={{ fontFamily: '"Noto Sans Thai", sans-serif', fontWeight: 800, color: '#172554', lineHeight: lineHeight, margin: 0, textAlign: 'center', wordBreak: 'break-word', width: '100%', letterSpacing: '-0.02em', fontSize: fontSize, textShadow: '3px 3px 0 #fff, -3px -3px 0 #fff, 3px -3px 0 #fff, -3px 3px 0 #fff, 0 3px 0 #fff, 0 -3px 0 #fff, 3px 0 0 #fff, -3px 0 0 #fff, 2px 4px 8px rgba(23, 37, 84, 0.15)' }}>
-                {text}
-              </p>
-            ))}
-          </div>
+          
+          {/* ซ่อนกรอบข้อความถ้ารายการว่างเปล่า (สำหรับหน้า 2 ของ TikTok) */}
+          {order.displayItems && order.displayItems.length > 0 && (
+            <div style={{ position: 'absolute', zIndex: 10, boxSizing: 'border-box', bottom: '24px', left: '16px', right: '16px', height: '18%', border: '4px dashed #172554', borderRadius: '14px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '8px', gap: '4px', backgroundColor: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(2px)', overflow: 'hidden' }}>
+              {order.displayItems.map((text, idx) => (
+                <p key={idx} style={{ fontFamily: '"Noto Sans Thai", sans-serif', fontWeight: 800, color: '#172554', lineHeight: lineHeight, margin: 0, textAlign: 'center', wordBreak: 'break-word', width: '100%', letterSpacing: '-0.02em', fontSize: fontSize, textShadow: '3px 3px 0 #fff, -3px -3px 0 #fff, 3px -3px 0 #fff, -3px 3px 0 #fff, 0 3px 0 #fff, 0 -3px 0 #fff, 3px 0 0 #fff, -3px 0 0 #fff, 2px 4px 8px rgba(23, 37, 84, 0.15)' }}>
+                  {text}
+                </p>
+              ))}
+            </div>
+          )}
         </div>
       );
     };
@@ -279,10 +283,10 @@
                           itemQty = parseInt(nums[nums.length - 1], 10);
                       }
                   }
-                  parsedItems.push({ text: itemStr, qty: itemQty });
+                  // ดาวให้ใช้ fullText ไปเลย เพื่อป้องกันคำสำคัญ (เช่น JASMINE) โดนลบทิ้งไปตอน Clean หน้าบิล
+                  parsedItems.push({ text: fullText, qty: itemQty });
               }
 
-              // ยืนยันยอดรวมให้เป๊ะที่สุดจากท้ายบิลต้นฉบับ (แก้ให้ทำงานเฉพาะฝั่ง Shopee)
               if (parsedItems.length === 1 && platform !== 'TIKTOK') {
                   const cleanForQty = fullText.replace(/[\s\u200B-\u200D\uFEFF]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').toLowerCase();
                   const explicitMatch = cleanForQty.match(/(?:จ[ำํา]นวนรวม|qtytotal|totalqty|ยอดรวม)[\:]?(\d{1,4})(?![\d])/);
@@ -293,7 +297,7 @@
 
               const trackingMatch = fullText.match(/(TH\d{10,}|JT\d{10,}|SPX[A-Z0-9]+|KER[A-Z0-9]+|KA[A-Z0-9]+|66\d{10,}|82\d{10,}|\b\d{12}\b)/i);
               
-              // --- V48.1: ระบบรวมออเดอร์ข้ามหน้า (The Absolute Core Update) ---
+              // --- V48.2: ระบบรวมออเดอร์ข้ามหน้าแบบแสดงผลครบ 2 หน้า (The Absolute Core Update) ---
               let currentOrderId = null;
               let orderMatch = fullText.match(/(?:Shopee\s*Order\s*No\.?|Order\s*ID)[\s:]*([A-Z0-9]+)/i);
               if (orderMatch) {
@@ -301,13 +305,26 @@
               }
 
               if (currentOrderId) {
-                  let existingOrder = allNewOrders.find(o => o.orderId === currentOrderId);
+                  // หาออเดอร์หน้าแรก (ที่ยังไม่ใช่หน้าต่อท้าย)
+                  let existingOrder = allNewOrders.find(o => o.orderId === currentOrderId && !o.isContinuation);
                   if (existingOrder) {
+                      // 1. นำข้อมูลสินค้าไปรวมไว้ที่หน้าแรก เพื่อให้ขึ้นข้อความสรุปแค่หน้าเดียว
                       existingOrder.parsedItems.push(...parsedItems);
                       
                       if (!existingOrder.tracking || existingOrder.tracking.startsWith('PAGE-')) {
                           existingOrder.tracking = trackingMatch ? trackingMatch[0] : existingOrder.tracking;
                       }
+
+                      // 2. ปรินท์หน้า 2 ออกมาด้วย แต่ปล่อย Array ให้ว่างเปล่า เพื่อไม่ให้แสดงกรอบข้อความทับ
+                      allNewOrders.push({ 
+                          id: `label-${Date.now()}-${allNewOrders.length}-${i}`, 
+                          tracking: trackingMatch ? trackingMatch[0] : existingOrder.tracking, 
+                          parsedItems: [], // <--- ตัวแปรสำคัญ: ว่างไว้จะได้ไม่โชว์ข้อความ
+                          pdfImage, 
+                          platform,
+                          orderId: currentOrderId,
+                          isContinuation: true 
+                      });
                       continue; 
                   }
               }
@@ -345,6 +362,11 @@
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
 
       const MappedOrders = useMemo(() => orders.map(o => {
+        // V48.2: ดักไว้เลยว่าถ้าเป็นหน้าต่อท้าย (หน้า 2 ของ TikTok) ให้คืนค่า array ว่างเปล่าไปเลย
+        if (o.parsedItems.length === 0) {
+            return { ...o, displayItems: [], originalQty: 0 };
+        }
+
         let skuMap = new Map(); 
         let hasUnmatched = false;
 
@@ -621,14 +643,20 @@
                           {MappedOrders.map((order) => (
                             <tr key={order.id} className="hover:bg-blue-50/30 transition-colors">
                               <td className="px-10 py-6 font-mono text-[15px] font-bold text-blue-950/60">{order.tracking}</td>
-                              <td className="px-10 py-6 text-center font-black text-2xl text-blue-950/40">x{order.originalQty}</td>
+                              <td className="px-10 py-6 text-center font-black text-2xl text-blue-950/40">
+                                {order.originalQty > 0 ? `x${order.originalQty}` : '-'}
+                              </td>
                               <td className="px-10 py-6">
                                 <div className="flex flex-col gap-2 items-start">
-                                  {order.displayItems.map((text, idx) => (
-                                    <span key={idx} className={`font-black text-xl px-4 py-1.5 rounded-xl inline-block ${text.includes('ยังไม่ตั้งชื่อ') ? 'text-red-500 bg-red-50' : 'text-blue-900 bg-blue-100/50'}`}>
-                                      {text}
-                                    </span>
-                                  ))}
+                                  {order.displayItems && order.displayItems.length > 0 ? (
+                                    order.displayItems.map((text, idx) => (
+                                      <span key={idx} className={`font-black text-xl px-4 py-1.5 rounded-xl inline-block ${text.includes('ยังไม่ตั้งชื่อ') ? 'text-red-500 bg-red-50' : 'text-blue-900 bg-blue-100/50'}`}>
+                                        {text}
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span className="text-blue-950/30 font-bold text-sm">(หน้าต่อท้ายบิล)</span>
+                                  )}
                                 </div>
                               </td>
                             </tr>
