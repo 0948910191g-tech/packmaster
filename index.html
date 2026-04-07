@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V20.6 Ultimate (Thai PDF Radar Fix)</title>
+  <title>PackMaster V20.7 Ultimate (Perfect Fit Layout)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -62,14 +62,15 @@
 
     const LabelCard = ({ order, isExport = false }) => {
       if (!order || !order.pdfImage) return null;
-      // ขยายไซส์ตัวหนังสือให้ใหญ่สะใจขึ้นอีกขั้น
-      const fontSize = order.shortName.length > 25 ? '24pt' : order.shortName.length > 15 ? '38pt' : '52pt';
+      // ปรับขนาดฟอนต์ให้สมดุลขึ้น ไม่ล้นทะลุกรอบตอนเซฟ PDF
+      const fontSize = order.shortName.length > 25 ? '18pt' : order.shortName.length > 15 ? '28pt' : '42pt';
       
       return (
         <div className={`shrink-0 box-border ${isExport ? '' : 'border-2 border-blue-50 shadow-xl shadow-blue-900/5 rounded-2xl'}`} style={{ width: '100mm', height: '150mm', backgroundColor: '#ffffff', position: 'relative', overflow: 'hidden', pageBreakAfter: 'always', margin: 0, display: 'block' }}>
           <img src={order.pdfImage} alt="Label Base" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'fill', zIndex: 0 }} crossOrigin="anonymous" />
-          <div style={{ position: 'absolute', zIndex: 10, boxSizing: 'border-box', bottom: '24px', left: '16px', right: '16px', height: '14%', border: '4px dashed #172554', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', backgroundColor: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(2px)' }}>
-            <p style={{ fontFamily: '"Noto Sans Thai", sans-serif', fontWeight: 800, color: '#172554', lineHeight: 1.15, margin: 0, textAlign: 'center', wordBreak: 'break-word', width: '100%', letterSpacing: '-0.02em', fontSize: fontSize, textShadow: '3px 3px 0 #fff, -3px -3px 0 #fff, 3px -3px 0 #fff, -3px 3px 0 #fff, 0 3px 0 #fff, 0 -3px 0 #fff, 3px 0 0 #fff, -3px 0 0 #fff, 2px 4px 8px rgba(23, 37, 84, 0.15)' }}>
+          {/* ขยาย height เป็น 16% และลด padding เพื่อเพิ่มพื้นที่หายใจให้ตัวหนังสือ */}
+          <div style={{ position: 'absolute', zIndex: 10, boxSizing: 'border-box', bottom: '24px', left: '16px', right: '16px', height: '16%', border: '4px dashed #172554', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px', backgroundColor: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(2px)', overflow: 'hidden' }}>
+            <p style={{ fontFamily: '"Noto Sans Thai", sans-serif', fontWeight: 800, color: '#172554', lineHeight: 1.1, margin: 0, textAlign: 'center', wordBreak: 'break-word', width: '100%', letterSpacing: '-0.02em', fontSize: fontSize, textShadow: '3px 3px 0 #fff, -3px -3px 0 #fff, 3px -3px 0 #fff, -3px 3px 0 #fff, 0 3px 0 #fff, 0 -3px 0 #fff, 3px 0 0 #fff, -3px 0 0 #fff, 2px 4px 8px rgba(23, 37, 84, 0.15)' }}>
               {order.shortName}
             </p>
           </div>
@@ -164,14 +165,10 @@
               }
 
               // --- ระบบดูดและบดสระภาษาไทย V20.6 (Ultimate Radar) ---
-              // บด \u0E4D (นิคหิต) + \u0E32 (สระอา) ให้กลายเป็นสระอำ (\u0E33) ที่แท้จริง และลบช่องว่างทิ้งทั้งหมด
               const noSpaceText = fullText.replace(/\u0E4D\u0E32/g, '\u0E33').replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '').toLowerCase();
               let extractedQty = '1';
               
-              // 1. สแกนหายอดรวมแบบเจาะจง Shopee (รับมือกรณีข้อความสลับที่)
               const shopeeFooterMatch = noSpaceText.match(/shopeeorderno.*?จำนวนรวม(\d+)/);
-              
-              // 2. สแกนหายอดรวมแบบสากล
               const explicitMatch = noSpaceText.match(/(?:จำนวนรวม|qtytotal|totalqty)[\:]?(\d+)/);
 
               if (shopeeFooterMatch) {
@@ -179,7 +176,6 @@
               } else if (explicitMatch && parseInt(explicitMatch[1], 10) < 1000) {
                   extractedQty = explicitMatch[1];
               } else {
-                  // Fallback สุดท้าย: หาตัวเลขโดดๆ ก่อนเข้าโซน Footer
                   const fallbackMatch = fullText.match(/\b(\d+)\b(?=\s*$|\s*(?:Shopee|Order|In\s*transit|หมายเหตุ))/i);
                   if (fallbackMatch) extractedQty = fallbackMatch[1];
               }
@@ -213,8 +209,6 @@
         const totalQty = parseInt(o.quantity, 10) || 1;
         
         let isMixedOrder = false;
-        
-        // เซฟตี้คละสินค้า Shopee
         if (o.platform === 'SHOPEE' && /\b1\s+\(.*?\b2\s+\(/is.test(o.productText)) {
             isMixedOrder = true;
         }
