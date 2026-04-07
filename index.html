@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V48.3 Ultimate (The Absolute Core)</title>
+  <title>PackMaster V48.4 Ultimate (The Flawless Core)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -288,8 +288,9 @@
                           itemQty = parseInt(nums[nums.length - 1], 10);
                       }
                   }
-                  // ดาวให้ใช้ fullText ไปเลย เพื่อป้องกันคำสำคัญโดนลบทิ้งไปตอน Clean หน้าบิล
-                  parsedItems.push({ text: fullText, qty: itemQty });
+                  
+                  // V48.4: แก้กลับมาใช้ itemStr (ข้อความเฉพาะโซนสินค้า) เพื่อไม่ให้สแกนไปโดนรหัส ปณ. หรือ Routing Code ในที่อยู่ลูกค้า!
+                  parsedItems.push({ text: itemStr, qty: itemQty });
               }
 
               if (parsedItems.length === 1 && platform !== 'TIKTOK') {
