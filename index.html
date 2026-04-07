@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V48.5 Ultimate (The Masterpiece)</title>
+  <title>PackMaster V48.6 Ultimate (The Firewall)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -139,7 +139,7 @@
       useEffect(() => { localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); }, [skuRules]);
       useEffect(() => { localStorage.setItem('thermalMode', JSON.stringify(thermalMode)); }, [thermalMode]);
 
-      // V48.5: ระบบค้นหาแบบ 2-Pass Scan 
+      // ระบบค้นหาแบบ 2-Pass Scan
       const getMatchedRule = useCallback((textToSearch) => {
         const clean = (text) => String(text).toLowerCase().replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '').replace(/[\u0E47-\u0E4C]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
         const searchArea = clean(textToSearch);
@@ -147,13 +147,13 @@
         
         const sortedRules = [...skuRules].sort((a, b) => b.keyword.length - a.keyword.length);
         
-        // รอบที่ 1: หาคำที่ติดกันเป๊ะๆ ก่อน (Exact Match)
+        // รอบที่ 1: Exact Match
         for (const rule of sortedRules) {
             const cleanKw = clean(rule.keyword);
             if (cleanKw && searchArea.includes(cleanKw)) return rule;
         }
         
-        // รอบที่ 2: ถ้าหาเป๊ะๆ ไม่เจอ ค่อยยอมให้หาสลับตำแหน่งคำได้ (Loose Match)
+        // รอบที่ 2: Loose Match
         for (const rule of sortedRules) {
             const words = rule.keyword.split(/\s+/).filter(w => w.length > 0);
             if (words.length > 1 && words.every(w => searchArea.includes(clean(w)))) return rule;
@@ -203,33 +203,42 @@
               const pdfImage = canvas.toDataURL('image/jpeg', 0.9);
 
               let platform = 'SHOPEE';
-              if (fullText.match(/Order\s*ID/i) || fullText.match(/In\s*transit/i)) platform = 'TIKTOK';
+              if (fullText.match(/Order\s*ID/i) || fullText.match(/In\s*transit/i) || fullText.match(/TikTok/i)) platform = 'TIKTOK';
 
               let zone = fullText;
 
-              zone = zone.replace(/Shopee\s*Order\s*No\.?[\s:]*[A-Z0-9]+/gi, ' ');
-              zone = zone.replace(/Order\s*ID[\s:]*[A-Z0-9]+/gi, ' ');
-              zone = zone.replace(/\b\d{6}[A-Z0-9]{5,}\b/gi, ' '); 
-              
-              zone = zone.replace(/\b(?:TH|JT|SPX)[A-Z0-9]+\b/gi, ' ');
-              zone = zone.replace(/\b\d{12,}\b/g, ' '); 
-              
-              zone = zone.replace(/(?:บ้านเลขที่|เลขที่|หมู่ที่|หมู่|ม\.|ซอย|ซ\.|ถนน|ถ\.)\s*\d+[\/\d]*/g, ' ');
-              zone = zone.replace(/\b\d{5}\b/g, ' '); 
-              zone = zone.replace(/\b0\d{8,9}\b/g, ' '); 
-              
-              zone = zone.replace(/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/g, ' '); 
-              zone = zone.replace(/\d{1,2}:\d{2}/g, ' '); 
-              zone = zone.replace(/In\s*transit\s*by[\s:]*[\d\/:\s]+/gi, ' ');
-              zone = zone.replace(/Qty\s*Total[\s:]*\d+/gi, ' ');
-              zone = zone.replace(/Total\s*Qty[\s:]*\d+/gi, ' ');
-
+              // V48.6: The Firewall (กำแพงป้องกันภัย) - ตัดเอากลางกระดาษลงไปเลย ทิ้งส่วนที่อยู่ทั้งหมด!
               const tableStartRegex = /(?:ชื่[\s\u200B]*อ[\s\u200B]*สิ[\s\u200B]*น[\s\u200B]*ค้[\s\u200B]*า|P[\s\u200B]*r[\s\u200B]*o[\s\u200B]*d[\s\u200B]*u[\s\u200B]*c[\s\u200B]*t|#\s*ชื่[\s\u200B]*อ)/i;
               const tableStartMatch = zone.match(tableStartRegex);
+              
               if (tableStartMatch) {
+                  // ถ้าระบุหัวตารางเจอ ให้ตัดเอาเฉพาะหัวตารางลงมาเลย ปลอดภัยสุดๆ
                   zone = zone.substring(tableStartMatch.index);
                   zone = zone.replace(/(?:ชื่[\s\u200B]*อ[\s\u200B]*สิ[\s\u200B]*น[\s\u200B]*ค้[\s\u200B]*า|P[\s\u200B]*r[\s\u200B]*o[\s\u200B]*d[\s\u200B]*u[\s\u200B]*c[\s\u200B]*t[\s\u200B]*N[\s\u200B]*a[\s\u200B]*m[\s\u200B]*e|#\s*ชื่[\s\u200B]*อ)/gi, ' ');
                   zone = zone.replace(/(?:ตั[\s\u200B]*ว[\s\u200B]*เ[\s\u200B]*ลื[\s\u200B]*อ[\s\u200B]*ก|จ[\s\u200B]*[ำํา]+[\s\u200B]*น[\s\u200B]*ว[\s\u200B]*น|S[\s\u200B]*K[\s\u200B]*U|S[\s\u200B]*e[\s\u200B]*l[\s\u200B]*l[\s\u200B]*e[\s\u200B]*r|Q[\s\u200B]*t[\s\u200B]*y)/gi, ' ');
+                  
+                  // ลบแค่ข้อมูลท้ายบิลที่อาจจะปนเข้ามา
+                  zone = zone.replace(/Shopee\s*Order\s*No\.?[\s:]*[A-Z0-9]+/gi, ' ');
+                  zone = zone.replace(/Order\s*ID[\s:]*[A-Z0-9]+/gi, ' ');
+                  zone = zone.replace(/Qty\s*Total[\s:]*\d+/gi, ' ');
+                  zone = zone.replace(/Total\s*Qty[\s:]*\d+/gi, ' ');
+                  zone = zone.replace(/(?:TikTok\s*Shop)/gi, ' ');
+              } else {
+                  // ถ้าหาหัวตารางไม่เจอจริงๆ (แรร์เคส) ค่อยใช้เครื่องทุ่นแรงเก่าสแกนล้างขยะทั้งแผ่น
+                  zone = zone.replace(/Shopee\s*Order\s*No\.?[\s:]*[A-Z0-9]+/gi, ' ');
+                  zone = zone.replace(/Order\s*ID[\s:]*[A-Z0-9]+/gi, ' ');
+                  zone = zone.replace(/\b\d{6}[A-Z0-9]{5,}\b/gi, ' '); 
+                  zone = zone.replace(/\b(?:TH|JT|SPX)[A-Z0-9]+\b/gi, ' ');
+                  zone = zone.replace(/\b\d{12,}\b/g, ' '); 
+                  zone = zone.replace(/(?:บ้านเลขที่|เลขที่|หมู่ที่|หมู่|ม\.|ซอย|ซ\.|ถนน|ถ\.)\s*\d+[\/\d]*/g, ' ');
+                  zone = zone.replace(/\b\d{5}\b/g, ' '); 
+                  zone = zone.replace(/\b0\d{8,9}\b/g, ' '); 
+                  zone = zone.replace(/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/g, ' '); 
+                  zone = zone.replace(/\d{1,2}:\d{2}/g, ' '); 
+                  zone = zone.replace(/In\s*transit\s*by[\s:]*[\d\/:\s]+/gi, ' ');
+                  zone = zone.replace(/Qty\s*Total[\s:]*\d+/gi, ' ');
+                  zone = zone.replace(/Total\s*Qty[\s:]*\d+/gi, ' ');
+                  zone = zone.replace(/(?:TikTok\s*Shop)/gi, ' ');
               }
 
               let parsedItems = [];
@@ -261,7 +270,7 @@
                       }
                       
                       let itemQty = 1;
-                      const tailMatch = itemStr.match(/\s+(\d{1,4})\s*(?:TikTok\s*Shop|หมายเหตุ|PICKUP)?\s*$/i);
+                      const tailMatch = itemStr.match(/\s+(\d{1,4})\s*(?:หมายเหตุ|PICKUP)?\s*$/i);
                       if (tailMatch) {
                           itemQty = parseInt(tailMatch[1], 10);
                       } else {
@@ -277,9 +286,10 @@
 
               if (parsedItems.length === 0) {
                   let itemQty = 1;
+                  // ตรงนี้ปลอดภัยแล้ว! เพราะ zone ถูกตัดเอาเฉพาะโซนตารางมาตั้งแต่บรรทัด 388 แล้ว
                   let itemStr = zone.trim();
                   
-                  const tailMatch = itemStr.match(/\s+(\d{1,4})\s*(?:TikTok\s*Shop|หมายเหตุ|PICKUP)?\s*$/i);
+                  const tailMatch = itemStr.match(/\s+(\d{1,4})\s*(?:หมายเหตุ|PICKUP)?\s*$/i);
                   if (tailMatch) {
                       itemQty = parseInt(tailMatch[1], 10);
                   } else {
@@ -289,17 +299,7 @@
                       }
                   }
                   
-                  // --- V48.5: ใช้ข้อความเต็มหน้า (Full Text) เพื่อแก้ปัญหา PDF อ่านสลับบรรทัด ---
-                  // แต่เพิ่มนักฆ่ารหัสคัดแยก (Routing Code Assassin) เพื่อป้องกันเลขประหลาดตีกับ SKU!
-                  let safeText = fullText;
-                  safeText = safeText.replace(/\b[A-Z]\d\s+[A-Z0-9]+-\d+\b/gi, ' '); // A1 W91-38, P2 21-17, etc.
-                  safeText = safeText.replace(/\b[A-Z]\d-\([A-Z0-9.]+\)\b/gi, ' '); // B2-(HOU.1)
-                  safeText = safeText.replace(/\b\d{3}[A-Z]\b/gi, ' '); // 004C, 001D, 003F
-                  safeText = safeText.replace(/\b\d{5}\b/g, ' '); // รหัสไปรษณีย์
-                  safeText = safeText.replace(/\b0\d{8,9}\b/g, ' '); // เบอร์โทร
-                  safeText = safeText.replace(/(?:PICK-UP|COD|DROP-OFF|HOME|ROS|Shopee|TikTok\s*Shop)/gi, ' ');
-                  
-                  parsedItems.push({ text: safeText, qty: itemQty });
+                  parsedItems.push({ text: itemStr, qty: itemQty });
               }
 
               if (parsedItems.length === 1 && platform !== 'TIKTOK') {
@@ -312,7 +312,7 @@
 
               const trackingMatch = fullText.match(/(TH\d{10,}|JT\d{10,}|SPX[A-Z0-9]+|KER[A-Z0-9]+|KA[A-Z0-9]+|66\d{10,}|82\d{10,}|\b\d{12}\b)/i);
               
-              // --- V48.5: ระบบรวมออเดอร์ข้ามหน้าแบบแสดงผลครบ 2 หน้า ---
+              // --- ระบบรวมออเดอร์ข้ามหน้าแบบแสดงผลครบ 2 หน้า ---
               let currentOrderId = null;
               let orderMatch = fullText.match(/(?:Shopee\s*Order\s*No\.?|Order\s*ID)[\s:]*([A-Z0-9]+)/i);
               if (orderMatch) {
@@ -334,7 +334,7 @@
                       allNewOrders.push({ 
                           id: `label-${Date.now()}-${allNewOrders.length}-${i}`, 
                           tracking: trackingMatch ? trackingMatch[0] : existingOrder.tracking, 
-                          parsedItems: [], // <--- ตัวแปรสำคัญ: ว่างไว้จะได้ไม่โชว์ข้อความ
+                          parsedItems: [], // ว่างไว้จะได้ไม่โชว์ข้อความ
                           pdfImage, 
                           platform,
                           orderId: currentOrderId,
