@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V48.2 Ultimate (The Absolute Core)</title>
+  <title>PackMaster V48.3 Ultimate (The Absolute Core)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -139,21 +139,26 @@
       useEffect(() => { localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); }, [skuRules]);
       useEffect(() => { localStorage.setItem('thermalMode', JSON.stringify(thermalMode)); }, [thermalMode]);
 
+      // V48.3: ระบบค้นหาแบบ 2-Pass Scan ป้องกันเลขขยะ
       const getMatchedRule = useCallback((textToSearch) => {
         const clean = (text) => String(text).toLowerCase().replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '').replace(/[\u0E47-\u0E4C]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
         const searchArea = clean(textToSearch);
         if (!searchArea) return null;
         
         const sortedRules = [...skuRules].sort((a, b) => b.keyword.length - a.keyword.length);
+        
+        // รอบที่ 1: หาคำที่ติดกันเป๊ะๆ ก่อน (Exact Match)
         for (const rule of sortedRules) {
             const cleanKw = clean(rule.keyword);
-            if (!cleanKw) continue;
-            
-            if (searchArea.includes(cleanKw)) return rule;
-            
+            if (cleanKw && searchArea.includes(cleanKw)) return rule;
+        }
+        
+        // รอบที่ 2: ถ้าหาเป๊ะๆ ไม่เจอ ค่อยยอมให้หาสลับตำแหน่งคำได้ (Loose Match)
+        for (const rule of sortedRules) {
             const words = rule.keyword.split(/\s+/).filter(w => w.length > 0);
             if (words.length > 1 && words.every(w => searchArea.includes(clean(w)))) return rule;
         }
+        
         return null;
       }, [skuRules]);
 
@@ -283,7 +288,7 @@
                           itemQty = parseInt(nums[nums.length - 1], 10);
                       }
                   }
-                  // ดาวให้ใช้ fullText ไปเลย เพื่อป้องกันคำสำคัญ (เช่น JASMINE) โดนลบทิ้งไปตอน Clean หน้าบิล
+                  // ดาวให้ใช้ fullText ไปเลย เพื่อป้องกันคำสำคัญโดนลบทิ้งไปตอน Clean หน้าบิล
                   parsedItems.push({ text: fullText, qty: itemQty });
               }
 
@@ -362,7 +367,7 @@
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
 
       const MappedOrders = useMemo(() => orders.map(o => {
-        // V48.2: ดักไว้เลยว่าถ้าเป็นหน้าต่อท้าย (หน้า 2 ของ TikTok) ให้คืนค่า array ว่างเปล่าไปเลย
+        // ดักไว้เลยว่าถ้าเป็นหน้าต่อท้าย (หน้า 2 ของ TikTok) ให้คืนค่า array ว่างเปล่าไปเลย
         if (o.parsedItems.length === 0) {
             return { ...o, displayItems: [], originalQty: 0 };
         }
