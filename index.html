@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V40 Ultimate (Flexible Scanner + Firewall)</title>
+  <title>PackMaster V42 Ultimate (The Golden Balance)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -135,7 +135,7 @@
       useEffect(() => { localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); }, [skuRules]);
       useEffect(() => { localStorage.setItem('thermalMode', JSON.stringify(thermalMode)); }, [thermalMode]);
 
-      // V40: คืนชีพการค้นหาแบบยืดหยุ่น! (ไม่ต้องเรียงติดกันเป๊ะๆ ขอแค่อยู่ในชื่อสินค้าก็พอ)
+      // ระบบจับคู่ V36 ที่เสถียรที่สุด (สลับที่ได้ แทรคคำได้)
       const getMatchedRule = useCallback((textToSearch) => {
         const clean = (text) => String(text).toLowerCase().replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '').replace(/[\u0E47-\u0E4C]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
         const searchArea = clean(textToSearch);
@@ -146,10 +146,8 @@
             const cleanKw = clean(rule.keyword);
             if (!cleanKw) continue;
             
-            // หาแบบตรงตัวเป๊ะๆ ก่อน
             if (searchArea.includes(cleanKw)) return rule;
             
-            // หาแบบยืดหยุ่น (คำสลับที่กันได้ มีคำอื่นคั่นได้ ขอแค่เจอครบทุกคำ)
             const words = rule.keyword.split(/\s+/).filter(w => w.length > 0);
             if (words.length > 1 && words.every(w => searchArea.includes(clean(w)))) return rule;
         }
@@ -199,16 +197,17 @@
               let platform = 'SHOPEE';
               if (fullText.match(/Order\s*ID/i) || fullText.match(/In\s*transit/i)) platform = 'TIKTOK';
 
-              // V40 Firewall: ตัดที่อยู่ลูกค้าทิ้งให้หมดเกลี้ยง กันดึงบ้านเลขที่มากวนใจ!
               let zone = fullText;
               
+              // V42: กำแพงกันโง่ ตัดหัวบิล (ที่อยู่) ทิ้งเพื่อบล็อกเลขบ้านเลขที่
               const productHeaderRegex = /(?:ชื่[\s\u200B]*อ[\s\u200B]*สิ[\s\u200B]*น[\s\u200B]*ค้[\s\u200B]*า|P[\s\u200B]*r[\s\u200B]*o[\s\u200B]*d[\s\u200B]*u[\s\u200B]*c[\s\u200B]*t[\s\u200B]*N[\s\u200B]*a[\s\u200B]*m[\s\u200B]*e)/i;
               const startMatch = zone.match(productHeaderRegex);
               if (startMatch) {
                   zone = zone.substring(startMatch.index + startMatch[0].length);
               }
 
-              const endMatchRegex = /(?:S[\s\u200B]*h[\s\u200B]*o[\s\u200B]*p[\s\u200B]*e[\s\u200B]*e[\s\u200B]*O[\s\u200B]*r[\s\u200B]*d[\s\u200B]*e[\s\u200B]*r|O[\s\u200B]*r[\s\u200B]*d[\s\u200B]*e[\s\u200B]*r[\s\u200B]*I[\s\u200B]*D|I[\s\u200B]*n[\s\u200B]*t[\s\u200B]*r[\s\u200B]*a[\s\u200B]*n[\s\u200B]*s[\s\u200B]*i[\s\u200B]*t|หมายเหตุ|PICKUP|SHIP\s*BY|TH\d{10,})/i;
+              // ตัดส่วนท้ายบิล
+              const endMatchRegex = /(?:S[\s\u200B]*h[\s\u200B]*o[\s\u200B]*p[\s\u200B]*e[\s\u200B]*e[\s\u200B]*O[\s\u200B]*r[\s\u200B]*d[\s\u200B]*e[\s\u200B]*r|O[\s\u200B]*r[\s\u200B]*d[\s\u200B]*e[\s\u200B]*r[\s\u200B]*I[\s\u200B]*D|I[\s\u200B]*n[\s\u200B]*t[\s\u200B]*r[\s\u200B]*a[\s\u200B]*n[\s\u200B]*s[\s\u200B]*i[\s\u200B]*t|หมายเหตุ|PICKUP|SHIP\s*BY|TH\d{10,}|Qty\s*Total|Total\s*Qty)/i;
               const endMatch = zone.match(endMatchRegex);
               if (endMatch) {
                   zone = zone.substring(0, endMatch.index);
@@ -250,13 +249,17 @@
                       const qtyMatch = itemStr.match(/\s(\d{1,4})$/);
                       if (qtyMatch) {
                           itemQty = parseInt(qtyMatch[1], 10);
-                          // ลบเลข Qty ออกเฉพาะตอนมันอยู่ "ท้ายสุดของประโยคเป๊ะๆ"
+                          // V42: ลบเลข Qty ทิ้ง เพื่อความปลอดภัย
                           itemStr = itemStr.substring(0, qtyMatch.index).trim();
                       } else {
                           const nums = itemStr.match(/\b(\d{1,4})\b/g); 
                           if (nums && nums.length > 0) {
                               itemQty = parseInt(nums[nums.length - 1], 10);
-                              // V40: ห้ามลบเลขทิ้งจากกลางประโยคเด็ดขาด เพื่อรักษาคำว่า 800 แผ่น ไว้ให้คีย์เวิร์ดบอส!
+                              const lastIdx = itemStr.lastIndexOf(nums[nums.length - 1]);
+                              // ลบทิ้งเฉพาะถ้าห้อยท้ายจริงๆ (ไม่ไปลบ 800)
+                              if (lastIdx > itemStr.length - 6) {
+                                  itemStr = itemStr.substring(0, lastIdx).trim();
+                              }
                           }
                       }
                       parsedItems.push({ text: itemStr, qty: itemQty });
@@ -264,25 +267,28 @@
                   }
               }
 
-              // ถ้าไม่ใช่ Shopee หรือหั่นไม่ลง (เช่น TikTok)
               if (parsedItems.length === 0) {
                   let itemQty = 1;
                   let itemStr = zone.trim();
                   const qtyMatch = itemStr.match(/\s(\d{1,4})$/);
                   if (qtyMatch) {
                       itemQty = parseInt(qtyMatch[1], 10);
-                      // ลบทิ้งเฉพาะที่ห้อยอยู่ท้ายบิล TikTok
+                      // V42: ลบเลข Qty ทิ้ง ป้องกัน TikTok หลงจับคู่เลขจำนวนชิ้น
                       itemStr = itemStr.substring(0, qtyMatch.index).trim();
                   } else {
                       const nums = itemStr.match(/\b(\d{1,4})\b/g);
                       if (nums && nums.length > 0) {
                           itemQty = parseInt(nums[nums.length - 1], 10);
+                          const lastIdx = itemStr.lastIndexOf(nums[nums.length - 1]);
+                          if (lastIdx > itemStr.length - 6) {
+                              itemStr = itemStr.substring(0, lastIdx).trim();
+                          }
                       }
                   }
                   parsedItems.push({ text: itemStr, qty: itemQty });
               }
 
-              // ดึงยอดรวมมาทับให้แม่นยำ 1000%
+              // ดึงยอดรวมมาทับเผื่อความชัวร์ 1000%
               if (parsedItems.length === 1) {
                   const cleanForQty = fullText.replace(/[\s\u200B-\u200D\uFEFF]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').toLowerCase();
                   const explicitMatch = cleanForQty.match(/(?:จ[ำํา]นวนรวม|qtytotal|totalqty|ยอดรวม)[\:]?(\d{1,4})(?![\d])/);
