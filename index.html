@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V44 Ultimate (The Classic Rebirth)</title>
+  <title>PackMaster V45 Ultimate (The Immortal Core)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -135,21 +135,50 @@
       useEffect(() => { localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); }, [skuRules]);
       useEffect(() => { localStorage.setItem('thermalMode', JSON.stringify(thermalMode)); }, [thermalMode]);
 
-      // V44: ระบบค้นหาตัวคลาสสิกที่เป๊ะที่สุด (คืนชีพมาจาก V36)
+      // V45: ระบบเรดาร์ 200 ตัวอักษรแบบสมบูรณ์ + ยืดหยุ่น
       const getMatchedRule = useCallback((textToSearch) => {
         const clean = (text) => String(text).toLowerCase().replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '').replace(/[\u0E47-\u0E4C]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
         const searchArea = clean(textToSearch);
         if (!searchArea) return null;
         
         const sortedRules = [...skuRules].sort((a, b) => b.keyword.length - a.keyword.length);
+
+        // ระบบจับระยะห่างของคำ (ป้องกันบ้านเลขที่ปน)
+        const checkProximity = (text, words, maxDist) => {
+            const positions = words.map(w => {
+                let pos = [];
+                let idx = text.indexOf(w);
+                while(idx !== -1) { pos.push(idx); idx = text.indexOf(w, idx + 1); }
+                return pos;
+            });
+            if (positions.some(pos => pos.length === 0)) return false;
+            
+            const checkCombos = (wordIdx, minPos, maxPos) => {
+                if (wordIdx === positions.length) return (maxPos - minPos) <= maxDist;
+                for (let p of positions[wordIdx]) {
+                    let newMin = Math.min(minPos, p);
+                    let newMax = Math.max(maxPos, p + words[wordIdx].length);
+                    if (checkCombos(wordIdx + 1, newMin, newMax)) return true;
+                }
+                return false;
+            };
+            for (let p of positions[0]) {
+                if (checkCombos(1, p, p + words[0].length)) return true;
+            }
+            return false;
+        };
+
         for (const rule of sortedRules) {
-            const cleanKw = clean(rule.keyword);
-            if (!cleanKw) continue;
+            const words = rule.keyword.split(/\s+/).filter(w => w.length > 0).map(w => clean(w));
+            if (words.length === 0) continue;
             
-            if (searchArea.includes(cleanKw)) return rule;
-            
-            const words = rule.keyword.split(/\s+/).filter(w => w.length > 0);
-            if (words.length > 1 && words.every(w => searchArea.includes(clean(w)))) return rule;
+            if (words.length === 1) {
+                if (searchArea.includes(words[0])) return rule;
+            } else {
+                if (words.every(w => searchArea.includes(w))) {
+                    if (checkProximity(searchArea, words, 200)) return rule;
+                }
+            }
         }
         return null;
       }, [skuRules]);
@@ -199,20 +228,20 @@
 
               let zone = fullText;
               
-              // V44: กำแพงเหล็กสกัดกั้น "ที่อยู่ลูกค้า" แบบเด็ดขาด
-              const tableStartRegex = /(?:ชื่อสินค้า|Product\s*Name|#\s*ชื่อสินค้า)/i;
-              const tableStartMatch = zone.match(tableStartRegex);
-              if (tableStartMatch) {
-                  zone = zone.substring(tableStartMatch.index);
-                  // ข้ามหัวคอลัมน์ไปเพื่อเอาแต่เนื้อสินค้า
-                  const headerEndMatch = zone.match(/(?:ตัวเลือกสินค้า\s*จ[ำํา]+นวน|จ[ำํา]+นวน|Qty\s*|Seller\s*SKU\s*Qty)/i);
+              // V45: สกัดหัวบิลแบบเว้นวรรคได้ + ไม่ดึง Shopee Order No มาทำพังอีกแล้ว!
+              const productHeaderRegex = /(?:ชื่[\s\u200B]*อ[\s\u200B]*สิ[\s\u200B]*น[\s\u200B]*ค้[\s\u200B]*า|P[\s\u200B]*r[\s\u200B]*o[\s\u200B]*d[\s\u200B]*u[\s\u200B]*c[\s\u200B]*t[\s\u200B]*N[\s\u200B]*a[\s\u200B]*m[\s\u200B]*e)/i;
+              const startMatch = zone.match(productHeaderRegex);
+              if (startMatch) {
+                  zone = zone.substring(startMatch.index + startMatch[0].length);
+                  // ตัดข้ามหัวคอลัมน์
+                  const headerEndMatch = zone.match(/(?:ตั[\s\u200B]*ว[\s\u200B]*เ[\s\u200B]*ลื[\s\u200B]*อ[\s\u200B]*ก|จ[\s\u200B]*[ำํา]+[\s\u200B]*น[\s\u200B]*ว[\s\u200B]*น|Q[\s\u200B]*t[\s\u200B]*y)/i);
                   if (headerEndMatch) {
                       zone = zone.substring(headerEndMatch.index + headerEndMatch[0].length);
                   }
               }
 
-              // ตัดส่วนท้ายบิล
-              const endMatchRegex = /(?:Shopee\s*Order|Order\s*ID|In\s*transit|หมายเหตุ|PICKUP|SHIP\s*BY|TH\d{10,}|Qty\s*Total|Total\s*Qty)/i;
+              // V45: ใช้เฉพาะ Total Qty ท้ายบิลในการตัดเท่านั้น เพื่อความปลอดภัย 1000%
+              const endMatchRegex = /(?:Q[\s\u200B]*t[\s\u200B]*y[\s\u200B]*T[\s\u200B]*o[\s\u200B]*t[\s\u200B]*a[\s\u200B]*l|T[\s\u200B]*o[\s\u200B]*t[\s\u200B]*a[\s\u200B]*l[\s\u200B]*Q[\s\u200B]*t[\s\u200B]*y)/i;
               const endMatch = zone.match(endMatchRegex);
               if (endMatch) {
                   zone = zone.substring(0, endMatch.index);
@@ -220,6 +249,17 @@
 
               zone = zone.replace(/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/g, ' '); 
               zone = zone.replace(/\b\d{4,}\b/g, ' '); 
+
+              // ดึงยอดรวมมาเพื่อความแม่นยำ
+              let totalQty = 1;
+              const cleanFull = fullText.replace(/[\s\u200B-\u200D\uFEFF]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').toLowerCase();
+              const explicitMatch = cleanFull.match(/(?:จ[ำํา]นวนรวม|qtytotal|totalqty|ยอดรวม)[\:]?(\d{1,4})(?![\d])/);
+              if (explicitMatch) {
+                  totalQty = parseInt(explicitMatch[1], 10);
+              } else {
+                  const nums = zone.match(/\b(\d{1,4})\b/g);
+                  if (nums && nums.length > 0) totalQty = parseInt(nums[nums.length - 1], 10);
+              }
 
               let parsedItems = [];
 
@@ -236,31 +276,19 @@
                       let nextMatch = remainingText.match(nextPrefixRegex);
                       let itemStr = '';
                       
-                      if (nextMatch) {
-                          // โลจิกกันสับผิด
-                          if (nextMatch.index + nextMatch[0].length >= remainingText.length - 2) {
-                              itemStr = remainingText.substring(currentMatch.index + currentMatch[0].length);
-                              remainingText = '';
-                          } else {
-                              itemStr = remainingText.substring(currentMatch.index + currentMatch[0].length, nextMatch.index);
-                              remainingText = remainingText.substring(nextMatch.index);
-                          }
+                      if (nextMatch && nextMatch.index > currentMatch.index + currentMatch[0].length + 5) {
+                          itemStr = remainingText.substring(currentMatch.index + currentMatch[0].length, nextMatch.index);
+                          remainingText = remainingText.substring(nextMatch.index);
                       } else {
                           itemStr = remainingText.substring(currentMatch.index + currentMatch[0].length);
                           remainingText = '';
                       }
                       
-                      let itemQty = 1;
-                      // V44: ลบเลข Qty ท้ายสุดทิ้งอย่างปลอดภัย 1000%
+                      let itemQty = totalQty;
                       const tailMatch = itemStr.match(/\s+(\d{1,4})\s*$/);
                       if (tailMatch) {
                           itemQty = parseInt(tailMatch[1], 10);
                           itemStr = itemStr.substring(0, tailMatch.index).trim();
-                      } else {
-                          const nums = itemStr.match(/\b(\d{1,4})\b/g); 
-                          if (nums && nums.length > 0) {
-                              itemQty = parseInt(nums[nums.length - 1], 10);
-                          }
                       }
                       parsedItems.push({ text: itemStr, qty: itemQty });
                       currentItemNum++;
@@ -268,30 +296,15 @@
               }
 
               if (parsedItems.length === 0) {
-                  let itemQty = 1;
+                  let itemQty = totalQty;
                   let itemStr = zone.trim();
-                  
-                  // V44: เตะเลข Qty ท้ายบิล TikTok ทิ้ง เพื่อป้องกันการอ่านเป็นชื่อสินค้า
+                  // เตะเลข Qty ท้ายบิลทิ้ง (แก้ปัญหา TikTok อ่าน Excare Adult เป็น ผู้ใหญ่1)
                   const tailMatch = itemStr.match(/\s+(\d{1,4})\s*$/);
                   if (tailMatch) {
                       itemQty = parseInt(tailMatch[1], 10);
                       itemStr = itemStr.substring(0, tailMatch.index).trim();
-                  } else {
-                      const nums = itemStr.match(/\b(\d{1,4})\b/g);
-                      if (nums && nums.length > 0) {
-                          itemQty = parseInt(nums[nums.length - 1], 10);
-                      }
                   }
                   parsedItems.push({ text: itemStr, qty: itemQty });
-              }
-
-              // ยืนยันยอดรวมให้เป๊ะที่สุด
-              if (parsedItems.length === 1) {
-                  const cleanForQty = fullText.replace(/[\s\u200B-\u200D\uFEFF]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').toLowerCase();
-                  const explicitMatch = cleanForQty.match(/(?:จ[ำํา]นวนรวม|qtytotal|totalqty|ยอดรวม)[\:]?(\d{1,4})(?![\d])/);
-                  if (explicitMatch) {
-                      parsedItems[0].qty = parseInt(explicitMatch[1], 10);
-                  }
               }
 
               const trackingMatch = fullText.match(/(TH\d{10,}|JT\d{10,}|SPX[A-Z0-9]+|KER[A-Z0-9]+|KA[A-Z0-9]+|66\d{10,}|82\d{10,}|\b\d{12}\b)/i);
