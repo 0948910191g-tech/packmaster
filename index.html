@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V24 Ultimate (The True Final Fix)</title>
+  <title>PackMaster V27 Ultimate (Zone Master & Thermal Perfect)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -19,6 +19,11 @@
   </script>
   <style>
     @media print { 
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+      }
       @page { size: 100mm 150mm; margin: 0; } 
       body { background: white !important; } 
       .print-area { display: block !important; }
@@ -47,15 +52,17 @@
       );
     };
 
-    const LabelCard = ({ order, isExport = false }) => {
+    const LabelCard = ({ order, isExport = false, thermalMode = true }) => {
       if (!order || !order.pdfImage) return null;
       const fontSize = order.shortName.length > 25 ? '18pt' : order.shortName.length > 15 ? '28pt' : '42pt';
       
+      const filterStyle = thermalMode ? 'grayscale(100%) brightness(80%) contrast(200%)' : 'none';
+
       return (
         <div className={`shrink-0 box-border ${isExport ? '' : 'border-2 border-blue-50 shadow-xl shadow-blue-900/5 rounded-2xl'}`} style={{ width: '100mm', height: '150mm', backgroundColor: '#ffffff', position: 'relative', overflow: 'hidden', pageBreakAfter: 'always', margin: 0, display: 'block' }}>
-          <img src={order.pdfImage} alt="Label Base" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'fill', zIndex: 0 }} crossOrigin="anonymous" />
-          <div style={{ position: 'absolute', zIndex: 10, boxSizing: 'border-box', bottom: '24px', left: '16px', right: '16px', height: '16%', border: '4px dashed #172554', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px', backgroundColor: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(2px)', overflow: 'hidden' }}>
-            <p style={{ fontFamily: '"Noto Sans Thai", sans-serif', fontWeight: 800, color: '#172554', lineHeight: 1.1, margin: 0, textAlign: 'center', wordBreak: 'break-word', width: '100%', letterSpacing: '-0.02em', fontSize: fontSize, textShadow: '3px 3px 0 #fff, -3px -3px 0 #fff, 3px -3px 0 #fff, -3px 3px 0 #fff, 0 3px 0 #fff, 0 -3px 0 #fff, 3px 0 0 #fff, -3px 0 0 #fff, 2px 4px 8px rgba(23, 37, 84, 0.15)' }}>
+          <img src={order.pdfImage} alt="Label Base" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'fill', zIndex: 0, filter: filterStyle }} crossOrigin="anonymous" />
+          <div style={{ position: 'absolute', zIndex: 10, boxSizing: 'border-box', bottom: '24px', left: '16px', right: '16px', height: '18%', border: '4px dashed #172554', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px', backgroundColor: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(2px)', overflow: 'hidden' }}>
+            <p style={{ fontFamily: '"Noto Sans Thai", sans-serif', fontWeight: 800, color: '#172554', lineHeight: 1.2, margin: 0, textAlign: 'center', wordBreak: 'break-word', width: '100%', letterSpacing: '-0.02em', fontSize: fontSize, textShadow: '3px 3px 0 #fff, -3px -3px 0 #fff, 3px -3px 0 #fff, -3px 3px 0 #fff, 0 3px 0 #fff, 0 -3px 0 #fff, 3px 0 0 #fff, -3px 0 0 #fff, 2px 4px 8px rgba(23, 37, 84, 0.15)' }}>
               {order.shortName}
             </p>
           </div>
@@ -80,9 +87,12 @@
       const [testQty, setTestQty] = useState('1');
       const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
-      const showToast = (message, type = 'success') => setToast({ show: true, message, type });
+      const [thermalMode, setThermalMode] = useState(() => {
+        try { const saved = localStorage.getItem('thermalMode'); if (saved !== null) return JSON.parse(saved); } catch (e) {} return true;
+      });
 
       useEffect(() => { localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); }, [skuRules]);
+      useEffect(() => { localStorage.setItem('thermalMode', JSON.stringify(thermalMode)); }, [thermalMode]);
 
       const getMatchedRule = useCallback((textToSearch) => {
         const clean = (text) => String(text).toLowerCase().replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '').replace(/[\u0E47-\u0E4C]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
@@ -143,7 +153,6 @@
               let platform = 'SHOPEE';
               if (fullText.match(/Order\s*ID/i) || fullText.match(/In\s*transit/i)) platform = 'TIKTOK';
 
-              // นิยาม productText กลับมาให้ระบบ (ที่ดาวเผลอลบทิ้งไปในแพทช์ที่แล้ว!)
               let productText = fullText;
               const pIndex = fullText.search(/(ชื่อสินค้า|Product\s*Name|#\s*ชื่อสินค้า|Item|ตัวเลือก)/i);
               if (pIndex !== -1) {
@@ -152,32 +161,43 @@
                   if (bottomMatch && bottomMatch.index > 20) productText = productText.substring(0, bottomMatch.index);
               }
 
-              // --- ระบบดูดยอด V24 (เอาวันที่และรหัสไปรษณีย์ออกให้เกลี้ยงก่อนหาเลข) ---
-              let safeText = fullText.replace(/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/g, ' '); // ลบวันที่
-              safeText = safeText.replace(/\b\d{4,}\b/g, ' '); // ลบเลข 4 หลักขึ้นไป
-              
+              // --- ระบบดูดยอด V27: ปฏิบัติการ Zone Isolation (ตีคอกจับโจร) ---
               let extractedQty = '1';
               
-              // ลองหายอดรวมแบบตรงๆ ก่อน
-              const explicitMatch = safeText.match(/(?:จ[ำํา]+นวนรวม|Qty\s*Total|Total\s*Qty)[^\d]*(\d{1,3})\b/i);
+              // 1. ลองหายอดรวม (จำนวนรวม) แบบตรงๆ ก่อน
+              const explicitMatch = fullText.match(/(?:จ[ำํา]+นวนรวม|Qty\s*Total|Total\s*Qty)[^\d]*(\d{1,3})\b/i);
               
               if (explicitMatch) {
                   extractedQty = explicitMatch[1];
               } else {
-                  let pt = safeText;
-                  const pIdx = pt.search(/(ชื่อสินค้า|Product\s*Name|#\s*ชื่อสินค้า)/i);
-                  if (pIdx !== -1) pt = pt.substring(pIdx);
+                  // 2. ถ้าโดนซ่อนยอดรวม ให้เข้าสู่ปฏิบัติการ Zone Isolation
+                  let zone = fullText;
+                  
+                  // หาจุดสตาร์ท: ตัดข้อความตั้งแต่เริ่มจนถึงคำว่า "จำนวน" ทิ้งไป
+                  const startMatch = zone.match(/(?:ตัวเลือกสินค้า\s*จ[ำํา]+นวน|จ[ำํา]+นวน|Qty)/i);
+                  if (startMatch) {
+                      zone = zone.substring(startMatch.index + startMatch[0].length);
+                  } else if (pIndex !== -1) {
+                      zone = fullText.substring(pIndex);
+                  }
 
-                  const bIdx = pt.search(/(Shopee\s*Order|Order\s*ID|In\s*transit|หมายเหตุ|PICKUP\s*DATE|SHIP\s*BY)/i);
-                  if (bIdx > 20) pt = pt.substring(0, bIdx);
+                  // หาจุดสต็อป: ตัดข้อความตั้งแต่ "Shopee Order No" ไปจนจบบิล ทิ้งไป
+                  const endMatch = zone.match(/(Shopee\s*Order|Order\s*ID|In\s*transit|หมายเหตุ|PICKUP|SHIP\s*BY|TH\d{10,})/i);
+                  if (endMatch) {
+                      zone = zone.substring(0, endMatch.index);
+                  }
 
-                  pt = pt.replace(/(จ[ำํา]+นวน|Qty)/gi, ' ');
-                  const nums = pt.match(/\b(\d{1,3})\b/g);
+                  // คลีนโซน: ลบวันที่ และตัวเลข 4 หลักขึ้นไป (เช่น ปี ค.ศ., รหัสไปรษณีย์)
+                  zone = zone.replace(/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/g, ' '); 
+                  zone = zone.replace(/\b\d{4,}\b/g, ' '); 
+
+                  // คว้าเลขตัวสุดท้ายในโซน (ที่รอดชีวิตมาได้ ซึ่งก็คือจำนวน Qty ของแท้)
+                  const nums = zone.match(/\b(\d{1,3})\b/g);
                   if (nums && nums.length > 0) {
                       extractedQty = nums[nums.length - 1];
                   }
               }
-              // -----------------------------------------------------
+              // -----------------------------------------------------------------
 
               const trackingMatch = fullText.match(/(TH\d{10,}|JT\d{10,}|SPX[A-Z0-9]+|KER[A-Z0-9]+|KA[A-Z0-9]+|66\d{10,}|82\d{10,}|\b\d{12}\b)/i);
               
@@ -431,6 +451,17 @@
                   <div className="flex flex-col xl:flex-row justify-between items-center mb-12 gap-8">
                     <div className="text-center xl:text-left"><h2 className="text-4xl font-black text-blue-950 mb-2 tracking-tight">รีวิวและพิมพ์</h2><p className="text-blue-950/60 text-base font-semibold">ตรวจสอบความถูกต้อง {orders.length} รายการ (อัลบั้มสะสม)</p></div>
                     <div className="flex flex-wrap justify-center items-center gap-4">
+                       
+                       <div onClick={() => setThermalMode(!thermalMode)} className="cursor-pointer bg-white border-2 border-blue-50 hover:border-blue-100 p-1.5 rounded-2xl flex items-center gap-3 shadow-sm transition-all mr-2 select-none active:scale-95">
+                           <div className={`p-2 rounded-xl transition-colors ${thermalMode ? 'bg-blue-100/50' : 'bg-gray-50'}`}>
+                               <span className="text-lg">{thermalMode ? '🖨️' : '🎨'}</span>
+                           </div>
+                           <div className="flex flex-col pr-3">
+                               <span className="text-[11px] font-black text-blue-950 uppercase tracking-tight leading-none mb-1">โหมดเครื่องปริ้น</span>
+                               <span className={`text-[10px] font-bold leading-none ${thermalMode ? 'text-green-600' : 'text-blue-950/40'}`}>{thermalMode ? 'ON (แก้โลโก้หาย)' : 'OFF (สีต้นฉบับ)'}</span>
+                           </div>
+                       </div>
+
                        <div className="bg-white border-2 border-blue-50 p-1.5 rounded-2xl flex gap-1 mr-2 shadow-sm">
                          <button onClick={() => setPreviewMode('table')} className={`px-6 py-2.5 rounded-[12px] font-bold text-sm transition-all ${previewMode === 'table' ? 'bg-blue-50 text-blue-900 shadow-sm border border-blue-100' : 'text-blue-950/50 hover:text-blue-900 border border-transparent'}`}>ตารางสรุป</button>
                          <button onClick={() => setPreviewMode('labels')} className={`px-6 py-2.5 rounded-[12px] font-bold text-sm transition-all ${previewMode === 'labels' ? 'bg-blue-50 text-blue-900 shadow-sm border border-blue-100' : 'text-blue-950/50 hover:text-blue-900 border border-transparent'}`}>ใบปะหน้า</button>
@@ -454,7 +485,7 @@
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-10 justify-items-center pb-20 no-print">
-                      {MappedOrders.map((order) => (<div key={`prev-${order.id}`} className="transform hover:scale-[1.01] transition-transform duration-200"><LabelCard order={order} /></div>))}
+                      {MappedOrders.map((order) => (<div key={`prev-${order.id}`} className="transform hover:scale-[1.01] transition-transform duration-200"><LabelCard order={order} thermalMode={thermalMode} /></div>))}
                     </div>
                   )}
                 </div>
@@ -465,12 +496,12 @@
           <div className="fixed pointer-events-none" style={{ top: 0, left: '-9999px', width: '100mm', zIndex: -100 }}>
             {MappedOrders.map((order) => (
               <div key={`render-arena-${order.id}`} id={`render-target-${order.id}`} style={{ position: 'relative', width: '100mm', height: '150mm', backgroundColor: 'white' }}>
-                <LabelCard order={order} isExport={true} />
+                <LabelCard order={order} thermalMode={thermalMode} isExport={true} />
               </div>
             ))}
           </div>
           <div className="hidden print-area w-full text-black">
-            {MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`} order={order} isExport={true} />))}
+            {MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`} order={order} thermalMode={thermalMode} isExport={true} />))}
           </div>
         </div>
       );
