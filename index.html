@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V31 Ultimate (Single Target Lock)</title>
+  <title>PackMaster V33 Ultimate (Multi-SKU Perfect Stack)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -57,12 +57,10 @@
 
       useEffect(() => {
         if (!order || !order.pdfImage) return;
-        
         if (!thermalMode) {
           setDisplayImg(order.pdfImage);
           return;
         }
-
         const img = new Image();
         img.crossOrigin = "anonymous";
         img.onload = () => {
@@ -70,25 +68,41 @@
           cvs.width = img.width;
           cvs.height = img.height;
           const ctx = cvs.getContext('2d');
-          
           ctx.filter = 'grayscale(100%) brightness(80%) contrast(200%)';
           ctx.drawImage(img, 0, 0);
-          
           setDisplayImg(cvs.toDataURL('image/jpeg', 0.9));
         };
         img.src = order.pdfImage;
       }, [order.pdfImage, thermalMode]);
 
       if (!order || !order.pdfImage) return null;
-      const fontSize = order.shortName.length > 25 ? '18pt' : order.shortName.length > 15 ? '28pt' : '42pt';
+      
+      // ระบบย่อขนาดฟอนต์อัตโนมัติเมื่อมีหลายบรรทัด กันตกขอบ 1,000%
+      const itemCount = order.displayItems.length;
+      let maxLen = Math.max(...order.displayItems.map(t => t.length), 0);
+      
+      let fontSize = '42pt';
+      let lineHeight = 1.2;
+      
+      if (itemCount === 1) {
+          fontSize = maxLen > 25 ? '20pt' : maxLen > 15 ? '30pt' : '44pt';
+      } else if (itemCount === 2) {
+          fontSize = maxLen > 20 ? '16pt' : '22pt';
+          lineHeight = 1.1;
+      } else {
+          fontSize = '13pt'; // เล็กสุดกรณีสั่งเกิน 3 อย่าง
+          lineHeight = 1.0;
+      }
 
       return (
         <div className={`shrink-0 box-border ${isExport ? '' : 'border-2 border-blue-50 shadow-xl shadow-blue-900/5 rounded-2xl'}`} style={{ width: '100mm', height: '150mm', backgroundColor: '#ffffff', position: 'relative', overflow: 'hidden', pageBreakAfter: 'always', margin: 0, display: 'block' }}>
           <img src={displayImg} alt="Label Base" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'fill', zIndex: 0 }} />
-          <div style={{ position: 'absolute', zIndex: 10, boxSizing: 'border-box', bottom: '24px', left: '16px', right: '16px', height: '18%', border: '4px dashed #172554', borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px', backgroundColor: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(2px)', overflow: 'hidden' }}>
-            <p style={{ fontFamily: '"Noto Sans Thai", sans-serif', fontWeight: 800, color: '#172554', lineHeight: 1.2, margin: 0, textAlign: 'center', wordBreak: 'break-word', width: '100%', letterSpacing: '-0.02em', fontSize: fontSize, textShadow: '3px 3px 0 #fff, -3px -3px 0 #fff, 3px -3px 0 #fff, -3px 3px 0 #fff, 0 3px 0 #fff, 0 -3px 0 #fff, 3px 0 0 #fff, -3px 0 0 #fff, 2px 4px 8px rgba(23, 37, 84, 0.15)' }}>
-              {order.shortName}
-            </p>
+          <div style={{ position: 'absolute', zIndex: 10, boxSizing: 'border-box', bottom: '24px', left: '16px', right: '16px', height: '18%', border: '4px dashed #172554', borderRadius: '14px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '8px', backgroundColor: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(2px)', overflow: 'hidden' }}>
+            {order.displayItems.map((text, idx) => (
+              <p key={idx} style={{ fontFamily: '"Noto Sans Thai", sans-serif', fontWeight: 800, color: '#172554', lineHeight: lineHeight, margin: 0, textAlign: 'center', wordBreak: 'break-word', width: '100%', letterSpacing: '-0.02em', fontSize: fontSize, textShadow: '3px 3px 0 #fff, -3px -3px 0 #fff, 3px -3px 0 #fff, -3px 3px 0 #fff, 0 3px 0 #fff, 0 -3px 0 #fff, 3px 0 0 #fff, -3px 0 0 #fff, 2px 4px 8px rgba(23, 37, 84, 0.15)' }}>
+                {text}
+              </p>
+            ))}
           </div>
         </div>
       );
@@ -118,7 +132,7 @@
       useEffect(() => { localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); }, [skuRules]);
       useEffect(() => { localStorage.setItem('thermalMode', JSON.stringify(thermalMode)); }, [thermalMode]);
 
-      // V31: เปลี่ยนกลับมาล็อกเป้าหมายเดี่ยว (กฎที่ยาวที่สุด) เพื่อแก้ปัญหาเด้งคละสินค้ามั่ว
+      // ฟังก์ชันควานหากฎเป้าหมาย
       const getMatchedRule = useCallback((textToSearch) => {
         const clean = (text) => String(text).toLowerCase().replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '').replace(/[\u0E47-\u0E4C]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
         const searchArea = clean(textToSearch);
@@ -178,33 +192,78 @@
               let platform = 'SHOPEE';
               if (fullText.match(/Order\s*ID/i) || fullText.match(/In\s*transit/i)) platform = 'TIKTOK';
 
-              let productText = fullText;
-              const pIndex = fullText.search(/(ชื่อสินค้า|Product\s*Name|#\s*ชื่อสินค้า|Item|ตัวเลือก)/i);
-              if (pIndex !== -1) {
-                  productText = fullText.substring(pIndex);
-                  const bottomMatch = productText.match(/(Qty\s*Total|Total\s*Qty|Shopee\s*Order|Order\s*ID|TH[A-Z0-9]{9,}|JT\d{9,})/i);
-                  if (bottomMatch && bottomMatch.index > 20) productText = productText.substring(0, bottomMatch.index);
+              // V33: ตัดแยกพื้นที่โซนสินค้าให้สะอาดที่สุด
+              let zone = fullText;
+              const startMatch = zone.match(/(?:ตัวเลือกสินค้า\s*จ[ำํา]+นวน|จ[ำํา]+นวน|Qty\s*|Seller\s*SKU\s*Qty)/i);
+              if (startMatch) {
+                  zone = zone.substring(startMatch.index + startMatch[0].length);
+              } else {
+                  const pIndex = fullText.search(/(ชื่อสินค้า|Product\s*Name|#\s*ชื่อสินค้า)/i);
+                  if (pIndex !== -1) zone = fullText.substring(pIndex);
               }
 
-              // ระบบดึงยอด QTY แบบสุญญากาศ (V30 คงไว้เพราะบวกเลขเป๊ะแล้ว)
-              let extractedQty = '1';
-              const cleanForQty = fullText.replace(/[\s\u200B-\u200D\uFEFF]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').toLowerCase();
-              const explicitMatch = cleanForQty.match(/(?:จ[ำํา]นวนรวม|qtytotal|totalqty|ยอดรวม)[\:]?(\d{1,4})(?![\d])/);
-              
-              if (explicitMatch) {
-                  extractedQty = explicitMatch[1];
-              } else {
-                  let safeText = fullText.replace(/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/g, ' '); 
-                  safeText = safeText.replace(/\b\d{4,}\b/g, ' '); 
-                  const nums = safeText.match(/\b(\d{1,3})\b/g);
-                  if (nums && nums.length > 0) {
-                      extractedQty = nums[nums.length - 1];
+              const endMatch = zone.match(/(Shopee\s*Order|Order\s*ID|In\s*transit|หมายเหตุ|PICKUP|SHIP\s*BY|TH\d{10,}|Qty\s*Total|Total\s*Qty)/i);
+              if (endMatch) {
+                  zone = zone.substring(0, endMatch.index);
+              }
+
+              // ล้างขยะ: วันที่ และรหัสยาวๆ
+              zone = zone.replace(/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/g, ' '); 
+              zone = zone.replace(/\b\d{4,}\b/g, ' '); 
+              zone = zone.replace(/(จ[ำํา]+นวน|Qty)/gi, ' ');
+
+              let parsedItems = [];
+
+              // V33: ระบบหั่นแยกรถเข็นสินค้าของ Shopee ตามข้อ 1, 2, 3...
+              if (platform === 'SHOPEE') {
+                  let remainingText = zone;
+                  let currentItemNum = 1;
+                  while (remainingText.length > 0 && currentItemNum < 20) {
+                      let currentPrefixRegex = new RegExp(`(?:^|\\s)${currentItemNum}\\s+`);
+                      let nextPrefixRegex = new RegExp(`(?:^|\\s)${currentItemNum + 1}\\s+`);
+                      
+                      let currentMatch = remainingText.match(currentPrefixRegex);
+                      if (!currentMatch) break; // หาข้อต่อไปไม่เจอแล้ว
+                      
+                      let nextMatch = remainingText.match(nextPrefixRegex);
+                      let itemStr = '';
+                      if (nextMatch) {
+                          itemStr = remainingText.substring(currentMatch.index + currentMatch[0].length, nextMatch.index);
+                          remainingText = remainingText.substring(nextMatch.index);
+                      } else {
+                          itemStr = remainingText.substring(currentMatch.index + currentMatch[0].length);
+                          remainingText = '';
+                      }
+                      
+                      let itemQty = 1;
+                      const nums = itemStr.match(/\b(\d{1,3})\b/g); // ดึงเลขตัวสุดท้ายของข้อนั้นมาเป็นจำนวน
+                      if (nums && nums.length > 0) {
+                          itemQty = parseInt(nums[nums.length - 1], 10);
+                      }
+                      parsedItems.push({ text: itemStr, qty: itemQty });
+                      currentItemNum++;
                   }
+              }
+
+              // ถ้าไม่ได้มาจาก Shopee หรือหั่นไม่สำเร็จ ให้ใช้สูตรเหมาเข่ง
+              if (parsedItems.length === 0) {
+                  let itemQty = 1;
+                  const cleanForQty = fullText.replace(/[\s\u200B-\u200D\uFEFF]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').toLowerCase();
+                  const explicitMatch = cleanForQty.match(/(?:จ[ำํา]นวนรวม|qtytotal|totalqty|ยอดรวม)[\:]?(\d{1,3})(?![\d])/);
+                  if (explicitMatch) {
+                      itemQty = parseInt(explicitMatch[1], 10);
+                  } else {
+                      const nums = zone.match(/\b(\d{1,3})\b/g);
+                      if (nums && nums.length > 0) {
+                          itemQty = parseInt(nums[nums.length - 1], 10);
+                      }
+                  }
+                  parsedItems.push({ text: zone, qty: itemQty });
               }
 
               const trackingMatch = fullText.match(/(TH\d{10,}|JT\d{10,}|SPX[A-Z0-9]+|KER[A-Z0-9]+|KA[A-Z0-9]+|66\d{10,}|82\d{10,}|\b\d{12}\b)/i);
               
-              allNewOrders.push({ id: `label-${Date.now()}-${allNewOrders.length}-${i}`, tracking: trackingMatch ? trackingMatch[0] : `PAGE-${i}`, productText, quantity: extractedQty, pdfImage, platform });
+              allNewOrders.push({ id: `label-${Date.now()}-${allNewOrders.length}-${i}`, tracking: trackingMatch ? trackingMatch[0] : `PAGE-${i}`, parsedItems: parsedItems, pdfImage, platform });
             }
           }
           
@@ -227,36 +286,50 @@
         e.target.value = null; 
       };
 
+      // V33: ระบบคำนวณและยุบรวม SKU อัตโนมัติ (Auto-Merge & Smart Stack)
       const MappedOrders = useMemo(() => orders.map(o => {
-        const rule = getMatchedRule(o.productText);
-        const totalQty = parseInt(o.quantity, 10) || 1;
-        
-        let isMixedOrder = false;
-        // ล็อกเป้าเช็คคละสินค้า เฉพาะบิลที่มีเลขรายการ 1. ... และ 2. ... อยู่ในใบเดียวกันจริงๆ
-        if (o.platform === 'SHOPEE' && /\b1\s+.*?\b2\s+/is.test(o.productText)) {
-            isMixedOrder = true;
-        }
+        let skuMap = new Map(); // กระดานทดเลขสำหรับรวมของซ้ำ
+        let hasUnmatched = false;
 
-        let finalName = '';
-        if (!rule) {
-            finalName = 'ยังไม่ตั้งชื่อ (เพิ่มกฎ SKU)';
-        } else if (isMixedOrder) {
-            finalName = `⚠️ คละสินค้า (${totalQty}ชิ้น)`; 
-        } else {
-            const baseName = rule.shortName.trim().replace(/\u00A0/g, ' ');
-            if (totalQty > 1) {
+        // วนลูปทีละสินค้าที่หั่นมาได้
+        o.parsedItems.forEach(item => {
+            const rule = getMatchedRule(item.text);
+            if (rule) {
+                const baseName = rule.shortName.trim().replace(/\u00A0/g, ' ');
+                const currentQty = skuMap.get(baseName) || 0;
+                skuMap.set(baseName, currentQty + item.qty); // ถ้าชื่อซ้ำให้บวกเลขเพิ่มไปเลย
+            } else {
+                hasUnmatched = true;
+            }
+        });
+
+        let finalDisplayItems = [];
+        
+        // แปลงข้อมูลจากกระดานทด ให้ออกมาเป็นข้อความพร้อมคูณเลข
+        skuMap.forEach((qty, baseName) => {
+            let displayName = baseName;
+            if (qty > 1) {
                 const match = baseName.match(/(.*?)(\d+)([^\d]*)$/);
                 if (match) {
-                    finalName = `${match[1]}${parseInt(match[2], 10) * totalQty}${match[3]}`;
+                    displayName = `${match[1]}${parseInt(match[2], 10) * qty}${match[3]}`;
                 } else {
-                    finalName = `${baseName} x${totalQty}`;
+                    displayName = `${baseName} x${qty}`;
                 }
-            } else {
-                finalName = baseName;
             }
+            finalDisplayItems.push(displayName);
+        });
+
+        // จัดการกรณีไม่เจอชื่อ
+        if (finalDisplayItems.length === 0) {
+            finalDisplayItems.push('ยังไม่ตั้งชื่อ (เพิ่มกฎ SKU)');
+        } else if (hasUnmatched) {
+            finalDisplayItems.push('+ ยังไม่ตั้งชื่อ');
         }
-        
-        return { ...o, shortName: finalName, originalQty: o.quantity };
+
+        // ยอดรวมทั้งหมดของบิลใบนี้ (ไว้โชว์ในตาราง)
+        const totalQty = o.parsedItems.reduce((sum, item) => sum + item.qty, 0);
+
+        return { ...o, displayItems: finalDisplayItems, originalQty: totalQty };
       }), [orders, getMatchedRule]);
 
       const handleExportPDF = async () => {
@@ -487,7 +560,23 @@
                     <div className="bg-white rounded-[2.5rem] shadow-xl shadow-blue-900/5 overflow-hidden no-print border-2 border-blue-50">
                       <table className="w-full text-left">
                         <thead><tr className="bg-blue-50/50 text-blue-950/50 uppercase tracking-widest text-[10px] font-black border-b-2 border-blue-50"><th className="px-10 py-6">Tracking</th><th className="px-10 py-6 text-center">Qty</th><th className="px-10 py-6">Output Label</th></tr></thead>
-                        <tbody className="divide-y-2 divide-blue-50/50">{MappedOrders.map((order) => (<tr key={order.id} className="hover:bg-blue-50/30 transition-colors"><td className="px-10 py-6 font-mono text-[15px] font-bold text-blue-950/60">{order.tracking}</td><td className="px-10 py-6 text-center font-black text-2xl text-blue-950/40">x{order.originalQty}</td><td className="px-10 py-6"><span className={`font-black text-2xl px-5 py-2 rounded-xl inline-block ${order.shortName.includes('ยังไม่ตั้งชื่อ') ? 'text-red-500 bg-red-50' : order.shortName.includes('คละสินค้า') ? 'text-yellow-600 bg-yellow-50' : 'text-blue-900 bg-blue-100/50'}`}>{order.shortName}</span></td></tr>))}</tbody>
+                        <tbody className="divide-y-2 divide-blue-50/50">
+                          {MappedOrders.map((order) => (
+                            <tr key={order.id} className="hover:bg-blue-50/30 transition-colors">
+                              <td className="px-10 py-6 font-mono text-[15px] font-bold text-blue-950/60">{order.tracking}</td>
+                              <td className="px-10 py-6 text-center font-black text-2xl text-blue-950/40">x{order.originalQty}</td>
+                              <td className="px-10 py-6">
+                                <div className="flex flex-col gap-2 items-start">
+                                  {order.displayItems.map((text, idx) => (
+                                    <span key={idx} className={`font-black text-xl px-4 py-1.5 rounded-xl inline-block ${text.includes('ยังไม่ตั้งชื่อ') ? 'text-red-500 bg-red-50' : 'text-blue-900 bg-blue-100/50'}`}>
+                                      {text}
+                                    </span>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
                       </table>
                     </div>
                   ) : (
