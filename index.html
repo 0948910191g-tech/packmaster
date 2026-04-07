@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V37 Ultimate (The True Smart Scanner)</title>
+  <title>PackMaster V38 Ultimate (Focus Matcher)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -135,7 +135,7 @@
       useEffect(() => { localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); }, [skuRules]);
       useEffect(() => { localStorage.setItem('thermalMode', JSON.stringify(thermalMode)); }, [thermalMode]);
 
-      // V37: กลับมาใช้ระบบ "กฎเดียวที่แม่นที่สุด" ป้องกันคีย์เวิร์ดตีกันในสินค้าชิ้นเดียว
+      // V38: ระบบ Focus Matcher ป้องกันการกวาดสายตาไปจับคู่กับบ้านเลขที่ หรือรหัสไปรษณีย์มั่วๆ
       const getMatchedRule = useCallback((textToSearch) => {
         const clean = (text) => String(text).toLowerCase().replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '').replace(/[\u0E47-\u0E4C]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
         const searchArea = clean(textToSearch);
@@ -145,13 +145,22 @@
         for (const rule of sortedRules) {
             const cleanKw = clean(rule.keyword);
             if (!cleanKw) continue;
+            
+            // ตรวจจับแบบตรงตัว
             if (searchArea.includes(cleanKw)) return rule;
+            
             const words = rule.keyword.split(/\s+/).filter(w => w.length > 0);
-            if (words.length > 1 && words.every(w => searchArea.includes(clean(w)))) return rule;
+            if (words.length > 1) {
+                // V38 ไม้ตาย: บังคับว่าคำทั้งหมดต้องอยู่ห่างกันไม่เกิน 150 ตัวอักษร เพื่อบล็อกการดึงเลขจากที่อยู่ลูกค้า!
+                const regexStr = words.map(w => clean(w).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.{0,150}');
+                const regex = new RegExp(regexStr);
+                if (regex.test(searchArea)) return rule;
+            }
         }
         return null;
       }, [skuRules]);
 
+      // V38: ระบบหั่น + จำนวน ยังเป็นของดีจาก V36 ไม่แตะต้องเด็ดขาด!
       const handleFileUpload = async (e) => {
         const files = Array.from(e.target.files);
         if (files.length === 0) return;
@@ -215,7 +224,6 @@
 
               let parsedItems = [];
 
-              // ระบบหั่น Shopee ขั้นเทพที่แก้บั๊ก 8000 ไว้
               if (platform === 'SHOPEE') {
                   let remainingText = zone.trim();
                   let currentItemNum = 1;
@@ -258,7 +266,6 @@
                   }
               }
 
-              // ถ้าหั่นไม่สำเร็จ หรือเป็นบิล TikTok
               if (parsedItems.length === 0) {
                   let itemQty = 1;
                   const nums = zone.match(/\b(\d{1,3})\b/g);
@@ -268,7 +275,6 @@
                   parsedItems.push({ text: zone, qty: itemQty });
               }
 
-              // คอนเฟิร์มยอดรวม
               if (parsedItems.length === 1) {
                   const cleanForQty = fullText.replace(/[\s\u200B-\u200D\uFEFF]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').toLowerCase();
                   const explicitMatch = cleanForQty.match(/(?:จ[ำํา]นวนรวม|qtytotal|totalqty|ยอดรวม)[\:]?(\d{1,3})(?![\d])/);
@@ -302,18 +308,16 @@
         e.target.value = null; 
       };
 
-      // V37: รวม SKU (Auto-Merge) และจัดบรรทัด (Smart Stack)
       const MappedOrders = useMemo(() => orders.map(o => {
         let skuMap = new Map(); 
         let hasUnmatched = false;
 
-        // วนลูปหาสินค้าแต่ละชิ้นที่หั่นมาได้
         o.parsedItems.forEach(item => {
-            const rule = getMatchedRule(item.text); // ดึงกฎข้อเดียวที่แม่นที่สุด
+            const rule = getMatchedRule(item.text); 
             if (rule) {
                 const baseName = rule.shortName.trim().replace(/\u00A0/g, ' ');
                 const currentQty = skuMap.get(baseName) || 0;
-                skuMap.set(baseName, currentQty + item.qty); // ซ้ำให้บวกเลข
+                skuMap.set(baseName, currentQty + item.qty); 
             } else {
                 hasUnmatched = true;
             }
@@ -331,7 +335,7 @@
                     displayName = `${baseName} x${qty}`;
                 }
             }
-            finalDisplayItems.push(`• ${displayName}`); // ใส่จุดไข่ปลารอไว้ก่อน
+            finalDisplayItems.push(`• ${displayName}`); 
         });
 
         if (finalDisplayItems.length === 0) {
@@ -340,7 +344,6 @@
             finalDisplayItems.push('• ยังไม่ตั้งชื่อ');
         }
 
-        // V37: ถ้ามีแค่ 1 บรรทัด ให้ลบจุดไข่ปลาทิ้งเพื่อความสวยงาม
         if (finalDisplayItems.length === 1 && finalDisplayItems[0].startsWith('• ')) {
             finalDisplayItems[0] = finalDisplayItems[0].substring(2);
         }
