@@ -3,11 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V23 Ultimate (Stable Core & Perfect Radar)</title>
+  <title>PackMaster V24 Ultimate (The True Final Fix)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-  
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -32,7 +31,6 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    // ตั้งค่า Worker ของ PDF.js ทันที ป้องกันการโหลดพลาด
     if (window.pdfjsLib) {
         window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     }
@@ -145,7 +143,16 @@
               let platform = 'SHOPEE';
               if (fullText.match(/Order\s*ID/i) || fullText.match(/In\s*transit/i)) platform = 'TIKTOK';
 
-              // --- ระบบดูดยอด V23 (เอาวันที่และรหัสไปรษณีย์ออกให้เกลี้ยงก่อนหาเลข) ---
+              // นิยาม productText กลับมาให้ระบบ (ที่ดาวเผลอลบทิ้งไปในแพทช์ที่แล้ว!)
+              let productText = fullText;
+              const pIndex = fullText.search(/(ชื่อสินค้า|Product\s*Name|#\s*ชื่อสินค้า|Item|ตัวเลือก)/i);
+              if (pIndex !== -1) {
+                  productText = fullText.substring(pIndex);
+                  const bottomMatch = productText.match(/(Qty\s*Total|Total\s*Qty|Shopee\s*Order|Order\s*ID|TH[A-Z0-9]{9,}|JT\d{9,})/i);
+                  if (bottomMatch && bottomMatch.index > 20) productText = productText.substring(0, bottomMatch.index);
+              }
+
+              // --- ระบบดูดยอด V24 (เอาวันที่และรหัสไปรษณีย์ออกให้เกลี้ยงก่อนหาเลข) ---
               let safeText = fullText.replace(/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/g, ' '); // ลบวันที่
               safeText = safeText.replace(/\b\d{4,}\b/g, ' '); // ลบเลข 4 หลักขึ้นไป
               
@@ -157,18 +164,13 @@
               if (explicitMatch) {
                   extractedQty = explicitMatch[1];
               } else {
-                  // ถ้าไม่เจอยอดรวม ให้ใช้ลอจิกมองคอลัมน์ขวาสุดของคุณเกม
                   let pt = safeText;
-                  
-                  // สกัดเอาเฉพาะโซนสินค้า
                   const pIdx = pt.search(/(ชื่อสินค้า|Product\s*Name|#\s*ชื่อสินค้า)/i);
                   if (pIdx !== -1) pt = pt.substring(pIdx);
 
-                  // ตัดส่วนท้ายของบิลทิ้ง เพื่อความชัวร์
                   const bIdx = pt.search(/(Shopee\s*Order|Order\s*ID|In\s*transit|หมายเหตุ|PICKUP\s*DATE|SHIP\s*BY)/i);
                   if (bIdx > 20) pt = pt.substring(0, bIdx);
 
-                  // ลบคำหัวตารางทิ้ง แล้วคว้าเลขตัวสุดท้ายที่เหลืออยู่!
                   pt = pt.replace(/(จ[ำํา]+นวน|Qty)/gi, ' ');
                   const nums = pt.match(/\b(\d{1,3})\b/g);
                   if (nums && nums.length > 0) {
