@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V48.11 Ultimate (The Perfect Gatekeeper)</title>
+  <title>PackMaster V48.12 Ultimate (The Print Perfect)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -28,6 +28,19 @@
       body { background: white !important; } 
       .print-area { display: block !important; }
       .no-print { display: none !important; }
+      
+      /* V48.12: บังคับให้กล่องข้อความทึบแสงและลบเอฟเฟกต์เบลอทิ้งตอนพิมพ์ ป้องกัน Chrome ลบกล่องทิ้ง */
+      .label-overlay {
+        background-color: #ffffff !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        border: 4px dashed #172554 !important;
+      }
+      /* ปิดเงาตัวหนังสือตอนพิมพ์ เพราะกล่องเป็นสีขาวทึบแล้ว จะได้อ่านง่ายขึ้น */
+      .label-overlay-text {
+        text-shadow: none !important;
+        color: #172554 !important;
+      }
     }
     body { font-family: 'Noto Sans Thai', sans-serif; }
   </style>
@@ -98,13 +111,13 @@
       }
 
       return (
-        <div className={`shrink-0 box-border ${isExport ? '' : 'border-2 border-blue-50 shadow-xl shadow-blue-900/5 rounded-2xl'}`} style={{ width: '100mm', height: '150mm', backgroundColor: '#ffffff', position: 'relative', overflow: 'hidden', pageBreakAfter: 'always', margin: 0, display: 'block' }}>
+        <div className={`shrink-0 box-border ${isExport ? '' : 'border-2 border-blue-50 shadow-xl shadow-blue-900/5 rounded-2xl'}`} style={{ width: '100mm', height: '150mm', backgroundColor: '#ffffff', position: 'relative', overflow: 'hidden', pageBreakAfter: 'always', margin: 0, display: 'block', isolation: 'isolate' }}>
           <img src={displayImg} alt="Label Base" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'fill', zIndex: 0 }} />
           
           {order.displayItems && order.displayItems.length > 0 && (
-            <div style={{ position: 'absolute', zIndex: 10, boxSizing: 'border-box', bottom: '24px', left: '16px', right: '16px', height: '18%', border: '4px dashed #172554', borderRadius: '14px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '8px', gap: '4px', backgroundColor: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(2px)', overflow: 'hidden' }}>
+            <div className="label-overlay" style={{ position: 'absolute', zIndex: 10, boxSizing: 'border-box', bottom: '24px', left: '16px', right: '16px', height: '18%', border: '4px dashed #172554', borderRadius: '14px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '8px', gap: '4px', backgroundColor: 'rgba(255,255,255,0.90)', backdropFilter: 'blur(2px)', overflow: 'hidden' }}>
               {order.displayItems.map((text, idx) => (
-                <p key={idx} style={{ fontFamily: '"Noto Sans Thai", sans-serif', fontWeight: 800, color: '#172554', lineHeight: lineHeight, margin: 0, textAlign: 'center', wordBreak: 'break-word', width: '100%', letterSpacing: '-0.02em', fontSize: fontSize, textShadow: '3px 3px 0 #fff, -3px -3px 0 #fff, 3px -3px 0 #fff, -3px 3px 0 #fff, 0 3px 0 #fff, 0 -3px 0 #fff, 3px 0 0 #fff, -3px 0 0 #fff, 2px 4px 8px rgba(23, 37, 84, 0.15)' }}>
+                <p key={idx} className="label-overlay-text" style={{ fontFamily: '"Noto Sans Thai", sans-serif', fontWeight: 800, color: '#172554', lineHeight: lineHeight, margin: 0, textAlign: 'center', wordBreak: 'break-word', width: '100%', letterSpacing: '-0.02em', fontSize: fontSize, textShadow: '3px 3px 0 #fff, -3px -3px 0 #fff, 3px -3px 0 #fff, -3px 3px 0 #fff, 0 3px 0 #fff, 0 -3px 0 #fff, 3px 0 0 #fff, -3px 0 0 #fff, 2px 4px 8px rgba(23, 37, 84, 0.15)' }}>
                   {text}
                 </p>
               ))}
@@ -164,7 +177,6 @@
         const files = Array.from(e.target.files);
         if (files.length === 0) return;
 
-        // V48.11: ดักจับแต่เนิ่นๆ ถ้าอัลบั้มเต็ม 100 ใบอยู่แล้ว
         if (orders.length >= 100) {
             showToast('อัลบั้มเต็มแล้ว! (สูงสุด 100 ใบ) กรุณาล้างข้อมูลก่อนอัปโหลดใหม่', 'error');
             e.target.value = null;
@@ -178,7 +190,6 @@
           const pdfjs = window.pdfjsLib;
           if (!pdfjs) throw new Error("โหลดระบบอ่าน PDF ไม่สำเร็จ กรุณารีเฟรชหน้าเว็บ");
 
-          // 1. นำไฟล์ PDF มาเช็ค "จำนวนหน้ากระดาษรวม" ก่อนเริ่มทำงานจริง
           let totalNewPages = 0;
           let pdfDocuments = [];
           
@@ -198,7 +209,6 @@
               return;
           }
 
-          // กฎเหล็ก V48.11: ห้ามทะลุ 100 ใบ ถ้ารวมแล้วเกินให้ดีดออกทันที
           if (orders.length + totalNewPages > 100) {
               const overAmount = (orders.length + totalNewPages) - 100;
               showToast(`อัปโหลดไม่ได้! รวมแล้วเกิน 100 ใบ (เกินมา ${overAmount} ใบ)`, 'error');
@@ -210,7 +220,6 @@
           let allNewOrders = [];
           let currentPageCount = 0;
           
-          // 2. ถ้าตรวจผ่านเกณฑ์ 100 ใบ ค่อยเริ่มสกัดข้อความและรูปภาพ
           for (const { pdf } of pdfDocuments) {
             for (let i = 1; i <= pdf.numPages; i++) {
               currentPageCount++;
@@ -353,7 +362,7 @@
                       allNewOrders.push({ 
                           id: `label-${Date.now()}-${allNewOrders.length}-${i}`, 
                           tracking: trackingMatch ? trackingMatch[0] : existingOrder.tracking, 
-                          parsedItems: [], // ว่างไว้จะได้ไม่โชว์ข้อความ
+                          parsedItems: [], 
                           pdfImage, 
                           platform,
                           orderId: currentOrderId,
