@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V48.10 Ultimate (The Perfect Multiplier)</title>
+  <title>PackMaster V48.11 Ultimate (The Perfect Gatekeeper)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -83,7 +83,6 @@
       let fontSize = '42pt';
       let lineHeight = 1.2;
       
-      // V48.10: ปรับสมการย่อฟอนต์ใหม่ ป้องกันการตกขอบเมื่อมีเว้นวรรค
       if (itemCount === 1) {
           fontSize = maxLen > 20 ? '18pt' : maxLen > 12 ? '24pt' : maxLen > 8 ? '32pt' : '40pt';
           lineHeight = 1.1;
@@ -139,6 +138,8 @@
       useEffect(() => { localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); }, [skuRules]);
       useEffect(() => { localStorage.setItem('thermalMode', JSON.stringify(thermalMode)); }, [thermalMode]);
 
+      const showToast = (message, type = 'success') => setToast({ show: true, message, type });
+
       const getMatchedRule = useCallback((textToSearch) => {
         const clean = (text) => String(text).toLowerCase().replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '').replace(/[\u0E47-\u0E4C]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
         const searchArea = clean(textToSearch);
@@ -163,31 +164,58 @@
         const files = Array.from(e.target.files);
         if (files.length === 0) return;
 
-        let allNewOrders = [];
-        let reachedLimit = false;
-        
-        setLoadingStatus({ active: true, current: 0, total: 'หลายไฟล์' });
+        // V48.11: ดักจับแต่เนิ่นๆ ถ้าอัลบั้มเต็ม 100 ใบอยู่แล้ว
+        if (orders.length >= 100) {
+            showToast('อัลบั้มเต็มแล้ว! (สูงสุด 100 ใบ) กรุณาล้างข้อมูลก่อนอัปโหลดใหม่', 'error');
+            e.target.value = null;
+            return;
+        }
+
+        setLoadingStatus({ active: true, current: 0, total: 'เช็คจำนวนหน้า...' });
         setUploadError(''); 
 
         try {
           const pdfjs = window.pdfjsLib;
           if (!pdfjs) throw new Error("โหลดระบบอ่าน PDF ไม่สำเร็จ กรุณารีเฟรชหน้าเว็บ");
+
+          // 1. นำไฟล์ PDF มาเช็ค "จำนวนหน้ากระดาษรวม" ก่อนเริ่มทำงานจริง
+          let totalNewPages = 0;
+          let pdfDocuments = [];
           
           for (const file of files) {
-            if (reachedLimit) break;
             if (!file.name.toLowerCase().endsWith('.pdf')) continue;
-            
             const arrayBuffer = await file.arrayBuffer();
             const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
-            
+            totalNewPages += pdf.numPages;
+            pdfDocuments.push({ file, pdf });
+          }
+
+          if (totalNewPages === 0) {
+              setUploadError('ไม่พบไฟล์ PDF ที่รองรับ กรุณาตรวจไฟล์อีกครั้งค่ะ');
+              showToast('ไม่มีไฟล์ PDF', 'error');
+              setLoadingStatus({ active: false, current: 0, total: 0 });
+              e.target.value = null;
+              return;
+          }
+
+          // กฎเหล็ก V48.11: ห้ามทะลุ 100 ใบ ถ้ารวมแล้วเกินให้ดีดออกทันที
+          if (orders.length + totalNewPages > 100) {
+              const overAmount = (orders.length + totalNewPages) - 100;
+              showToast(`อัปโหลดไม่ได้! รวมแล้วเกิน 100 ใบ (เกินมา ${overAmount} ใบ)`, 'error');
+              setLoadingStatus({ active: false, current: 0, total: 0 });
+              e.target.value = null;
+              return;
+          }
+
+          let allNewOrders = [];
+          let currentPageCount = 0;
+          
+          // 2. ถ้าตรวจผ่านเกณฑ์ 100 ใบ ค่อยเริ่มสกัดข้อความและรูปภาพ
+          for (const { pdf } of pdfDocuments) {
             for (let i = 1; i <= pdf.numPages; i++) {
-              if (orders.length + allNewOrders.length >= 100) {
-                reachedLimit = true;
-                showToast('จำกัดสูงสุดที่ 100 ใบ', 'error');
-                break;
-              }
+              currentPageCount++;
+              setLoadingStatus(prev => ({ ...prev, current: currentPageCount, total: totalNewPages }));
               
-              setLoadingStatus(prev => ({ ...prev, current: prev.current + 1 }));
               const page = await pdf.getPage(i);
               const textContent = await page.getTextContent();
               const fullText = textContent.items.map(item => item.str).join(' ');
@@ -350,8 +378,6 @@
             setOrders(prev => [...prev, ...allNewOrders]); 
             setActiveTab('preview');
             showToast(`เพิ่มข้อมูลสำเร็จ ${allNewOrders.length} ใบ`, 'success');
-          } else if (!reachedLimit) {
-             setUploadError('ไม่พบข้อมูล PDF ที่รองรับ กรุณาตรวจไฟล์อีกครั้งค่ะ');
           }
         } catch (err) {
           console.error(err);
@@ -364,8 +390,6 @@
         
         e.target.value = null; 
       };
-
-      const showToast = (message, type = 'success') => setToast({ show: true, message, type });
 
       const MappedOrders = useMemo(() => orders.map(o => {
         if (o.parsedItems.length === 0) {
@@ -391,7 +415,6 @@
         skuMap.forEach((qty, baseName) => {
             let displayName = baseName;
             if (qty > 1) {
-                // V48.10: คูณตัวเลข "ทุกตัว" ในชื่อ Base SKU เพื่อรองรับการตั้งชื่อแบบ "เด้งม่วง5 ชม5"
                 if (/\d/.test(baseName)) {
                     displayName = baseName.replace(/\d+/g, (num) => parseInt(num, 10) * qty);
                 } else {
