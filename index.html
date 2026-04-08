@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V48.6 Ultimate (The Firewall)</title>
+  <title>PackMaster V48.9 Ultimate (The Absolute Nuke)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -207,39 +207,39 @@
 
               let zone = fullText;
 
-              // V48.6: The Firewall (กำแพงป้องกันภัย) - ตัดเอากลางกระดาษลงไปเลย ทิ้งส่วนที่อยู่ทั้งหมด!
               const tableStartRegex = /(?:ชื่[\s\u200B]*อ[\s\u200B]*สิ[\s\u200B]*น[\s\u200B]*ค้[\s\u200B]*า|P[\s\u200B]*r[\s\u200B]*o[\s\u200B]*d[\s\u200B]*u[\s\u200B]*c[\s\u200B]*t|#\s*ชื่[\s\u200B]*อ)/i;
               const tableStartMatch = zone.match(tableStartRegex);
               
               if (tableStartMatch) {
-                  // ถ้าระบุหัวตารางเจอ ให้ตัดเอาเฉพาะหัวตารางลงมาเลย ปลอดภัยสุดๆ
+                  // ถ้าระบุหัวตารางเจอ ให้ตัดเอาเฉพาะหัวตารางลงมา
                   zone = zone.substring(tableStartMatch.index);
-                  zone = zone.replace(/(?:ชื่[\s\u200B]*อ[\s\u200B]*สิ[\s\u200B]*น[\s\u200B]*ค้[\s\u200B]*า|P[\s\u200B]*r[\s\u200B]*o[\s\u200B]*d[\s\u200B]*u[\s\u200B]*c[\s\u200B]*t[\s\u200B]*N[\s\u200B]*a[\s\u200B]*m[\s\u200B]*e|#\s*ชื่[\s\u200B]*อ)/gi, ' ');
-                  zone = zone.replace(/(?:ตั[\s\u200B]*ว[\s\u200B]*เ[\s\u200B]*ลื[\s\u200B]*อ[\s\u200B]*ก|จ[\s\u200B]*[ำํา]+[\s\u200B]*น[\s\u200B]*ว[\s\u200B]*น|S[\s\u200B]*K[\s\u200B]*U|S[\s\u200B]*e[\s\u200B]*l[\s\u200B]*l[\s\u200B]*e[\s\u200B]*r|Q[\s\u200B]*t[\s\u200B]*y)/gi, ' ');
+                  zone = zone.replace(/(?:ชื่[\s\u200B]*อ[\s\u200B]*สิ[\s\u200B]*น[\s\u200B]*ค้[\s\u200B]*า|P[\s\u200B]*r[\s\u200B]*o[\s\u200B]*d[\s\u200B]*u[\s\u200B]*c[\s\u200B]*t[\s\u200B]*N[\s\u200B]*a[\s\u200B]*m[\s\u200B]*e|#\s*ชื่[\s\u200B]*อ)/gi, '');
+                  zone = zone.replace(/(?:ตั[\s\u200B]*ว[\s\u200B]*เ[\s\u200B]*ลื[\s\u200B]*อ[\s\u200B]*ก|จ[\s\u200B]*[ำํา]+[\s\u200B]*น[\s\u200B]*ว[\s\u200B]*น|S[\s\u200B]*K[\s\u200B]*U|S[\s\u200B]*e[\s\u200B]*l[\s\u200B]*l[\s\u200B]*e[\s\u200B]*r|Q[\s\u200B]*t[\s\u200B]*y)/gi, '');
                   
-                  // ลบแค่ข้อมูลท้ายบิลที่อาจจะปนเข้ามา
-                  zone = zone.replace(/Shopee\s*Order\s*No\.?[\s:]*[A-Z0-9]+/gi, ' ');
-                  zone = zone.replace(/Order\s*ID[\s:]*[A-Z0-9]+/gi, ' ');
-                  zone = zone.replace(/Qty\s*Total[\s:]*\d+/gi, ' ');
-                  zone = zone.replace(/Total\s*Qty[\s:]*\d+/gi, ' ');
-                  zone = zone.replace(/(?:TikTok\s*Shop)/gi, ' ');
-              } else {
-                  // ถ้าหาหัวตารางไม่เจอจริงๆ (แรร์เคส) ค่อยใช้เครื่องทุ่นแรงเก่าสแกนล้างขยะทั้งแผ่น
-                  zone = zone.replace(/Shopee\s*Order\s*No\.?[\s:]*[A-Z0-9]+/gi, ' ');
-                  zone = zone.replace(/Order\s*ID[\s:]*[A-Z0-9]+/gi, ' ');
-                  zone = zone.replace(/\b\d{6}[A-Z0-9]{5,}\b/gi, ' '); 
-                  zone = zone.replace(/\b(?:TH|JT|SPX)[A-Z0-9]+\b/gi, ' ');
-                  zone = zone.replace(/\b\d{12,}\b/g, ' '); 
-                  zone = zone.replace(/(?:บ้านเลขที่|เลขที่|หมู่ที่|หมู่|ม\.|ซอย|ซ\.|ถนน|ถ\.)\s*\d+[\/\d]*/g, ' ');
-                  zone = zone.replace(/\b\d{5}\b/g, ' '); 
-                  zone = zone.replace(/\b0\d{8,9}\b/g, ' '); 
-                  zone = zone.replace(/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/g, ' '); 
-                  zone = zone.replace(/\d{1,2}:\d{2}/g, ' '); 
-                  zone = zone.replace(/In\s*transit\s*by[\s:]*[\d\/:\s]+/gi, ' ');
-                  zone = zone.replace(/Qty\s*Total[\s:]*\d+/gi, ' ');
-                  zone = zone.replace(/Total\s*Qty[\s:]*\d+/gi, ' ');
-                  zone = zone.replace(/(?:TikTok\s*Shop)/gi, ' ');
+                  // The Footer Killer: ลบทิ้งท้ายบิลทุกรูปแบบ ป้องกันเลขแปลกปลอมไปต่อท้ายจำนวนชิ้น
+                  const footerRegex = /(?:[Ss]hopee\s*Order|[Oo]rder\s*No|[Pp]rint\s*Date|[Pp]age\s*\d|[Pp]owered\s*by|ผู้รับ\s*\(TO\)|[Tt]ikTok\s*Shop|[Oo]rder\s*ID|[Qq]ty\s*Total|[Hh]opee|[Rr]der\s*No|[Rr]int\s*Date|[Aa]ge\s*\d|[Oo]wered|[Ii]kTok)/i;
+                  const footerMatch = zone.match(footerRegex);
+                  if (footerMatch) {
+                      zone = zone.substring(0, footerMatch.index);
+                  }
               }
+              
+              // ลบขยะให้หายวับ (Empty String '') ไม่ทิ้งช่องว่างไว้ให้ระบบสับสน
+              zone = zone.replace(/\b[A-Z]\d\s+[A-Z0-9]+-\d+\b/gi, ''); 
+              zone = zone.replace(/\b[A-Z]\d-\([A-Z0-9.]+\)\b/gi, ''); 
+              zone = zone.replace(/\b\d{3}[A-Z]\b/gi, ''); 
+              zone = zone.replace(/\b\d{5}\b/g, ''); 
+              zone = zone.replace(/\b0\d{8,9}\b/g, ''); 
+              zone = zone.replace(/\b\d{6}[A-Z0-9]{5,}\b/gi, ''); 
+              zone = zone.replace(/\b(?:TH|JT|SPX)[A-Z0-9]+\b/gi, '');
+              zone = zone.replace(/\b\d{12,}\b/g, ''); 
+              zone = zone.replace(/(?:บ้านเลขที่|เลขที่|หมู่ที่|หมู่|ม\.|ซอย|ซ\.|ถนน|ถ\.)\s*\d+[\/\d]*/g, '');
+              zone = zone.replace(/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/g, ''); 
+              zone = zone.replace(/\d{1,2}:\d{2}/g, ''); 
+              zone = zone.replace(/In\s*transit\s*by[\s:]*[\d\/:\s]+/gi, '');
+              zone = zone.replace(/Qty\s*Total[\s:]*\d+/gi, '');
+              zone = zone.replace(/Total\s*Qty[\s:]*\d+/gi, '');
+              zone = zone.replace(/(?:TikTok\s*Shop|Shopee)/gi, '');
 
               let parsedItems = [];
 
@@ -286,7 +286,7 @@
 
               if (parsedItems.length === 0) {
                   let itemQty = 1;
-                  // ตรงนี้ปลอดภัยแล้ว! เพราะ zone ถูกตัดเอาเฉพาะโซนตารางมาตั้งแต่บรรทัด 388 แล้ว
+                  // ตรงนี้ปลอดภัยแล้ว! เพราะ zone ถูกตัดเอาเฉพาะโซนตารางและลบขยะทิ้งหมดแล้ว
                   let itemStr = zone.trim();
                   
                   const tailMatch = itemStr.match(/\s+(\d{1,4})\s*(?:หมายเหตุ|PICKUP)?\s*$/i);
