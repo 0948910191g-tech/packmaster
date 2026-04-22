@@ -29,14 +29,12 @@
       .print-area { display: block !important; }
       .no-print { display: none !important; }
       
-      /* V48.12: บังคับให้กล่องข้อความทึบแสงและลบเอฟเฟกต์เบลอทิ้งตอนพิมพ์ ป้องกัน Chrome ลบกล่องทิ้ง */
       .label-overlay {
         background-color: #ffffff !important;
         backdrop-filter: none !important;
         -webkit-backdrop-filter: none !important;
         border: 4px dashed #172554 !important;
       }
-      /* ปิดเงาตัวหนังสือตอนพิมพ์ เพราะกล่องเป็นสีขาวทึบแล้ว จะได้อ่านง่ายขึ้น */
       .label-overlay-text {
         text-shadow: none !important;
         color: #172554 !important;
@@ -153,21 +151,54 @@
 
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
 
+      // อัปเกรดระบบอ่านคีย์เวิร์ด ป้องกันบัค Menthol 3 ไปชนกับ Menthol 36
       const getMatchedRule = useCallback((textToSearch) => {
-        const clean = (text) => String(text).toLowerCase().replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '').replace(/[\u0E47-\u0E4C]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
+        const clean = (text) => String(text).toLowerCase()
+            .replace(/[\n\r\t\u200B-\u200F\uFEFF]/g, ' ')
+            .replace(/[\u0E47-\u0E4C]/g, '')
+            .replace(/\u0E4D\u0E32/g, '\u0E33')
+            .replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+            
         const searchArea = clean(textToSearch);
         if (!searchArea) return null;
         
         const sortedRules = [...skuRules].sort((a, b) => b.keyword.length - a.keyword.length);
         
+        // กฎที่ 1: ตรวจจับคำเป๊ะๆ ก่อน (กันเลขซ้อนทับกัน เช่น 3 กับ 36)
         for (const rule of sortedRules) {
             const cleanKw = clean(rule.keyword);
-            if (cleanKw && searchArea.includes(cleanKw)) return rule;
+            if (!cleanKw) continue;
+            const regex = new RegExp(`(^|\\s|\\D)${cleanKw.replace(/[-\\/\\^$*+?.()|[\\]{}]/g, '\\$&')}($|\\s|\\D)`);
+            if (regex.test(searchArea)) return rule;
         }
         
+        // กฎที่ 2: ถ้าหาคำเต็มไม่เจอ ให้หาแบบแยกคำ
         for (const rule of sortedRules) {
-            const words = rule.keyword.split(/\s+/).filter(w => w.length > 0);
-            if (words.length > 1 && words.every(w => searchArea.includes(clean(w)))) return rule;
+            const words = clean(rule.keyword).split(/\s+/).filter(w => w.length > 0);
+            if (words.length > 1) {
+                const allMatch = words.every(w => {
+                    const regex = new RegExp(`(^|\\s|\\D)${w.replace(/[-\\/\\^$*+?.()|[\\]{}]/g, '\\$&')}($|\\s|\\D)`);
+                    return regex.test(searchArea);
+                });
+                if (allMatch) return rule;
+            }
+        }
+        
+        // กฎที่ 3: แบบเผื่อเหนียว (ค้นหาแบบติดกัน แต่ป้องกันเลขซ้อน)
+        const searchAreaNoSpace = searchArea.replace(/\s+/g, '');
+        for (const rule of sortedRules) {
+            const cleanKwNoSpace = clean(rule.keyword).replace(/\s+/g, '');
+            if (!cleanKwNoSpace) continue;
+            
+            let idx = searchAreaNoSpace.indexOf(cleanKwNoSpace);
+            if (idx !== -1) {
+                const endsWithDigit = /\d/.test(cleanKwNoSpace.slice(-1));
+                const nextCharIsDigit = /\d/.test(searchAreaNoSpace[idx + cleanKwNoSpace.length] || '');
+                if (endsWithDigit && nextCharIsDigit) continue; // ข้ามถ้าระบบจับเลข 3 ใน 36
+                return rule;
+            }
         }
         
         return null;
@@ -301,7 +332,7 @@
                       }
                       
                       let itemQty = 1;
-                      const tailMatch = itemStr.match(/\s+(\d{1,4})\s*(?:หมายเหตุ|PICKUP)?\s*$/i);
+                      const tailMatch = itemStr.match(/\s+(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss])?\s*$/i);
                       if (tailMatch) {
                           itemQty = parseInt(tailMatch[1], 10);
                       } else {
@@ -319,7 +350,7 @@
                   let itemQty = 1;
                   let itemStr = zone.trim();
                   
-                  const tailMatch = itemStr.match(/\s+(\d{1,4})\s*(?:หมายเหตุ|PICKUP)?\s*$/i);
+                  const tailMatch = itemStr.match(/\s+(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss])?\s*$/i);
                   if (tailMatch) {
                       itemQty = parseInt(tailMatch[1], 10);
                   } else {
@@ -423,6 +454,7 @@
         
         skuMap.forEach((qty, baseName) => {
             let displayName = baseName;
+            // ลอจิกคูณตัวเลขแบบดั้งเดิมตามที่คุณเกมต้องการนำกลับมาแล้วค่ะ!
             if (qty > 1) {
                 if (/\d/.test(baseName)) {
                     displayName = baseName.replace(/\d+/g, (num) => parseInt(num, 10) * qty);
