@@ -151,9 +151,8 @@
 
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
 
-      // แก้ไขขั้นเด็ดขาด: ระบบค้นหาแบบไร้ช่องโหว่เรื่องตัวเลขซ้อนและเว้นวรรค
+      // อัปเกรดระบบแบบคืนชีพ "ระบบแยกคำ (Fallback)" และใส่ "เกราะกันเลขตีกัน" อย่างสมบูรณ์
       const getMatchedRule = useCallback((textToSearch) => {
-        // ลบช่องว่างทั้งหมดทิ้งไปเลย จะได้ไม่มีปัญหา PDF เว้นวรรคมั่ว
         const clean = (text) => String(text).toLowerCase()
             .replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '')
             .replace(/[\u0E47-\u0E4C]/g, '')
@@ -163,44 +162,60 @@
         const searchArea = clean(textToSearch);
         if (!searchArea) return null;
 
-        // เรียงจากคำยาวสุดไปสั้นสุด
-        const sortedRules = [...skuRules].sort((a, b) => clean(b.keyword).length - clean(a.keyword).length);
+        const sortedRules = [...skuRules].sort((a, b) => b.keyword.length - a.keyword.length);
 
+        // ฟังก์ชันช่วยเช็คว่าเจอเลขชนกันไหม
+        const isValidBoundary = (idx, cw) => {
+            const startsWithDigit = /\d/.test(cw[0]);
+            const endsWithDigit = /\d/.test(cw[cw.length - 1]);
+            
+            if (startsWithDigit && idx > 0 && /\d/.test(searchArea[idx - 1])) {
+                return false;
+            }
+            if (endsWithDigit && idx + cw.length < searchArea.length && /\d/.test(searchArea[idx + cw.length])) {
+                return false;
+            }
+            return true;
+        };
+
+        // เฟส 1: ค้นหาแบบตรงๆ ก่อน (คำติดกัน)
         for (const rule of sortedRules) {
             const cleanKw = clean(rule.keyword);
             if (!cleanKw) continue;
 
-            let startIndex = 0;
-            let foundIndex = searchArea.indexOf(cleanKw, startIndex);
+            let idx = searchArea.indexOf(cleanKw);
+            while (idx !== -1) {
+                if (isValidBoundary(idx, cleanKw)) return rule;
+                idx = searchArea.indexOf(cleanKw, idx + 1);
+            }
+        }
 
-            // ถ้าเจอคีย์เวิร์ดซ่อนอยู่ข้างใน
-            while (foundIndex !== -1) {
-                let isValid = true;
-                
-                // เช็คว่าหัว/ท้าย ของคีย์เวิร์ดเป็นตัวเลขไหม
-                const startsWithDigit = /\d/.test(cleanKw[0]);
-                const endsWithDigit = /\d/.test(cleanKw[cleanKw.length - 1]);
+        // เฟส 2: ค้นหาแบบแยกคำ (ไม้ตายก้นหีบ เผื่อ PDF พิมพ์สลับตำแหน่ง หรือเว้นวรรคแปลกๆ)
+        for (const rule of sortedRules) {
+            const words = rule.keyword.split(/\s+/).filter(w => w.length > 0);
+            if (words.length > 1) {
+                let allMatch = true;
+                for (const w of words) {
+                    const cw = clean(w);
+                    if (!cw) continue;
 
-                // ถ้าตัวแรกเป็นเลข ห้ามมีเลขติดอยู่ข้างหน้ามันอีก (กันเคสค้นหา 3 แต่ข้อความจริงคือ 13)
-                if (startsWithDigit && foundIndex > 0) {
-                    if (/\d/.test(searchArea[foundIndex - 1])) {
-                        isValid = false;
+                    let idx = searchArea.indexOf(cw);
+                    let validWord = false;
+                    while (idx !== -1) {
+                        // แยกคำแล้ว ก็ยังต้องเช็คเกราะกันเลขตีกันอยู่ดี!
+                        if (isValidBoundary(idx, cw)) {
+                            validWord = true;
+                            break;
+                        }
+                        idx = searchArea.indexOf(cw, idx + 1);
+                    }
+
+                    if (!validWord) {
+                        allMatch = false;
+                        break;
                     }
                 }
-
-                // ถ้าตัวสุดท้ายเป็นเลข ห้ามมีเลขติดอยู่ข้างหลังมันอีก (กันเคสค้นหา 3 แต่ข้อความจริงคือ 36)
-                if (isValid && endsWithDigit && foundIndex + cleanKw.length < searchArea.length) {
-                    if (/\d/.test(searchArea[foundIndex + cleanKw.length])) {
-                        isValid = false;
-                    }
-                }
-
-                // ถ้ารอดด่านตัวเลขซ้อนมาได้ ถือว่าใช่ตัวนี้แหละ!
-                if (isValid) return rule;
-
-                // ถ้าไม่ผ่าน ให้ขยับไปหาจุดต่อไปในประโยคเผื่อเจออีก
-                startIndex = foundIndex + 1;
-                foundIndex = searchArea.indexOf(cleanKw, startIndex);
+                if (allMatch) return rule;
             }
         }
 
@@ -457,7 +472,6 @@
         
         skuMap.forEach((qty, baseName) => {
             let displayName = baseName;
-            // คงไว้ตามเดิม: เอาตัวเลขในชื่อสินค้าคูณยอดได้เลย (เช่น 12 * 2 = 24) อันนี้เวิร์กที่สุดตามที่คุณเกมต้องการค่ะ
             if (qty > 1) {
                 if (/\d/.test(baseName)) {
                     displayName = baseName.replace(/\d+/g, (num) => parseInt(num, 10) * qty);
