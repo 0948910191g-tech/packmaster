@@ -151,46 +151,42 @@
 
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
 
-      // อัปเกรดระบบแบบคืนชีพ "ระบบแยกคำ (Fallback)" และใส่ "เกราะกันเลขตีกัน" อย่างสมบูรณ์
+      // อัปเกรด V3: คลีนข้อความโดยไม่ลบวรรณยุกต์ และจัดเรียงความยาวให้ฉลาดขึ้น
       const getMatchedRule = useCallback((textToSearch) => {
         const clean = (text) => String(text).toLowerCase()
             .replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '')
-            .replace(/[\u0E47-\u0E4C]/g, '')
             .replace(/\u0E4D\u0E32/g, '\u0E33')
             .replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
 
         const searchArea = clean(textToSearch);
         if (!searchArea) return null;
 
-        const sortedRules = [...skuRules].sort((a, b) => b.keyword.length - a.keyword.length);
+        // เรียงจากกฎที่ยาวที่สุดไปสั้นที่สุด ป้องกันเลขสั้นไปชนเลขยาว
+        const sortedRules = [...skuRules].sort((a, b) => clean(b.keyword).length - clean(a.keyword).length);
 
-        // ฟังก์ชันช่วยเช็คว่าเจอเลขชนกันไหม
-        const isValidBoundary = (idx, cw) => {
+        const isValidBoundary = (idx, cw, area) => {
             const startsWithDigit = /\d/.test(cw[0]);
             const endsWithDigit = /\d/.test(cw[cw.length - 1]);
-            
-            if (startsWithDigit && idx > 0 && /\d/.test(searchArea[idx - 1])) {
-                return false;
-            }
-            if (endsWithDigit && idx + cw.length < searchArea.length && /\d/.test(searchArea[idx + cw.length])) {
-                return false;
-            }
+
+            // ถ้าหน้าหรือหลังคีย์เวิร์ดมี "ตัวเลข" ติดอยู่ ถือว่าไม่ใช่คำเดียวกัน (ปัดตก)
+            if (startsWithDigit && idx > 0 && /\d/.test(area[idx - 1])) return false;
+            if (endsWithDigit && idx + cw.length < area.length && /\d/.test(area[idx + cw.length])) return false;
             return true;
         };
 
-        // เฟส 1: ค้นหาแบบตรงๆ ก่อน (คำติดกัน)
+        // เฟส 1: ค้นหาคำเป๊ะๆ
         for (const rule of sortedRules) {
             const cleanKw = clean(rule.keyword);
             if (!cleanKw) continue;
 
             let idx = searchArea.indexOf(cleanKw);
             while (idx !== -1) {
-                if (isValidBoundary(idx, cleanKw)) return rule;
+                if (isValidBoundary(idx, cleanKw, searchArea)) return rule;
                 idx = searchArea.indexOf(cleanKw, idx + 1);
             }
         }
 
-        // เฟส 2: ค้นหาแบบแยกคำ (ไม้ตายก้นหีบ เผื่อ PDF พิมพ์สลับตำแหน่ง หรือเว้นวรรคแปลกๆ)
+        // เฟส 2: ค้นหาแบบแยกคำ (Fallback กรณีเว้นวรรคแปลกๆ)
         for (const rule of sortedRules) {
             const words = rule.keyword.split(/\s+/).filter(w => w.length > 0);
             if (words.length > 1) {
@@ -202,14 +198,12 @@
                     let idx = searchArea.indexOf(cw);
                     let validWord = false;
                     while (idx !== -1) {
-                        // แยกคำแล้ว ก็ยังต้องเช็คเกราะกันเลขตีกันอยู่ดี!
-                        if (isValidBoundary(idx, cw)) {
+                        if (isValidBoundary(idx, cw, searchArea)) {
                             validWord = true;
                             break;
                         }
                         idx = searchArea.indexOf(cw, idx + 1);
                     }
-
                     if (!validWord) {
                         allMatch = false;
                         break;
@@ -349,17 +343,26 @@
                           remainingText = '';
                       }
                       
+                      // ระบบตัดยอด (QTY) ออกจากชื่อสินค้า ป้องกันหลอมรวมเป็นคำเดียวกัน!
                       let itemQty = 1;
-                      const tailMatch = itemStr.match(/\s+(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss])?\s*$/i);
+                      let textWithoutQty = itemStr;
+                      const tailMatch = itemStr.match(/\s+(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|-|_+)?\s*$/i);
                       if (tailMatch) {
                           itemQty = parseInt(tailMatch[1], 10);
+                          textWithoutQty = itemStr.substring(0, tailMatch.index);
                       } else {
-                          const nums = itemStr.match(/\b(\d{1,4})\b/g); 
-                          if (nums && nums.length > 0) {
-                              itemQty = parseInt(nums[nums.length - 1], 10);
+                          const endNumMatch = itemStr.match(/(?:^|\s)(\d{1,4})\s*$/);
+                          if (endNumMatch) {
+                              itemQty = parseInt(endNumMatch[1], 10);
+                              textWithoutQty = itemStr.substring(0, endNumMatch.index);
+                          } else {
+                              const nums = itemStr.match(/\b(\d{1,4})\b/g); 
+                              if (nums && nums.length > 0) {
+                                  itemQty = parseInt(nums[nums.length - 1], 10);
+                              }
                           }
                       }
-                      parsedItems.push({ text: itemStr, qty: itemQty });
+                      parsedItems.push({ text: textWithoutQty, qty: itemQty });
                       currentItemNum++;
                   }
               }
@@ -367,18 +370,25 @@
               if (parsedItems.length === 0) {
                   let itemQty = 1;
                   let itemStr = zone.trim();
+                  let textWithoutQty = itemStr;
                   
-                  const tailMatch = itemStr.match(/\s+(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss])?\s*$/i);
+                  const tailMatch = itemStr.match(/\s+(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|-|_+)?\s*$/i);
                   if (tailMatch) {
                       itemQty = parseInt(tailMatch[1], 10);
+                      textWithoutQty = itemStr.substring(0, tailMatch.index);
                   } else {
-                      const nums = itemStr.match(/\b(\d{1,4})\b/g);
-                      if (nums && nums.length > 0) {
-                          itemQty = parseInt(nums[nums.length - 1], 10);
+                      const endNumMatch = itemStr.match(/(?:^|\s)(\d{1,4})\s*$/);
+                      if (endNumMatch) {
+                          itemQty = parseInt(endNumMatch[1], 10);
+                          textWithoutQty = itemStr.substring(0, endNumMatch.index);
+                      } else {
+                          const nums = itemStr.match(/\b(\d{1,4})\b/g);
+                          if (nums && nums.length > 0) {
+                              itemQty = parseInt(nums[nums.length - 1], 10);
+                          }
                       }
                   }
-                  
-                  parsedItems.push({ text: itemStr, qty: itemQty });
+                  parsedItems.push({ text: textWithoutQty, qty: itemQty });
               }
 
               if (parsedItems.length === 1 && platform !== 'TIKTOK') {
@@ -472,6 +482,7 @@
         
         skuMap.forEach((qty, baseName) => {
             let displayName = baseName;
+            // ระบบคูณตัวเลขยังอยู่ครบ และแม่นยำกว่าเดิม
             if (qty > 1) {
                 if (/\d/.test(baseName)) {
                     displayName = baseName.replace(/\d+/g, (num) => parseInt(num, 10) * qty);
