@@ -151,56 +151,59 @@
 
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
 
-      // อัปเกรดระบบอ่านคีย์เวิร์ด ป้องกันบัค Menthol 3 ไปชนกับ Menthol 36
+      // แก้ไขขั้นเด็ดขาด: ระบบค้นหาแบบไร้ช่องโหว่เรื่องตัวเลขซ้อนและเว้นวรรค
       const getMatchedRule = useCallback((textToSearch) => {
+        // ลบช่องว่างทั้งหมดทิ้งไปเลย จะได้ไม่มีปัญหา PDF เว้นวรรคมั่ว
         const clean = (text) => String(text).toLowerCase()
-            .replace(/[\n\r\t\u200B-\u200F\uFEFF]/g, ' ')
+            .replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '')
             .replace(/[\u0E47-\u0E4C]/g, '')
             .replace(/\u0E4D\u0E32/g, '\u0E33')
-            .replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-            
+            .replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
+
         const searchArea = clean(textToSearch);
         if (!searchArea) return null;
-        
-        const sortedRules = [...skuRules].sort((a, b) => b.keyword.length - a.keyword.length);
-        
-        // กฎที่ 1: ตรวจจับคำเป๊ะๆ ก่อน (กันเลขซ้อนทับกัน เช่น 3 กับ 36)
+
+        // เรียงจากคำยาวสุดไปสั้นสุด
+        const sortedRules = [...skuRules].sort((a, b) => clean(b.keyword).length - clean(a.keyword).length);
+
         for (const rule of sortedRules) {
             const cleanKw = clean(rule.keyword);
             if (!cleanKw) continue;
-            const regex = new RegExp(`(^|\\s|\\D)${cleanKw.replace(/[-\\/\\^$*+?.()|[\\]{}]/g, '\\$&')}($|\\s|\\D)`);
-            if (regex.test(searchArea)) return rule;
-        }
-        
-        // กฎที่ 2: ถ้าหาคำเต็มไม่เจอ ให้หาแบบแยกคำ
-        for (const rule of sortedRules) {
-            const words = clean(rule.keyword).split(/\s+/).filter(w => w.length > 0);
-            if (words.length > 1) {
-                const allMatch = words.every(w => {
-                    const regex = new RegExp(`(^|\\s|\\D)${w.replace(/[-\\/\\^$*+?.()|[\\]{}]/g, '\\$&')}($|\\s|\\D)`);
-                    return regex.test(searchArea);
-                });
-                if (allMatch) return rule;
+
+            let startIndex = 0;
+            let foundIndex = searchArea.indexOf(cleanKw, startIndex);
+
+            // ถ้าเจอคีย์เวิร์ดซ่อนอยู่ข้างใน
+            while (foundIndex !== -1) {
+                let isValid = true;
+                
+                // เช็คว่าหัว/ท้าย ของคีย์เวิร์ดเป็นตัวเลขไหม
+                const startsWithDigit = /\d/.test(cleanKw[0]);
+                const endsWithDigit = /\d/.test(cleanKw[cleanKw.length - 1]);
+
+                // ถ้าตัวแรกเป็นเลข ห้ามมีเลขติดอยู่ข้างหน้ามันอีก (กันเคสค้นหา 3 แต่ข้อความจริงคือ 13)
+                if (startsWithDigit && foundIndex > 0) {
+                    if (/\d/.test(searchArea[foundIndex - 1])) {
+                        isValid = false;
+                    }
+                }
+
+                // ถ้าตัวสุดท้ายเป็นเลข ห้ามมีเลขติดอยู่ข้างหลังมันอีก (กันเคสค้นหา 3 แต่ข้อความจริงคือ 36)
+                if (isValid && endsWithDigit && foundIndex + cleanKw.length < searchArea.length) {
+                    if (/\d/.test(searchArea[foundIndex + cleanKw.length])) {
+                        isValid = false;
+                    }
+                }
+
+                // ถ้ารอดด่านตัวเลขซ้อนมาได้ ถือว่าใช่ตัวนี้แหละ!
+                if (isValid) return rule;
+
+                // ถ้าไม่ผ่าน ให้ขยับไปหาจุดต่อไปในประโยคเผื่อเจออีก
+                startIndex = foundIndex + 1;
+                foundIndex = searchArea.indexOf(cleanKw, startIndex);
             }
         }
-        
-        // กฎที่ 3: แบบเผื่อเหนียว (ค้นหาแบบติดกัน แต่ป้องกันเลขซ้อน)
-        const searchAreaNoSpace = searchArea.replace(/\s+/g, '');
-        for (const rule of sortedRules) {
-            const cleanKwNoSpace = clean(rule.keyword).replace(/\s+/g, '');
-            if (!cleanKwNoSpace) continue;
-            
-            let idx = searchAreaNoSpace.indexOf(cleanKwNoSpace);
-            if (idx !== -1) {
-                const endsWithDigit = /\d/.test(cleanKwNoSpace.slice(-1));
-                const nextCharIsDigit = /\d/.test(searchAreaNoSpace[idx + cleanKwNoSpace.length] || '');
-                if (endsWithDigit && nextCharIsDigit) continue; // ข้ามถ้าระบบจับเลข 3 ใน 36
-                return rule;
-            }
-        }
-        
+
         return null;
       }, [skuRules]);
 
@@ -454,7 +457,7 @@
         
         skuMap.forEach((qty, baseName) => {
             let displayName = baseName;
-            // ลอจิกคูณตัวเลขแบบดั้งเดิมตามที่คุณเกมต้องการนำกลับมาแล้วค่ะ!
+            // คงไว้ตามเดิม: เอาตัวเลขในชื่อสินค้าคูณยอดได้เลย (เช่น 12 * 2 = 24) อันนี้เวิร์กที่สุดตามที่คุณเกมต้องการค่ะ
             if (qty > 1) {
                 if (/\d/.test(baseName)) {
                     displayName = baseName.replace(/\d+/g, (num) => parseInt(num, 10) * qty);
