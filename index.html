@@ -151,20 +151,20 @@
 
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
 
-      // 🔥 BACK TO BASICS: ตัดภาษาไทยทิ้งให้หมด เหลือแค่ ENG + NUM ตามที่คุณเกมออกแบบเป๊ะๆ
+      // 🔥 THE ULTIMATE FIX: อ่านเฉพาะภาษาอังกฤษและตัวเลข ล้วนๆ! (ตามโครงสร้าง Database)
       const getMatchedRule = useCallback((textToSearch) => {
         if (!textToSearch) return null;
 
-        // ฟังก์ชันแปลงข้อความให้เหลือแค่ภาษาอังกฤษ (a-z) และตัวเลข (0-9) เท่านั้น!
+        // แปลงข้อความให้เหลือแค่ภาษาอังกฤษ (a-z) และตัวเลข (0-9) เท่านั้น
         const cleanToEngNum = (str) => String(str).toLowerCase()
-            .replace(/[^a-z0-9]/g, ' ') // ถ้าไม่ใช่ a-z หรือ 0-9 ให้เปลี่ยนเป็นช่องว่าง
-            .replace(/\s+/g, ' ')       // ยุบช่องว่างที่ติดกันให้เหลืออันเดียว
+            .replace(/[^a-z0-9]/g, ' ') // แทนที่ภาษาไทยและสัญลักษณ์ด้วยช่องว่าง
+            .replace(/\s+/g, ' ')       // ยุบช่องว่างรัวๆ ให้เหลืออันเดียว
             .trim();
 
         const searchArea = cleanToEngNum(textToSearch);
         if (!searchArea) return null;
 
-        // ดึงกฎมาคลีนให้เป็น ENG+NUM เหมือนกัน แล้วจัดเรียงตามความยาว (จากยาวไปสั้น)
+        // ดึงกฎมาคลีนให้เป็น ENG+NUM เหมือนกัน แล้วจัดเรียงตามความยาวที่คลีนแล้ว (จากยาวไปสั้น)
         const rules = skuRules.map(r => ({
             ...r,
             cleanKw: cleanToEngNum(r.keyword)
@@ -172,31 +172,50 @@
 
         rules.sort((a, b) => b.cleanKw.length - a.cleanKw.length);
 
-        // เฟส 1: ค้นหาแบบตรงๆ เป๊ะๆ (คำต้องเรียงกัน)
-        // บังคับ Word Boundary (\b) เพื่อป้องกันไม่ให้ 3 ไปจับคู่ใน 36
+        // เกราะป้องกันไม่ให้เลขไปดึงตัวเลขผิด (เช่น กันเลข 3 ไปจับคู่ใน 36)
+        const isValidBoundary = (idx, cw) => {
+            const startsWithDigit = /\d/.test(cw[0]);
+            const endsWithDigit = /\d/.test(cw[cw.length - 1]);
+            if (startsWithDigit && idx > 0 && /\d/.test(searchArea[idx - 1])) return false;
+            if (endsWithDigit && idx + cw.length < searchArea.length && /\d/.test(searchArea[idx + cw.length])) return false;
+            return true;
+        };
+
+        // เฟส 1: ค้นหาแบบตรงๆ เป๊ะๆ
         for (const rule of rules) {
-            const regex = new RegExp(`\\b${rule.cleanKw}\\b`);
-            if (regex.test(searchArea)) return rule;
+            let idx = searchArea.indexOf(rule.cleanKw);
+            while (idx !== -1) {
+                if (isValidBoundary(idx, rule.cleanKw)) return rule;
+                idx = searchArea.indexOf(rule.cleanKw, idx + 1);
+            }
         }
 
-        // เฟส 2: ค้นหาแบบสลับตำแหน่ง (แยกค้นหาทีละคำ)
+        // เฟส 2: ค้นหาแบบสลับตำแหน่ง (เผื่อ PDF สลับที่)
         for (const rule of rules) {
             const words = rule.cleanKw.split(' ');
-            let tempArea = searchArea;
-            let allMatch = true;
+            if (words.length > 1) {
+                let tempArea = searchArea;
+                let allMatch = true;
 
-            for (const word of words) {
-                const wordRegex = new RegExp(`\\b${word}\\b`);
-                if (wordRegex.test(tempArea)) {
-                    // ถ้าเจอคำนี้ ให้ "ลบทิ้ง" ไปเลย จะได้ไม่นับซ้ำ (ป้องกันบัค 5แถม5)
-                    tempArea = tempArea.replace(wordRegex, ' ');
-                } else {
-                    allMatch = false;
-                    break;
+                for (const word of words) {
+                    let idx = tempArea.indexOf(word);
+                    let validWord = false;
+                    while (idx !== -1) {
+                        if (isValidBoundary(idx, word)) {
+                            validWord = true;
+                            // ลบคำที่ใช้แล้วทิ้ง จะได้ไม่นับซ้ำ (ป้องกัน 5แถม5 บัค)
+                            tempArea = tempArea.substring(0, idx) + ' '.repeat(word.length) + tempArea.substring(idx + word.length);
+                            break;
+                        }
+                        idx = tempArea.indexOf(word, idx + 1);
+                    }
+                    if (!validWord) {
+                        allMatch = false;
+                        break;
+                    }
                 }
+                if (allMatch) return rule;
             }
-            
-            if (allMatch) return rule;
         }
 
         return null;
@@ -339,50 +358,40 @@
                           remainingText = '';
                       }
                       
-                      let itemQty = 1;
-                      let textWithoutQty = itemStr.trim();
+                      // 1. ล้างอักขระล่องหนทิ้งก่อน เพื่อให้ regex ทำงานได้ 100%
+                      let cleanStr = itemStr.replace(/[\u200B-\u200F\uFEFF]/g, '').trim();
                       
-                      // 1. ตัดเลข 1,2 ลำดับแถวทิ้ง
-                      textWithoutQty = textWithoutQty.replace(/^\d+[\s.)\]]+/, '').replace(/^\d+(?=\(|\[)/, '').trim();
+                      // 2. ตัดเลขลำดับแถว (เช่น 1.) ทิ้ง
+                      cleanStr = cleanStr.replace(/^\d+[\s.)\]]+/, '').replace(/^\d+(?=\(|\[)/, '').trim();
 
-                      // 2. ดึงยอด QTY "ครั้งเดียว" จากท้ายประโยคเท่านั้น ป้องกันการกินเลขรหัสสินค้า
-                      let tailMatch = textWithoutQty.match(/(^|\s|[ก-๙a-zA-Z!\])\-_])(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
+                      let itemQty = 1;
+                      
+                      // 3. ดึงยอด QTY "เฉพาะเมื่อมีเว้นวรรคนำหน้า" (ป้องกันการกินเลข 5 ใน 5แถม5)
+                      let tailMatch = cleanStr.match(/(?:^|\s)(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
                       if (tailMatch) {
-                          itemQty = parseInt(tailMatch[2], 10);
-                          textWithoutQty = textWithoutQty.substring(0, textWithoutQty.length - tailMatch[0].length + tailMatch[1].length).trim();
-                      } else {
-                          let endNumMatch = textWithoutQty.match(/(?:^|\s)(\d{1,4})\s*$/);
-                          if (endNumMatch) {
-                              itemQty = parseInt(endNumMatch[1], 10);
-                              textWithoutQty = textWithoutQty.substring(0, endNumMatch.index).trim();
-                          }
+                          itemQty = parseInt(tailMatch[1], 10);
+                          cleanStr = cleanStr.substring(0, tailMatch.index).trim();
                       }
                       
-                      parsedItems.push({ text: textWithoutQty, qty: itemQty });
+                      parsedItems.push({ text: cleanStr, qty: itemQty });
                       currentItemNum++;
                   }
               }
 
               if (parsedItems.length === 0) {
-                  let itemQty = 1;
                   let itemStr = zone.trim();
-                  let textWithoutQty = itemStr.trim();
                   
-                  textWithoutQty = textWithoutQty.replace(/^\d+[\s.)\]]+/, '').replace(/^\d+(?=\(|\[)/, '').trim();
+                  let cleanStr = itemStr.replace(/[\u200B-\u200F\uFEFF]/g, '').trim();
+                  cleanStr = cleanStr.replace(/^\d+[\s.)\]]+/, '').replace(/^\d+(?=\(|\[)/, '').trim();
                   
-                  let tailMatch = textWithoutQty.match(/(^|\s|[ก-๙a-zA-Z!\])\-_])(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
+                  let itemQty = 1;
+                  let tailMatch = cleanStr.match(/(?:^|\s)(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
                   if (tailMatch) {
-                      itemQty = parseInt(tailMatch[2], 10);
-                      textWithoutQty = textWithoutQty.substring(0, textWithoutQty.length - tailMatch[0].length + tailMatch[1].length).trim();
-                  } else {
-                      let endNumMatch = textWithoutQty.match(/(?:^|\s)(\d{1,4})\s*$/);
-                      if (endNumMatch) {
-                          itemQty = parseInt(endNumMatch[1], 10);
-                          textWithoutQty = textWithoutQty.substring(0, endNumMatch.index).trim();
-                      }
+                      itemQty = parseInt(tailMatch[1], 10);
+                      cleanStr = cleanStr.substring(0, tailMatch.index).trim();
                   }
                   
-                  parsedItems.push({ text: textWithoutQty, qty: itemQty });
+                  parsedItems.push({ text: cleanStr, qty: itemQty });
               }
 
               if (parsedItems.length === 1 && platform !== 'TIKTOK') {
@@ -476,7 +485,6 @@
         
         skuMap.forEach((qty, baseName) => {
             let displayName = baseName;
-            // ระบบคูณเลขคู่บุญคุณเกม ยังคงทำงานได้อย่างแม่นยำ!
             if (qty > 1) {
                 if (/\d/.test(baseName)) {
                     displayName = baseName.replace(/\d+/g, (num) => parseInt(num, 10) * qty);
