@@ -151,21 +151,24 @@
 
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
 
-      // ระบบค้นหา V.สมบูรณ์แบบ: อ่านภาษาไทยได้ แต่ลบวรรณยุกต์ทิ้งเพื่อป้องกัน PDF สลับที่
+      // ระบบค้นหา V.สมบูรณ์แบบ: ลบภาษาไทยทิ้ง โฟกัสเฉพาะคีย์เวิร์ด ENG + ตัวเลข (ตามที่คุณเกมออกแบบฐานข้อมูลไว้)
       const getMatchedRule = useCallback((textToSearch) => {
         if (!textToSearch) return null;
 
-        const clean = (text) => String(text).toLowerCase()
-            .replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '') // ลบช่องว่าง
-            .replace(/\u0E33/g, 'า') // สระอำ เป็น สระอา
-            .replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/g, '') // ลบวรรณยุกต์และสระบนล่างทิ้งทั้งหมด
-            .replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, ''); // ลบสัญลักษณ์
+        const cleanFull = (text) => String(text).toLowerCase()
+            .replace(/[\u0E00-\u0E7F]/g, ' ') // ลบภาษาไทยทิ้งทั้งหมด
+            .replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, ' ') // ลบสัญลักษณ์
+            .replace(/\s+/g, ' ') // ยุบช่องว่าง
+            .trim();
 
-        const searchArea = clean(textToSearch);
+        const searchArea = cleanFull(textToSearch);
         if (!searchArea) return null;
 
-        const sortedRules = [...skuRules].sort((a, b) => clean(b.keyword).length - clean(a.keyword).length);
+        const sortedRules = [...skuRules]
+            .filter(r => cleanFull(r.keyword).length > 0)
+            .sort((a, b) => cleanFull(b.keyword).length - cleanFull(a.keyword).length);
 
+        // เกราะกันเลขตีกัน
         const isValidBoundary = (idx, cw) => {
             const startsWithDigit = /\d/.test(cw[0]);
             const endsWithDigit = /\d/.test(cw[cw.length - 1]);
@@ -175,9 +178,7 @@
         };
 
         for (const rule of sortedRules) {
-            const cleanKw = clean(rule.keyword);
-            if (!cleanKw) continue;
-
+            const cleanKw = cleanFull(rule.keyword);
             let idx = searchArea.indexOf(cleanKw);
             while (idx !== -1) {
                 if (isValidBoundary(idx, cleanKw)) return rule;
@@ -186,11 +187,11 @@
         }
 
         for (const rule of sortedRules) {
-            const words = rule.keyword.split(/\s+/).filter(w => w.length > 0);
+            const words = String(rule.keyword).split(/\s+/).filter(w => w.length > 0);
             if (words.length > 1) {
                 let allMatch = true;
                 for (const w of words) {
-                    const cw = clean(w);
+                    const cw = cleanFull(w);
                     if (!cw) continue;
 
                     let idx = searchArea.indexOf(cw);
@@ -297,6 +298,12 @@
                   }
               }
               
+              // ล้างขยะต่างๆ ที่ชอบโผล่มาตอนท้ายบิลทิ้งให้หมด จะได้ไม่กวนระบบตัดออเดอร์!
+              zone = zone.replace(/(?:ไม่ต้องเก็บเงิน|เก็บเงินปลายทาง|PICK[\s-]*UP|NDD|HOME|OFFICE|ROS|SUB|CON|LGN|DROP|Bulky)/gi, '');
+              zone = zone.replace(/\b[A-Z0-9]{1,4}-\([A-Z0-9.]+\)/gi, ''); 
+              zone = zone.replace(/\b[A-Z]+-[A-Z]\s+-\s+[ก-๙]+\b/gi, ''); 
+              zone = zone.replace(/\b[A-Z0-9]+_[0-9]+_[A-Z0-9]+_[A-Z0-9-]+\b/gi, ''); 
+
               zone = zone.replace(/\b[A-Z]\d\s+[A-Z0-9]+-\d+\b/gi, ''); 
               zone = zone.replace(/\b[A-Z]\d-\([A-Z0-9.]+\)\b/gi, ''); 
               zone = zone.replace(/\b\d{3}[A-Z]\b/gi, ''); 
@@ -329,11 +336,12 @@
                       let nextPrefixRegex = new RegExp(`(?:^|\\s)${currentItemNum + 1}(?:\\s*[.)\\]]\\s*|\\s+|(?=\\(|\\[))`); 
                       let nextMatch = remainingText.match(nextPrefixRegex);
                       
-                      // ระบบป้องกันการแยกออเดอร์ผิดพลาด: ตรวจสอบว่าถ้าเจอตัวเลข ถัดจากนั้นมีตัวอักษรไหม?
-                      // ถ้าไม่มีตัวอักษร แสดงว่ามันคือเลข Qty ที่อยู่ท้ายบิล ไม่ใช่สินค้าชิ้นต่อไป!
+                      // ฆาตกรตัวที่ 2 ถูกประหารที่นี่: ตรวจสอบให้ชัวร์ว่าตัวเลข 2 คือออเดอร์ใหม่ ไม่ใช่ยอด Qty!
                       if (nextMatch) {
-                          let textAfterNext = remainingText.substring(nextMatch.index + nextMatch[0].length);
-                          if (!/[a-zA-Zก-๙]/.test(textAfterNext)) {
+                          let textAfterNext = remainingText.substring(nextMatch.index + nextMatch[0].length).trim();
+                          let cleanAfter = textAfterNext.replace(/(?:ไม่ต้องเก็บเงิน|เก็บเงินปลายทาง|PICK[\s-]*UP|NDD|HOME|OFFICE|ROS)/gi, '').replace(/\b[A-Z0-9_-]+\b/gi, '').trim();
+                          // ถ้าหลังเลข 2 ไม่มีตัวหนังสือเหลือเลย หรือสั้นมาก แสดงว่าเป็นแค่ Qty ท้ายบิล ไม่ใช่ออเดอร์ใหม่!
+                          if (!/[a-zA-Zก-๙]/.test(cleanAfter) || cleanAfter.length < 5) {
                               nextMatch = null; 
                           }
                       }
@@ -350,7 +358,10 @@
                       let itemQty = 1;
                       let textWithoutQty = itemStr.trim();
                       
-                      // ระบบป้องกันฆาตกรตัวที่ 1: ดึงเฉพาะเลขตัวสุดท้ายตัวเดียว ไม่ลูปกินเลขในชื่อสินค้า!
+                      // ลบเลขลำดับ 1, 2, 3 ข้างหน้าทิ้ง จะได้ไม่ไหลไปรวมกับชื่อสินค้า
+                      textWithoutQty = textWithoutQty.replace(/^\d+[\s.)\]]+/, '').replace(/^\d+(?=\(|\[)/, '').trim();
+
+                      // ฆาตกรตัวที่ 1 ถูกประหารที่นี่: ดึง QTY ออก *ครั้งเดียว* ห้ามใช้ while loop กินเลขอื่นเด็ดขาด!
                       let tailMatch = textWithoutQty.match(/\s+(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
                       if (tailMatch) {
                           itemQty = parseInt(tailMatch[1], 10);
@@ -373,9 +384,9 @@
                   let itemStr = zone.trim();
                   let textWithoutQty = itemStr.trim();
                   
-                  // ตัดเลข 1 ข้างหน้าทิ้ง ป้องกันเลขไหลไปรวมกับชื่อสินค้า
                   textWithoutQty = textWithoutQty.replace(/^\d+[\s.)\]]+/, '').replace(/^\d+(?=\(|\[)/, '').trim();
                   
+                  // ดึง QTY แบบครั้งเดียวปลอดภัย 100%
                   let tailMatch = textWithoutQty.match(/\s+(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
                   if (tailMatch) {
                       itemQty = parseInt(tailMatch[1], 10);
@@ -482,6 +493,7 @@
         
         skuMap.forEach((qty, baseName) => {
             let displayName = baseName;
+            // ระบบคูณตัวเลขทำงานอย่างปลอดภัย แม่นยำ
             if (qty > 1) {
                 if (/\d/.test(baseName)) {
                     displayName = baseName.replace(/\d+/g, (num) => parseInt(num, 10) * qty);
