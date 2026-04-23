@@ -151,34 +151,39 @@
 
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
 
-      // ระบบค้นหาฉบับสมบูรณ์แบบ
+      // THE ULTIMATE FIX: ระบบค้นหาที่ลบภาษาไทยออกทั้งหมด เพื่อโฟกัสเฉพาะ English & Numbers 
       const getMatchedRule = useCallback((textToSearch) => {
         if (!textToSearch) return null;
 
-        const searchArea = String(textToSearch).toLowerCase()
-            .replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '')
-            .replace(/\u0E4D\u0E32/g, '\u0E33')
-            .replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
+        // ฟังก์ชันล้างข้อความแบบถอนรากถอนโคน!
+        const cleanFull = (text) => String(text).toLowerCase()
+            .replace(/[\u0E00-\u0E7F]/g, ' ') // แทนที่ "ภาษาไทยทั้งหมด" ด้วยช่องว่าง (ตัดปัญหา PDF อ่านสระเพี้ยน)
+            .replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, ' ') // แทนที่สัญลักษณ์ด้วยช่องว่าง
+            .replace(/\s+/g, ' ') // ยุบช่องว่างที่ติดกันหลายๆ อันให้เหลืออันเดียว
+            .trim();
 
-        const sortedRules = [...skuRules].sort((a, b) => {
-            const cleanA = a.keyword.toLowerCase().replace(/[\s!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
-            const cleanB = b.keyword.toLowerCase().replace(/[\s!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
-            return cleanB.length - cleanA.length;
-        });
+        const searchArea = cleanFull(textToSearch);
+        if (!searchArea) return null;
 
+        // กรองเอากฎที่มีภาษาอังกฤษหรือตัวเลขมาใช้ แล้วเรียงจากยาวไปสั้น
+        const sortedRules = [...skuRules]
+            .filter(r => cleanFull(r.keyword).length > 0)
+            .sort((a, b) => cleanFull(b.keyword).length - cleanFull(a.keyword).length);
+
+        // เกราะป้องกันไม่ให้เลขไปดึงตัวเลขผิด (เช่น กันเลข 3 ไปจับคู่ใน 36)
         const isValidBoundary = (idx, cw) => {
             const startsWithDigit = /\d/.test(cw[0]);
             const endsWithDigit = /\d/.test(cw[cw.length - 1]);
-
+            
             if (startsWithDigit && idx > 0 && /\d/.test(searchArea[idx - 1])) return false;
             if (endsWithDigit && idx + cw.length < searchArea.length && /\d/.test(searchArea[idx + cw.length])) return false;
+            
             return true;
         };
 
+        // เฟส 1: ค้นหาแบบตรงๆ (คำเรียงต่อกันเป๊ะๆ)
         for (const rule of sortedRules) {
-            const cleanKw = rule.keyword.toLowerCase().replace(/[\s!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
-            if (!cleanKw) continue;
-
+            const cleanKw = cleanFull(rule.keyword);
             let idx = searchArea.indexOf(cleanKw);
             while (idx !== -1) {
                 if (isValidBoundary(idx, cleanKw)) return rule;
@@ -186,13 +191,14 @@
             }
         }
 
+        // เฟส 2: ค้นหาแบบแยกคำ (กระจายกำลังค้นหา เผื่อสลับตำแหน่ง)
         for (const rule of sortedRules) {
-            const words = rule.keyword.split(/\s+/).filter(w => w.length > 0);
+            const words = String(rule.keyword).split(/\s+/).filter(w => w.length > 0);
             if (words.length > 1) {
                 let allMatch = true;
                 for (const w of words) {
-                    const cw = w.toLowerCase().replace(/[\s!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
-                    if (!cw) continue;
+                    const cw = cleanFull(w);
+                    if (!cw) continue; // ถ้าเป็นภาษาไทยล้วน ให้ข้ามการเช็คคำนี้ไป
 
                     let idx = searchArea.indexOf(cw);
                     let validWord = false;
@@ -321,7 +327,6 @@
                   let currentItemNum = 1;
                   
                   while (remainingText.length > 0 && currentItemNum < 20) {
-                      // อัปเกรด Regex ตัดเลขลำดับแถว ให้รองรับกรณีพิมพ์ติดวงเล็บ 1(6ห่อ)
                       let prefixRegexStr = `(?:^|\\s)${currentItemNum}(?:\\s*[.)\\]]\\s*|\\s+|(?=\\(|\\[))`;
                       let currentPrefixRegex = new RegExp(prefixRegexStr);
                       let currentMatch = remainingText.match(currentPrefixRegex);
@@ -342,17 +347,17 @@
                       
                       let itemQty = 1;
                       let textWithoutQty = itemStr.trim();
-                      const tailMatch = textWithoutQty.match(/\s+(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|-|_+)?\s*$/i);
-                      if (tailMatch) {
+                      
+                      // 1. ตัดเลขลำดับแถวออกให้หมดจด (ป้องกันการไหลมารวมกับชื่อสินค้า)
+                      textWithoutQty = textWithoutQty.replace(/^\d+[\s.)\]]+/, '').replace(/^\d+(?=\(|\[)/, '').trim();
+
+                      // 2. ดึงเลข QTY ที่อยู่หลังสุดออก
+                      let tailMatch;
+                      while ((tailMatch = textWithoutQty.match(/\s+(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i))) {
                           itemQty = parseInt(tailMatch[1], 10);
                           textWithoutQty = textWithoutQty.substring(0, tailMatch.index).trim();
-                      } else {
-                          const endNumMatch = textWithoutQty.match(/(?:^|\s)(\d{1,4})\s*$/);
-                          if (endNumMatch) {
-                              itemQty = parseInt(endNumMatch[1], 10);
-                              textWithoutQty = textWithoutQty.substring(0, endNumMatch.index).trim();
-                          }
                       }
+                      
                       parsedItems.push({ text: textWithoutQty, qty: itemQty });
                       currentItemNum++;
                   }
@@ -363,19 +368,14 @@
                   let itemStr = zone.trim();
                   let textWithoutQty = itemStr.trim();
                   
-                  // อัปเกรด Fallback: ตัดเลขลำดับออกอย่างแม่นยำ ป้องกัน 15ห่อ หรือ 16ห่อ
-                  textWithoutQty = textWithoutQty.replace(/^\d+\s*(?:[.)\]]\s*|\s+|(?=\(|\[))/, '').trim();
+                  // ตัดเลขลำดับแถว
+                  textWithoutQty = textWithoutQty.replace(/^\d+[\s.)\]]+/, '').replace(/^\d+(?=\(|\[)/, '').trim();
                   
-                  const tailMatch = textWithoutQty.match(/\s+(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|-|_+)?\s*$/i);
-                  if (tailMatch) {
+                  // สับเลข QTY ท้ายสุดออก
+                  let tailMatch;
+                  while ((tailMatch = textWithoutQty.match(/\s+(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i))) {
                       itemQty = parseInt(tailMatch[1], 10);
                       textWithoutQty = textWithoutQty.substring(0, tailMatch.index).trim();
-                  } else {
-                      const endNumMatch = textWithoutQty.match(/(?:^|\s)(\d{1,4})\s*$/);
-                      if (endNumMatch) {
-                          itemQty = parseInt(endNumMatch[1], 10);
-                          textWithoutQty = textWithoutQty.substring(0, endNumMatch.index).trim();
-                      }
                   }
                   
                   parsedItems.push({ text: textWithoutQty, qty: itemQty });
