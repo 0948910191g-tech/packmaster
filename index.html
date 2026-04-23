@@ -151,71 +151,52 @@
 
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
 
-      // ระบบค้นหา V.สมบูรณ์แบบ: จัดเรียงตามความยาวที่แท้จริง ตัดสระวรรณยุกต์ทิ้งแก้ PDF รวน
+      // 🔥 BACK TO BASICS: ตัดภาษาไทยทิ้งให้หมด เหลือแค่ ENG + NUM ตามที่คุณเกมออกแบบเป๊ะๆ
       const getMatchedRule = useCallback((textToSearch) => {
         if (!textToSearch) return null;
 
-        // ลบช่องว่าง สระ และวรรณยุกต์ไทยทิ้ง เพื่อไม่ให้ PDF สลับที่สระทำรหัสพัง
-        const cleanFull = (text) => String(text).toLowerCase()
-            .replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '') 
-            .replace(/\u0E33/g, 'า') 
-            .replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/g, '') 
-            .replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '')
+        // ฟังก์ชันแปลงข้อความให้เหลือแค่ภาษาอังกฤษ (a-z) และตัวเลข (0-9) เท่านั้น!
+        const cleanToEngNum = (str) => String(str).toLowerCase()
+            .replace(/[^a-z0-9]/g, ' ') // ถ้าไม่ใช่ a-z หรือ 0-9 ให้เปลี่ยนเป็นช่องว่าง
+            .replace(/\s+/g, ' ')       // ยุบช่องว่างที่ติดกันให้เหลืออันเดียว
             .trim();
 
-        const searchArea = cleanFull(textToSearch);
+        const searchArea = cleanToEngNum(textToSearch);
         if (!searchArea) return null;
 
-        // 🔥 กุญแจสำคัญ: เรียงตาม "ความยาวของกฎต้นฉบับ" (b.keyword.trim().length)
-        // ทำให้ MENTHOL (3) ที่มีความยาว 11 ชนะ MENTHOL 1 ที่มีความยาว 9 แบบขาดลอย!
-        const sortedRules = [...skuRules]
-            .filter(r => cleanFull(r.keyword).length > 0)
-            .sort((a, b) => b.keyword.trim().length - a.keyword.trim().length);
+        // ดึงกฎมาคลีนให้เป็น ENG+NUM เหมือนกัน แล้วจัดเรียงตามความยาว (จากยาวไปสั้น)
+        const rules = skuRules.map(r => ({
+            ...r,
+            cleanKw: cleanToEngNum(r.keyword)
+        })).filter(r => r.cleanKw.length > 0);
 
-        // เกราะป้องกันเลขตีกัน 
-        const isValidBoundary = (idx, cw) => {
-            const startsWithDigit = /\d/.test(cw[0]);
-            const endsWithDigit = /\d/.test(cw[cw.length - 1]);
-            if (startsWithDigit && idx > 0 && /\d/.test(searchArea[idx - 1])) return false;
-            if (endsWithDigit && idx + cw.length < searchArea.length && /\d/.test(searchArea[idx + cw.length])) return false;
-            return true;
-        };
+        rules.sort((a, b) => b.cleanKw.length - a.cleanKw.length);
 
-        // เฟส 1: ค้นหาแบบเป๊ะๆ
-        for (const rule of sortedRules) {
-            const cleanKw = cleanFull(rule.keyword);
-            let idx = searchArea.indexOf(cleanKw);
-            while (idx !== -1) {
-                if (isValidBoundary(idx, cleanKw)) return rule;
-                idx = searchArea.indexOf(cleanKw, idx + 1);
-            }
+        // เฟส 1: ค้นหาแบบตรงๆ เป๊ะๆ (คำต้องเรียงกัน)
+        // บังคับ Word Boundary (\b) เพื่อป้องกันไม่ให้ 3 ไปจับคู่ใน 36
+        for (const rule of rules) {
+            const regex = new RegExp(`\\b${rule.cleanKw}\\b`);
+            if (regex.test(searchArea)) return rule;
         }
 
-        // เฟส 2: ค้นหาแบบแยกคำ
-        for (const rule of sortedRules) {
-            const words = String(rule.keyword).split(/\s+/).filter(w => w.length > 0);
-            if (words.length > 1) {
-                let allMatch = true;
-                for (const w of words) {
-                    const cw = cleanFull(w);
-                    if (!cw) continue;
+        // เฟส 2: ค้นหาแบบสลับตำแหน่ง (แยกค้นหาทีละคำ)
+        for (const rule of rules) {
+            const words = rule.cleanKw.split(' ');
+            let tempArea = searchArea;
+            let allMatch = true;
 
-                    let idx = searchArea.indexOf(cw);
-                    let validWord = false;
-                    while (idx !== -1) {
-                        if (isValidBoundary(idx, cw)) {
-                            validWord = true;
-                            break;
-                        }
-                        idx = searchArea.indexOf(cw, idx + 1);
-                    }
-                    if (!validWord) {
-                        allMatch = false;
-                        break;
-                    }
+            for (const word of words) {
+                const wordRegex = new RegExp(`\\b${word}\\b`);
+                if (wordRegex.test(tempArea)) {
+                    // ถ้าเจอคำนี้ ให้ "ลบทิ้ง" ไปเลย จะได้ไม่นับซ้ำ (ป้องกันบัค 5แถม5)
+                    tempArea = tempArea.replace(wordRegex, ' ');
+                } else {
+                    allMatch = false;
+                    break;
                 }
-                if (allMatch) return rule;
             }
+            
+            if (allMatch) return rule;
         }
 
         return null;
@@ -343,7 +324,8 @@
                       
                       if (nextMatch) {
                           let textAfterNext = remainingText.substring(nextMatch.index + nextMatch[0].length).trim();
-                          if (!/[a-zA-Zก-๙]/.test(textAfterNext) || textAfterNext.length < 5) {
+                          let cleanAfter = textAfterNext.replace(/(?:ไม่ต้องเก็บเงิน|เก็บเงินปลายทาง|PICK[\s-]*UP|NDD|HOME|OFFICE|ROS)/gi, '').replace(/\b[A-Z0-9_-]+\b/gi, '').trim();
+                          if (!/[a-zA-Zก-๙]/.test(cleanAfter) || cleanAfter.length < 5) {
                               nextMatch = null; 
                           }
                       }
@@ -360,14 +342,14 @@
                       let itemQty = 1;
                       let textWithoutQty = itemStr.trim();
                       
+                      // 1. ตัดเลข 1,2 ลำดับแถวทิ้ง
                       textWithoutQty = textWithoutQty.replace(/^\d+[\s.)\]]+/, '').replace(/^\d+(?=\(|\[)/, '').trim();
 
-                      // 🔥 ประหารฆาตกรตัวที่ 1: ดึงเลขยอด 1-4 หลักจาก "ท้ายประโยค" เท่านั้น!
-                      // ห้ามวนลูปไปดึงเลขในชื่อสินค้ามามั่วๆ เด็ดขาด!
-                      let tailMatch = textWithoutQty.match(/\s+(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
+                      // 2. ดึงยอด QTY "ครั้งเดียว" จากท้ายประโยคเท่านั้น ป้องกันการกินเลขรหัสสินค้า
+                      let tailMatch = textWithoutQty.match(/(^|\s|[ก-๙a-zA-Z!\])\-_])(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
                       if (tailMatch) {
-                          itemQty = parseInt(tailMatch[1], 10);
-                          textWithoutQty = textWithoutQty.substring(0, tailMatch.index).trim();
+                          itemQty = parseInt(tailMatch[2], 10);
+                          textWithoutQty = textWithoutQty.substring(0, textWithoutQty.length - tailMatch[0].length + tailMatch[1].length).trim();
                       } else {
                           let endNumMatch = textWithoutQty.match(/(?:^|\s)(\d{1,4})\s*$/);
                           if (endNumMatch) {
@@ -388,10 +370,10 @@
                   
                   textWithoutQty = textWithoutQty.replace(/^\d+[\s.)\]]+/, '').replace(/^\d+(?=\(|\[)/, '').trim();
                   
-                  let tailMatch = textWithoutQty.match(/\s+(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
+                  let tailMatch = textWithoutQty.match(/(^|\s|[ก-๙a-zA-Z!\])\-_])(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
                   if (tailMatch) {
-                      itemQty = parseInt(tailMatch[1], 10);
-                      textWithoutQty = textWithoutQty.substring(0, tailMatch.index).trim();
+                      itemQty = parseInt(tailMatch[2], 10);
+                      textWithoutQty = textWithoutQty.substring(0, textWithoutQty.length - tailMatch[0].length + tailMatch[1].length).trim();
                   } else {
                       let endNumMatch = textWithoutQty.match(/(?:^|\s)(\d{1,4})\s*$/);
                       if (endNumMatch) {
@@ -494,6 +476,7 @@
         
         skuMap.forEach((qty, baseName) => {
             let displayName = baseName;
+            // ระบบคูณเลขคู่บุญคุณเกม ยังคงทำงานได้อย่างแม่นยำ!
             if (qty > 1) {
                 if (/\d/.test(baseName)) {
                     displayName = baseName.replace(/\d+/g, (num) => parseInt(num, 10) * qty);
