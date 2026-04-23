@@ -151,12 +151,14 @@
 
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
 
-      // 🔥 BACK TO BASICS: ตัดภาษาไทยทิ้ง โฟกัสเฉพาะคีย์เวิร์ด ENG + ตัวเลข
+      // เปลี่ยนชื่อเป็นภาษาอังกฤษ+ตัวเลข ล้วนๆ ตัดภาษาไทยทิ้งทั้งหมด
       const getMatchedRule = useCallback((textToSearch) => {
         if (!textToSearch) return null;
 
-        // แปลงข้อความให้เหลือแค่ภาษาอังกฤษ (a-z) และตัวเลข (0-9)
         const cleanToEngNum = (str) => String(str).toLowerCase()
+            // งัดตัวอักษรและตัวเลขที่พิมพ์ติดกันให้แยกออก (แก้บัค 3menthol -> 3 menthol)
+            .replace(/([a-z])([0-9])/g, '$1 $2')
+            .replace(/([0-9])([a-z])/g, '$1 $2')
             .replace(/[^a-z0-9]/g, ' ') // ถ้าไม่ใช่ a-z หรือ 0-9 ให้กลายเป็นช่องว่าง
             .replace(/\s+/g, ' ')       // ยุบช่องว่างที่ติดกันให้เหลืออันเดียว
             .trim();
@@ -164,7 +166,6 @@
         const searchArea = cleanToEngNum(textToSearch);
         if (!searchArea) return null;
 
-        // ดึงกฎมาคลีนให้เป็น ENG+NUM เหมือนกัน แล้วจัดเรียงตามความยาวที่คลีนแล้ว (จากยาวไปสั้น)
         const rules = skuRules.map(r => ({
             ...r,
             cleanKw: cleanToEngNum(r.keyword)
@@ -172,14 +173,21 @@
 
         rules.sort((a, b) => b.cleanKw.length - a.cleanKw.length);
 
-        // เฟส 1: ค้นหาแบบตรงๆ เป๊ะๆ (คำต้องเรียงติดกัน)
-        // ใช้ \b เพื่อป้องกันไม่ให้ 3 ไปจับคู่ใน 36
+        const isValidBoundary = (idx, cw) => {
+            const startsWithDigit = /\d/.test(cw[0]);
+            const endsWithDigit = /\d/.test(cw[cw.length - 1]);
+            if (startsWithDigit && idx > 0 && /\d/.test(searchArea[idx - 1])) return false;
+            if (endsWithDigit && idx + cw.length < searchArea.length && /\d/.test(searchArea[idx + cw.length])) return false;
+            return true;
+        };
+
+        // เฟส 1: ค้นหาแบบตรงๆ เป๊ะๆ
         for (const rule of rules) {
             const regex = new RegExp(`\\b${rule.cleanKw}\\b`);
             if (regex.test(searchArea)) return rule;
         }
 
-        // เฟส 2: ค้นหาแบบสลับตำแหน่ง (แยกค้นหาทีละคำเผื่อ PDF สลับที่)
+        // เฟส 2: ค้นหาแบบสลับตำแหน่ง
         for (const rule of rules) {
             const words = rule.cleanKw.split(' ');
             let tempArea = searchArea;
@@ -188,7 +196,6 @@
             for (const word of words) {
                 const wordRegex = new RegExp(`\\b${word}\\b`);
                 if (wordRegex.test(tempArea)) {
-                    // เจอแล้ว ลบคำนั้นทิ้งเพื่อไม่ให้นับซ้ำ
                     tempArea = tempArea.replace(wordRegex, ' ');
                 } else {
                     allMatch = false;
@@ -339,20 +346,33 @@
                           remainingText = '';
                       }
                       
-                      let itemQty = 1;
+                      // 1. แทนที่อักขระล่องหนด้วย "ช่องว่าง" ป้องกันเลขติดกันจนตัดไม่ขาด
+                      let textWithoutQty = itemStr.replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ').trim();
                       
-                      // 1. สับอักขระผีล่องหนทิ้ง ป้องกัน PDF อ่านรวน
-                      let textWithoutQty = itemStr.replace(/[\u200B-\u200F\uFEFF]/g, '').trim();
-                      
-                      // 2. ตัดเลขลำดับแถว (เช่น 1.) ออก
-                      textWithoutQty = textWithoutQty.replace(/^\d+[\s.)\]]+/, '').replace(/^\d+(?=\(|\[)/, '').trim();
+                      // 2. ตัดเลขลำดับแถว (เช่น 1.) ทิ้งให้เกลี้ยง
+                      textWithoutQty = textWithoutQty.replace(/^[\s\W]*\d{1,2}(?:[\s.)\]]+|(?=[\(\[]))/, '').trim();
 
-                      // 3. 🔥 มีดอีโต้สับ QTY: ดึงเลขที่อยู่เดี่ยวๆ ท้ายประโยคที่สุดเท่านั้น!
-                      // ใช้ \b เพื่อให้แน่ใจว่าดึงเฉพาะ "ตัวเลขล้วนๆ" ไม่งับเลขในภาษาไทย (แก้ปัญหา 5แถม5)
-                      let tailMatch = textWithoutQty.match(/\b(\d{1,4})(?=[^\wก-๙]*$)/);
-                      if (tailMatch) {
-                          itemQty = parseInt(tailMatch[1], 10);
-                          textWithoutQty = textWithoutQty.substring(0, tailMatch.index).trim();
+                      let itemQty = 1;
+                      let nums = [];
+                      
+                      // 3. ค้นหา "ตัวเลขที่อยู่เดี่ยวๆ" ทั้งหมดในประโยค
+                      let regex = /(?:^|\s|[^a-zA-Z0-9])(\d{1,4})(?=\s|[^a-zA-Z0-9]|$)/g;
+                      let m;
+                      while ((m = regex.exec(textWithoutQty)) !== null) {
+                          nums.push({ val: m[1], index: m.index, length: m[0].length });
+                      }
+
+                      // 4. ถ้าเจอตัวเลข ให้ดึง "ตัวสุดท้าย" มาเช็ค
+                      if (nums.length > 0) {
+                          let last = nums[nums.length - 1];
+                          let after = textWithoutQty.substring(last.index + last.length);
+                          
+                          // ถ้าข้างหลังตัวเลขนี้ *ไม่มี* ตัวอักษรไทยหรืออังกฤษตามหลัง แสดงว่ามันคือยอด QTY ล้านเปอร์เซ็นต์!
+                          if (!/[a-zA-Zก-๙]/.test(after)) {
+                              itemQty = parseInt(last.val, 10);
+                              // หั่น QTY ทิ้งออกจากประโยคให้สะอาดหมดจด
+                              textWithoutQty = textWithoutQty.substring(0, last.index).trim();
+                          }
                       }
                       
                       parsedItems.push({ text: textWithoutQty, qty: itemQty });
@@ -360,17 +380,28 @@
                   }
               }
 
+              // กรณีหลุดลูป (เช่นมีแค่บรรทัดเดียว)
               if (parsedItems.length === 0) {
                   let itemStr = zone.trim();
                   
-                  let textWithoutQty = itemStr.replace(/[\u200B-\u200F\uFEFF]/g, '').trim();
-                  textWithoutQty = textWithoutQty.replace(/^\d+[\s.)\]]+/, '').replace(/^\d+(?=\(|\[)/, '').trim();
+                  let textWithoutQty = itemStr.replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ').trim();
+                  textWithoutQty = textWithoutQty.replace(/^[\s\W]*\d{1,2}(?:[\s.)\]]+|(?=[\(\[]))/, '').trim();
                   
                   let itemQty = 1;
-                  let tailMatch = textWithoutQty.match(/\b(\d{1,4})(?=[^\wก-๙]*$)/);
-                  if (tailMatch) {
-                      itemQty = parseInt(tailMatch[1], 10);
-                      textWithoutQty = textWithoutQty.substring(0, tailMatch.index).trim();
+                  let nums = [];
+                  let regex = /(?:^|\s|[^a-zA-Z0-9])(\d{1,4})(?=\s|[^a-zA-Z0-9]|$)/g;
+                  let m;
+                  while ((m = regex.exec(textWithoutQty)) !== null) {
+                      nums.push({ val: m[1], index: m.index, length: m[0].length });
+                  }
+
+                  if (nums.length > 0) {
+                      let last = nums[nums.length - 1];
+                      let after = textWithoutQty.substring(last.index + last.length);
+                      if (!/[a-zA-Zก-๙]/.test(after)) {
+                          itemQty = parseInt(last.val, 10);
+                          textWithoutQty = textWithoutQty.substring(0, last.index).trim();
+                      }
                   }
                   
                   parsedItems.push({ text: textWithoutQty, qty: itemQty });
@@ -467,7 +498,7 @@
         
         skuMap.forEach((qty, baseName) => {
             let displayName = baseName;
-            // ระบบคูณยอดของเกม ทำงานอย่างสมบูรณ์แบบ
+            // ระบบคูณยอดทำงานอย่างแม่นยำ
             if (qty > 1) {
                 if (/\d/.test(baseName)) {
                     displayName = baseName.replace(/\d+/g, (num) => parseInt(num, 10) * qty);
