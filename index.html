@@ -151,38 +151,30 @@
 
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
 
-      // THE ULTIMATE FIX: ท่าไม้ตาย! ลบช่องว่างทิ้งหมด แต่เช็คเขตแดนตัวเลขให้เป๊ะ
+      // ระบบค้นหาฉบับสมบูรณ์แบบ
       const getMatchedRule = useCallback((textToSearch) => {
         if (!textToSearch) return null;
 
-        // ลบทุกช่องว่าง สัญลักษณ์ และวรรณยุกต์พิเศษออก เพื่อให้การค้นหาทะลุทะลวงที่สุด
         const searchArea = String(textToSearch).toLowerCase()
             .replace(/[\s\n\r\t\u200B-\u200F\uFEFF]/g, '')
             .replace(/\u0E4D\u0E32/g, '\u0E33')
             .replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
 
-        // เรียงจากกฎที่ยาวที่สุดไปสั้นที่สุด ป้องกันเลขสั้นไปชนเลขยาว
         const sortedRules = [...skuRules].sort((a, b) => {
             const cleanA = a.keyword.toLowerCase().replace(/[\s!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
             const cleanB = b.keyword.toLowerCase().replace(/[\s!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
             return cleanB.length - cleanA.length;
         });
 
-        // ฟังก์ชันเกราะป้องกันเลขตีกัน (เช็คขอบเขตตัวเลข)
         const isValidBoundary = (idx, cw) => {
             const startsWithDigit = /\d/.test(cw[0]);
             const endsWithDigit = /\d/.test(cw[cw.length - 1]);
 
-            // ถ้าคำขึ้นต้นด้วยตัวเลข ตัวอักษรก่อนหน้า(ในประโยคที่ถูกลบช่องว่างแล้ว)ต้องไม่ใช่ตัวเลข
             if (startsWithDigit && idx > 0 && /\d/.test(searchArea[idx - 1])) return false;
-            
-            // ถ้าคำลงท้ายด้วยตัวเลข ตัวอักษรถัดไปต้องไม่ใช่ตัวเลข
             if (endsWithDigit && idx + cw.length < searchArea.length && /\d/.test(searchArea[idx + cw.length])) return false;
-
             return true;
         };
 
-        // เฟส 1: ค้นหาแบบเป๊ะๆ (ประโยคติดกัน)
         for (const rule of sortedRules) {
             const cleanKw = rule.keyword.toLowerCase().replace(/[\s!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, '');
             if (!cleanKw) continue;
@@ -194,7 +186,6 @@
             }
         }
 
-        // เฟส 2: ค้นหาแบบแยกคำ (เผื่อคำสลับตำแหน่ง)
         for (const rule of sortedRules) {
             const words = rule.keyword.split(/\s+/).filter(w => w.length > 0);
             if (words.length > 1) {
@@ -330,37 +321,27 @@
                   let currentItemNum = 1;
                   
                   while (remainingText.length > 0 && currentItemNum < 20) {
-                      let currentPrefixRegex = new RegExp(`(?:^|\\s)${currentItemNum}\\s+`);
+                      // อัปเกรด Regex ตัดเลขลำดับแถว ให้รองรับกรณีพิมพ์ติดวงเล็บ 1(6ห่อ)
+                      let prefixRegexStr = `(?:^|\\s)${currentItemNum}(?:\\s*[.)\\]]\\s*|\\s+|(?=\\(|\\[))`;
+                      let currentPrefixRegex = new RegExp(prefixRegexStr);
                       let currentMatch = remainingText.match(currentPrefixRegex);
+                      
                       if (!currentMatch) break; 
                       
-                      let nextPrefixRegex = new RegExp(`(?:^|\\s)${currentItemNum + 1}\\s+`); 
+                      let nextPrefixRegex = new RegExp(`(?:^|\\s)${currentItemNum + 1}(?:\\s*[.)\\]]\\s*|\\s+|(?=\\(|\\[))`); 
                       let nextMatch = remainingText.match(nextPrefixRegex);
                       let itemStr = '';
                       
                       if (nextMatch) {
-                          if (nextMatch.index + nextMatch[0].length >= remainingText.length - 2) {
-                              itemStr = remainingText.substring(currentMatch.index + currentMatch[0].length);
-                              remainingText = '';
-                          } else {
-                              itemStr = remainingText.substring(currentMatch.index + currentMatch[0].length, nextMatch.index);
-                              remainingText = remainingText.substring(nextMatch.index);
-                          }
+                          itemStr = remainingText.substring(currentMatch.index + currentMatch[0].length, nextMatch.index);
+                          remainingText = remainingText.substring(nextMatch.index);
                       } else {
                           itemStr = remainingText.substring(currentMatch.index + currentMatch[0].length);
                           remainingText = '';
                       }
                       
-                      // -------------------------------------------------------------
-                      // จุดสำคัญ: แยก QTY และลำดับแถวออกให้เกลี้ยงก่อนเอาไปหาชื่อ!
-                      // -------------------------------------------------------------
                       let itemQty = 1;
                       let textWithoutQty = itemStr.trim();
-                      
-                      // 1. ตัดเลขลำดับแถวด้านหน้าทิ้ง (ป้องกันเลข 1 ไหลไปรวมกับชื่อ)
-                      textWithoutQty = textWithoutQty.replace(/^\d+\s*(?:[.)]\s*|\s+)/, '');
-
-                      // 2. ดึงเลข QTY ที่อยู่ท้ายสุดออกให้หมดจด
                       const tailMatch = textWithoutQty.match(/\s+(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|-|_+)?\s*$/i);
                       if (tailMatch) {
                           itemQty = parseInt(tailMatch[1], 10);
@@ -372,7 +353,6 @@
                               textWithoutQty = textWithoutQty.substring(0, endNumMatch.index).trim();
                           }
                       }
-                      
                       parsedItems.push({ text: textWithoutQty, qty: itemQty });
                       currentItemNum++;
                   }
@@ -383,8 +363,8 @@
                   let itemStr = zone.trim();
                   let textWithoutQty = itemStr.trim();
                   
-                  // ตัดลำดับแถวและ QTY กรณีที่ไม่ได้เข้าลูปข้างบน
-                  textWithoutQty = textWithoutQty.replace(/^\d+\s*(?:[.)]\s*|\s+)/, '');
+                  // อัปเกรด Fallback: ตัดเลขลำดับออกอย่างแม่นยำ ป้องกัน 15ห่อ หรือ 16ห่อ
+                  textWithoutQty = textWithoutQty.replace(/^\d+\s*(?:[.)\]]\s*|\s+|(?=\(|\[))/, '').trim();
                   
                   const tailMatch = textWithoutQty.match(/\s+(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|-|_+)?\s*$/i);
                   if (tailMatch) {
@@ -492,7 +472,6 @@
         
         skuMap.forEach((qty, baseName) => {
             let displayName = baseName;
-            // ระบบคูณตัวเลขยังอยู่ครบ และทำงานถูกต้องเหมือนเดิม
             if (qty > 1) {
                 if (/\d/.test(baseName)) {
                     displayName = baseName.replace(/\d+/g, (num) => parseInt(num, 10) * qty);
