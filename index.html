@@ -151,52 +151,68 @@
 
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
 
-      // 🔥 THE ULTIMATE THAI-ENGLISH HYBRID: ระบบค้นหาที่ฉลาดที่สุด
+      // 🔥 THE ULTIMATE SMART TOKENIZER: คืนชีพภาษาไทย แยกคำให้เป๊ะปัง
       const getMatchedRule = useCallback((textToSearch) => {
         if (!textToSearch) return null;
 
-        // 1. ทำความสะอาดข้อความ: เก็บอักษรไทยไว้ แต่ "ลบสระ/วรรณยุกต์ทิ้ง" ป้องกัน PDF สลับที่
-        const cleanText = (str) => String(str).toLowerCase()
-            .replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ') // ลบอักขระล่องหน
-            .replace(/\u0E33/g, 'า') // เปลี่ยนสระอำ เป็น สระอา
-            .replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/g, '') // ลบสระบนล่าง/วรรณยุกต์ทั้งหมด
-            .replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, ' ') // แปลงสัญลักษณ์เป็นช่องว่าง (วงเล็บจะกลายเป็นช่องว่าง)
-            .replace(/\s+/g, ' ') // ยุบช่องว่างรัวๆ
-            .trim();
+        // ฟังก์ชันล้างข้อความและสับเป็นตะกร้าคำศัพท์ (Arrays)
+        const tokenize = (str) => {
+            let cleaned = String(str).toLowerCase()
+                .replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ') // ลบอักขระล่องหน
+                .replace(/[()\[\]\{\}]/g, ' ') // แปลงวงเล็บเป็นช่องว่าง ป้องกันคำติดวงเล็บ
+                .replace(/[!"#$%&'*+,\-./:;<=>?@\\^_`|~]/g, ' '); // ลบสัญลักษณ์ขยะ
 
-        const searchArea = cleanText(textToSearch);
-        if (!searchArea) return null;
+            // ซ่อมรอยรั่ว PDF: ดึงตัวเลขที่ถูกถ่างช่องไฟให้กลับมาติดกัน (เช่น "3 0" กลายเป็น "30")
+            let prevCleaned;
+            do {
+                prevCleaned = cleaned;
+                cleaned = cleaned.replace(/(\d)\s+(\d)/g, '$1$2');
+            } while (cleaned !== prevCleaned);
 
-        // แปลงกฎให้สะอาดแบบเดียวกัน
+            // ไฮไลต์สำคัญ: งัดตัวเลขกับตัวอักษรออกจากกัน! (5แถม5 -> 5 แถม 5)
+            cleaned = cleaned
+                .replace(/([a-zก-๙])(\d)/g, '$1 $2')
+                .replace(/(\d)([a-zก-๙])/g, '$1 $2')
+                .replace(/\s+/g, ' ') // ยุบช่องว่างให้เรียบร้อย
+                .trim();
+
+            return cleaned.split(' ').filter(w => w.length > 0);
+        };
+
+        const textWords = tokenize(textToSearch);
+        if (textWords.length === 0) return null;
+
+        // เตรียมกฎทั้งหมดให้เป็นตะกร้าคำศัพท์
         const rules = skuRules.map(r => ({
             ...r,
-            cleanKw: cleanText(r.keyword)
-        })).filter(r => r.cleanKw.length > 0);
+            wordArray: tokenize(r.keyword)
+        })).filter(r => r.wordArray.length > 0);
 
-        // 2. เรียงลำดับความฉลาด: กฎที่ยาวกว่า มีอำนาจค้นหาก่อนเสมอ!
-        rules.sort((a, b) => b.cleanKw.length - a.cleanKw.length);
+        // 🔥 กฎการเรียงลำดับมรณะ: ใครมีจำนวนคำเยอะกว่า ชนะ! (Hoya 5แถม5 มี 4 คำ ชนะ Hoya 5 ที่มี 2 คำ)
+        // ถ้าคำเท่ากัน ให้เอากฎที่อักษรยาวกว่าขึ้นก่อน (กันตัวสั้นมาแย่งซีน)
+        rules.sort((a, b) => {
+            if (b.wordArray.length !== a.wordArray.length) {
+                return b.wordArray.length - a.wordArray.length;
+            }
+            return b.keyword.length - a.keyword.length;
+        });
 
-        // 3. เฟส 1: ค้นหาแบบเป๊ะๆ 
+        // ตรวจสอบแบบหยิบออกจากตะกร้าทีละคำ
         for (const rule of rules) {
-            if (searchArea.includes(rule.cleanKw)) return rule;
-        }
-
-        // 4. เฟส 2: ค้นหาแบบ "หยิบของออกจากตะกร้า" (Unordered Substring Match)
-        for (const rule of rules) {
-            const words = rule.cleanKw.split(' ');
-            let tempArea = searchArea;
+            let tempTextWords = [...textWords];
             let allMatch = true;
 
-            for (const word of words) {
-                const idx = tempArea.indexOf(word);
+            for (const rw of rule.wordArray) {
+                const idx = tempTextWords.indexOf(rw);
                 if (idx !== -1) {
-                    // ถ้าเจอคำนี้ในประโยค ให้ลบมันทิ้งไปด้วยช่องว่าง จะได้ไม่นำมานับซ้ำอีก
-                    tempArea = tempArea.substring(0, idx) + ' '.repeat(word.length) + tempArea.substring(idx + word.length);
+                    tempTextWords.splice(idx, 1); // หยิบคำทิ้ง ป้องกันการนับซ้ำ
                 } else {
-                    allMatch = false; // ขาดคำใดคำหนึ่ง ถือว่าไม่ตรงกฎ!
+                    allMatch = false; // ขาดไปคำเดียว ถือว่ากฎนี้ตกป๋อง
                     break;
                 }
             }
+            
+            // ถ้าคำในกฎมีครบอยู่ในบิล ก็ดึงรหัสมาตอบได้เลย!
             if (allMatch) return rule;
         }
 
@@ -207,7 +223,6 @@
         const files = Array.from(e.target.files);
         if (files.length === 0) return;
 
-        // อัปเดตขยายลิมิตเป็น 150 ใบตามคำขอ!
         if (orders.length >= 150) {
             showToast('อัลบั้มเต็มแล้ว! (สูงสุด 150 ใบ) กรุณาล้างข้อมูลก่อนอัปโหลดใหม่', 'error');
             e.target.value = null;
@@ -240,7 +255,6 @@
               return;
           }
 
-          // อัปเดตขยายลิมิตเป็น 150 ใบ
           if (orders.length + totalNewPages > 150) {
               const overAmount = (orders.length + totalNewPages) - 150;
               showToast(`อัปโหลดไม่ได้! รวมแล้วเกิน 150 ใบ (เกินมา ${overAmount} ใบ)`, 'error');
@@ -348,7 +362,7 @@
                       let textWithoutQty = itemStr.replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ').trim();
                       textWithoutQty = textWithoutQty.replace(/^\s*\d+([.)\]]|\s+)(?=[^\d]|$)/, '').trim();
 
-                      // ดึงยอด QTY แบบปลอดภัย: ดึงตัวเลขท้ายสุดที่มีช่องว่างกั้น
+                      // ดึงยอด QTY แบบปลอดภัย: ดึงตัวเลขท้ายสุดเสมอ แล้วสับมันทิ้งออกจากประโยค!
                       let tailMatch = textWithoutQty.match(/\s+(\d+)\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
                       if (tailMatch) {
                           itemQty = parseInt(tailMatch[1], 10);
@@ -479,7 +493,7 @@
         
         skuMap.forEach((qty, baseName) => {
             let displayName = baseName;
-            // ระบบคูณยอดทำงานตามยอด QTY ที่ดึงมาอย่างถูกต้อง 100%
+            // คูณยอดได้แม่นยำเหมือนเดิมแน่นอนครับ
             if (qty > 1) {
                 if (/\d/.test(baseName)) {
                     displayName = baseName.replace(/\d+/g, (num) => parseInt(num, 10) * qty);
