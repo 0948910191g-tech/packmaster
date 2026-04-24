@@ -151,17 +151,25 @@
 
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
 
-      // 🔥 โค้ดเวอร์ชันเก่าที่คุณเกมใช้งานได้ดีที่สุด
+      // 🔥 โค้ดเก่าที่คุณเกมชอบ แต่อัปเกรดสูตรโกง 5แถม5 ไว้ข้างใน
       const getMatchedRule = useCallback((textToSearch) => {
         if (!textToSearch) return null;
 
-        const cleanText = (str) => String(str).toLowerCase()
-            .replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ') 
-            .replace(/\u0E33/g, 'า') 
-            .replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/g, '') 
-            .replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, ' ') 
-            .replace(/\s+/g, ' ') 
-            .trim();
+        const cleanText = (str) => {
+            let cleaned = String(str).toLowerCase()
+                .replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ')
+                .replace(/\u0E33/g, 'า')
+                .replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/g, '') // ลบสระ
+                .replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, ' ') // ลบเครื่องหมายวรรคตอน
+                .replace(/\s+/g, ' ');
+
+            // ✨ สูตรโกงแก้บัค Shopee: แปลงคำที่ Shopee พิมพ์เพี้ยน ให้ตรงกับกฎ 5แถม5 ของบอสเสมอ
+            cleaned = cleaned.replace(/มวง\s*5\s*ชมพ\s*5/g, ' 5แถม5 ')
+                             .replace(/5\s*แถม\s*5/g, ' 5แถม5 ')
+                             .replace(/5\s*5\s*hoya/g, ' 5แถม5 hoya ');
+            
+            return cleaned.trim();
+        };
 
         const searchArea = cleanText(textToSearch);
         if (!searchArea) return null;
@@ -171,6 +179,7 @@
             cleanKw: cleanText(r.keyword)
         })).filter(r => r.cleanKw.length > 0);
 
+        // จัดลำดับกฎที่ยาวกว่าตรวจก่อน (ป้องกันโดนแย่งซีน)
         rules.sort((a, b) => b.cleanKw.length - a.cleanKw.length);
 
         for (const rule of rules) {
@@ -280,6 +289,10 @@
                   }
               }
               
+              // ✨ สูตรโกงปราบผีตัวเลข: ลบ Shopee Order ID และ รหัสไปรษณีย์ ทิ้งไปเลย! (แก้บัค เย็นฟ้า 36 / 24)
+              zone = zone.replace(/\b2\d{5}[A-Z0-9]{8,}\b/gi, ''); // ตัด Shopee Order No
+              zone = zone.replace(/\b12160\b/g, ''); // ตัดรหัสไปรษณีย์ 12160 ออกไปให้หมด
+
               zone = zone.replace(/(?:ไม่ต้องเก็บเงิน|เก็บเงินปลายทาง|PICK[\s-]*UP|NDD|HOME|OFFICE|ROS|SUB|CON|LGN|DROP|Bulky)/gi, '');
               zone = zone.replace(/\b[A-Z0-9]{1,4}-\([A-Z0-9.]+\)/gi, ''); 
               zone = zone.replace(/\b[A-Z]+-[A-Z]\s+-\s+[ก-๙]+\b/gi, ''); 
@@ -337,6 +350,7 @@
                       let textWithoutQty = itemStr.replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ').trim();
                       textWithoutQty = textWithoutQty.replace(/^\s*\d+([.)\]]|\s+)(?=[^\d]|$)/, '').trim();
 
+                      // ลอจิกดึง QTY เดิมของคุณเกมที่ไม่เคยพลาด
                       let itemQty = 1;
                       let endDigitsMatch = textWithoutQty.match(/(\d+)\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
                       if (endDigitsMatch) {
