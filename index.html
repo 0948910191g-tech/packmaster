@@ -151,18 +151,19 @@
 
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
 
-      // 🔥 THE MAGIC FIX: มัดตัวเลขติดกับหน่วย ล็อกตายผีตัวเลข!
+      // 🔥 THE HYBRID MATCH: ล็อกผีตัวเลข แต่ปล่อยฟรีตัวหนังสือ!
       const getMatchedRule = useCallback((textToSearch) => {
         if (!textToSearch) return null;
 
         const tokenize = (str) => {
             let cleaned = String(str).toLowerCase()
                 .replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ') 
-                .replace(/[()\[\]\{\}!"#$%&'*+,\-./:;<=>?@\\^_`|~]/g, ' ') // ลบวงเล็บ/สัญลักษณ์
-                // 🔒 ล็อกตัวเลขติดกับหน่วยเสมอ! ป้องกันการแยกคำแล้วไปขโมยเลขบาร์โค้ด
-                .replace(/(\d)\s+(ห่อ|แพ็ค|ชิ้น|แถม|กล่อง)/g, '$1$2')
-                .replace(/(แถม)\s+(\d)/g, '$1$2') // ล็อก แถม5
-                .replace(/\bx\b/gi, ' ') // ลบตัว x
+                .replace(/\u0E33/g, 'า') 
+                .replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/g, '') 
+                .replace(/[()\[\]\{\}!"#$%&'*+,\-./:;<=>?@\\^_`|~]/g, ' ') 
+                .replace(/([a-zก-ฮ])(\d)/g, '$1 $2') // แยกอักษรและตัวเลขออกจากกัน
+                .replace(/(\d)([a-zก-ฮ])/g, '$1 $2')
+                .replace(/\bx\b/gi, ' ') 
                 .replace(/\s+/g, ' ')
                 .trim();
             return cleaned.split(' ').filter(w => w.length > 0);
@@ -176,7 +177,6 @@
             wordArray: tokenize(r.keyword)
         })).filter(r => r.wordArray.length > 0);
 
-        // จัดลำดับความสำคัญ (คำเยอะชนะก่อน)
         rules.sort((a, b) => {
             if (b.wordArray.length !== a.wordArray.length) {
                 return b.wordArray.length - a.wordArray.length;
@@ -189,9 +189,21 @@
             let allMatch = true;
 
             for (const rw of rule.wordArray) {
-                const idx = tempTextWords.indexOf(rw);
-                if (idx !== -1) {
-                    tempTextWords.splice(idx, 1);
+                let foundIdx = -1;
+                for (let i = 0; i < tempTextWords.length; i++) {
+                    const tw = tempTextWords[i];
+                    // 💡 หัวใจสำคัญ: ถ้าคำค้นหาเป็น "ตัวเลขล้วน" บังคับจับคู่เป๊ะๆ เท่านั้น! 
+                    if (/^\d+$/.test(rw)) {
+                        if (tw === rw) { foundIdx = i; break; }
+                    } 
+                    // 💡 ถ้าเป็น "ตัวหนังสือ" ยอมให้ซ่อนอยู่ได้ (แก้ปัญหา กลิ่นJASMINE)
+                    else {
+                        if (tw.includes(rw)) { foundIdx = i; break; }
+                    }
+                }
+
+                if (foundIdx !== -1) {
+                    tempTextWords.splice(foundIdx, 1);
                 } else {
                     allMatch = false; 
                     break;
@@ -467,7 +479,6 @@
         
         skuMap.forEach((qty, baseName) => {
             let displayName = baseName;
-            // ระบบบวก/คูณยอด ทำงานถูกต้องแล้ว เพราะ BaseName จะไม่โดนแย่งซีนอีกต่อไป!
             if (qty > 1) {
                 if (/\d/.test(baseName)) {
                     displayName = baseName.replace(/\d+/g, (num) => parseInt(num, 10) * qty);
