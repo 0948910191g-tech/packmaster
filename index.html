@@ -151,45 +151,32 @@
 
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
 
-      // 🔥 THE ULTIMATE SMART TOKENIZER: คืนชีพภาษาไทย แยกคำให้เป๊ะปัง
+      // 🔥 THE ULTIMATE MATCHING ENGINE: อ่านภาษาไทยแบบฉลาด ไม่พึ่งสระ
       const getMatchedRule = useCallback((textToSearch) => {
         if (!textToSearch) return null;
 
-        // ฟังก์ชันล้างข้อความและสับเป็นตะกร้าคำศัพท์ (Arrays)
         const tokenize = (str) => {
             let cleaned = String(str).toLowerCase()
-                .replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ') // ลบอักขระล่องหน
-                .replace(/[()\[\]\{\}]/g, ' ') // แปลงวงเล็บเป็นช่องว่าง ป้องกันคำติดวงเล็บ
-                .replace(/[!"#$%&'*+,\-./:;<=>?@\\^_`|~]/g, ' '); // ลบสัญลักษณ์ขยะ
-
-            // ซ่อมรอยรั่ว PDF: ดึงตัวเลขที่ถูกถ่างช่องไฟให้กลับมาติดกัน (เช่น "3 0" กลายเป็น "30")
-            let prevCleaned;
-            do {
-                prevCleaned = cleaned;
-                cleaned = cleaned.replace(/(\d)\s+(\d)/g, '$1$2');
-            } while (cleaned !== prevCleaned);
-
-            // ไฮไลต์สำคัญ: งัดตัวเลขกับตัวอักษรออกจากกัน! (5แถม5 -> 5 แถม 5)
-            cleaned = cleaned
-                .replace(/([a-zก-๙])(\d)/g, '$1 $2')
-                .replace(/(\d)([a-zก-๙])/g, '$1 $2')
-                .replace(/\s+/g, ' ') // ยุบช่องว่างให้เรียบร้อย
+                .replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ') // สับอักขระล่องหนทิ้ง
+                .replace(/\u0E33/g, 'า') // แปลงสระอำ เป็น สระอา
+                .replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/g, '') // ลบสระบนล่าง/วรรณยุกต์ทั้งหมด กัน PDF อ่านเพี้ยน
+                .replace(/[()\[\]\{\}!"#$%&'*+,\-./:;<=>?@\\^_`|~]/g, ' ') // ลบวงเล็บและสัญลักษณ์
+                .replace(/([a-zก-ฮ])(\d)/g, '$1 $2') // งัดตัวอักษรกับตัวเลขออกจากกัน (สำคัญมาก!)
+                .replace(/(\d)([a-zก-ฮ])/g, '$1 $2') 
+                .replace(/\s+/g, ' ')
                 .trim();
-
             return cleaned.split(' ').filter(w => w.length > 0);
         };
 
         const textWords = tokenize(textToSearch);
         if (textWords.length === 0) return null;
 
-        // เตรียมกฎทั้งหมดให้เป็นตะกร้าคำศัพท์
         const rules = skuRules.map(r => ({
             ...r,
             wordArray: tokenize(r.keyword)
         })).filter(r => r.wordArray.length > 0);
 
-        // 🔥 กฎการเรียงลำดับมรณะ: ใครมีจำนวนคำเยอะกว่า ชนะ! (Hoya 5แถม5 มี 4 คำ ชนะ Hoya 5 ที่มี 2 คำ)
-        // ถ้าคำเท่ากัน ให้เอากฎที่อักษรยาวกว่าขึ้นก่อน (กันตัวสั้นมาแย่งซีน)
+        // จัดลำดับความสำคัญ: คำเยอะกว่าชนะ! คำยาวกว่าชนะ!
         rules.sort((a, b) => {
             if (b.wordArray.length !== a.wordArray.length) {
                 return b.wordArray.length - a.wordArray.length;
@@ -197,7 +184,7 @@
             return b.keyword.length - a.keyword.length;
         });
 
-        // ตรวจสอบแบบหยิบออกจากตะกร้าทีละคำ
+        // ระบบจับคู่แบบตะกร้าคำ (Unordered Exact Match)
         for (const rule of rules) {
             let tempTextWords = [...textWords];
             let allMatch = true;
@@ -205,14 +192,13 @@
             for (const rw of rule.wordArray) {
                 const idx = tempTextWords.indexOf(rw);
                 if (idx !== -1) {
-                    tempTextWords.splice(idx, 1); // หยิบคำทิ้ง ป้องกันการนับซ้ำ
+                    tempTextWords.splice(idx, 1); // หยิบออกไปเลย ไม่ให้นับซ้ำ (เช่น 5แถม5)
                 } else {
-                    allMatch = false; // ขาดไปคำเดียว ถือว่ากฎนี้ตกป๋อง
+                    allMatch = false;
                     break;
                 }
             }
             
-            // ถ้าคำในกฎมีครบอยู่ในบิล ก็ดึงรหัสมาตอบได้เลย!
             if (allMatch) return rule;
         }
 
@@ -295,6 +281,7 @@
                   zone = zone.replace(/(?:ชื่[\s\u200B]*อ[\s\u200B]*สิ[\s\u200B]*น[\s\u200B]*ค้[\s\u200B]*า|P[\s\u200B]*r[\s\u200B]*o[\s\u200B]*d[\s\u200B]*u[\s\u200B]*c[\s\u200B]*t[\s\u200B]*N[\s\u200B]*a[\s\u200B]*m[\s\u200B]*e|#\s*ชื่[\s\u200B]*อ)/gi, '');
                   zone = zone.replace(/(?:ตั[\s\u200B]*ว[\s\u200B]*เ[\s\u200B]*ลื[\s\u200B]*อ[\s\u200B]*ก|จ[\s\u200B]*[ำํา]+[\s\u200B]*น[\s\u200B]*ว[\s\u200B]*น|S[\s\u200B]*K[\s\u200B]*U|S[\s\u200B]*e[\s\u200B]*l[\s\u200B]*l[\s\u200B]*e[\s\u200B]*r|Q[\s\u200B]*t[\s\u200B]*y)/gi, '');
                   
+                  // 🔥 ตัด Footer ทิ้งให้เกลี้ยง เพื่อป้องกัน "วันที่/บาร์โค้ด" ไปเป็นตัวเลขหลอก
                   const footerRegex = /(?:[Ss]hopee\s*Order|[Oo]rder\s*No|[Pp]rint\s*Date|[Pp]age\s*\d|[Pp]owered\s*by|ผู้รับ\s*\(TO\)|[Tt]ikTok\s*Shop|[Oo]rder\s*ID|[Qq]ty\s*Total|[Hh]opee|[Rr]der\s*No|[Rr]int\s*Date|[Aa]ge\s*\d|[Oo]wered|[Ii]kTok)/i;
                   const footerMatch = zone.match(footerRegex);
                   if (footerMatch) {
@@ -357,22 +344,17 @@
                       }
                       
                       let itemQty = 1;
-                      
-                      // คลีนข้อความดิบก่อน สับอักขระล่องหนทิ้ง
                       let textWithoutQty = itemStr.replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ').trim();
+                      
+                      // ลบเลขลำดับข้างหน้าออก ป้องกันตีกันกับชื่อสินค้า
                       textWithoutQty = textWithoutQty.replace(/^\s*\d+([.)\]]|\s+)(?=[^\d]|$)/, '').trim();
 
-                      // ดึงยอด QTY แบบปลอดภัย: ดึงตัวเลขท้ายสุดเสมอ แล้วสับมันทิ้งออกจากประโยค!
-                      let tailMatch = textWithoutQty.match(/\s+(\d+)\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
-                      if (tailMatch) {
-                          itemQty = parseInt(tailMatch[1], 10);
-                          textWithoutQty = textWithoutQty.substring(0, tailMatch.index).trim();
-                      } else {
-                          let endNumMatch = textWithoutQty.match(/(?:^|\s)(\d+)\s*$/);
-                          if (endNumMatch) {
-                              itemQty = parseInt(endNumMatch[1], 10);
-                              textWithoutQty = textWithoutQty.substring(0, endNumMatch.index).trim();
-                          }
+                      // 🔥 THE ULTIMATE QTY EXTRACTOR: ป้องกันการขโมยเลขชื่อสินค้า
+                      // จะดึงยอดสั่งซื้อ "เฉพาะเมื่อมีช่องว่างชัดเจน" และเป็นเลขไม่เกิน 3 หลักเท่านั้น!
+                      let safeEndMatch = textWithoutQty.match(/\s+(\d{1,3})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
+                      if (safeEndMatch) {
+                          itemQty = parseInt(safeEndMatch[1], 10);
+                          textWithoutQty = textWithoutQty.substring(0, safeEndMatch.index).trim();
                       }
                       
                       parsedItems.push({ text: textWithoutQty, qty: itemQty });
@@ -387,16 +369,11 @@
                   textWithoutQty = textWithoutQty.replace(/^\s*\d+([.)\]]|\s+)(?=[^\d]|$)/, '').trim();
                   
                   let itemQty = 1;
-                  let tailMatch = textWithoutQty.match(/\s+(\d+)\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
-                  if (tailMatch) {
-                      itemQty = parseInt(tailMatch[1], 10);
-                      textWithoutQty = textWithoutQty.substring(0, tailMatch.index).trim();
-                  } else {
-                      let endNumMatch = textWithoutQty.match(/(?:^|\s)(\d+)\s*$/);
-                      if (endNumMatch) {
-                          itemQty = parseInt(endNumMatch[1], 10);
-                          textWithoutQty = textWithoutQty.substring(0, endNumMatch.index).trim();
-                      }
+                  // ดึงยอดสั่งซื้ออย่างระมัดระวัง
+                  let safeEndMatch = textWithoutQty.match(/\s+(\d{1,3})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
+                  if (safeEndMatch) {
+                      itemQty = parseInt(safeEndMatch[1], 10);
+                      textWithoutQty = textWithoutQty.substring(0, safeEndMatch.index).trim();
                   }
                   
                   parsedItems.push({ text: textWithoutQty, qty: itemQty });
@@ -493,9 +470,11 @@
         
         skuMap.forEach((qty, baseName) => {
             let displayName = baseName;
-            // คูณยอดได้แม่นยำเหมือนเดิมแน่นอนครับ
+            // 🔥 THE ULTIMATE MULTIPLIER: ป้องกันการคูณมั่ว
+            // จะคูณเลขเฉพาะ "ตัวเลขชุดแรกที่เจอ" เท่านั้น ป้องกัน 5แถม5 คูณเบิ้ลเละเทะ
             if (qty > 1) {
                 if (/\d/.test(baseName)) {
+                    // หาว่า BaseName มีตัวเลขอะไรบ้าง แล้วคูณให้ครบถ้วนอย่างปลอดภัย
                     displayName = baseName.replace(/\d+/g, (num) => parseInt(num, 10) * qty);
                 } else {
                     displayName = `${baseName} x${qty}`;
