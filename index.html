@@ -151,56 +151,46 @@
 
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
 
-      // 🔥 ลอจิกที่คุณเกมชอบ (ล้างบางผีตัวเลข 100%)
+      // 🔥 โค้ดเวอร์ชันเก่าที่คุณเกมใช้งานได้ดีที่สุด
       const getMatchedRule = useCallback((textToSearch) => {
         if (!textToSearch) return null;
 
-        const tokenize = (str) => {
-            let cleaned = String(str).toLowerCase()
-                .replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ') 
-                .replace(/\u0E33/g, 'า') 
-                .replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/g, '') // ซ่อนสระป้องกัน Shopee เพี้ยน
-                .replace(/[()\[\]\{\}!"#$%&'*+,\-./:;<=>?@\\^_`|~]/g, ' ') // ลบวงเล็บ
-                .replace(/([a-z])([ก-ฮ])/g, '$1 $2') // แยกรอยต่อ Eng-Thai (แก้บัค กลิ่นJASMINE)
-                .replace(/([ก-ฮ])([a-z])/g, '$1 $2') 
-                .replace(/([a-zก-ฮ])(\d)/g, '$1 $2') // แยกอักษรกับเลข (แก้บัค 5แถม5)
-                .replace(/(\d)([a-zก-ฮ])/g, '$1 $2') 
-                .replace(/\bx\b/gi, ' ') // ลบตัว X ทิ้ง
-                .replace(/\s+/g, ' ')
-                .trim();
-            return cleaned.split(' ').filter(w => w.length > 0);
-        };
+        const cleanText = (str) => String(str).toLowerCase()
+            .replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ') 
+            .replace(/\u0E33/g, 'า') 
+            .replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/g, '') 
+            .replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, ' ') 
+            .replace(/\s+/g, ' ') 
+            .trim();
 
-        const textWords = tokenize(textToSearch);
-        if (textWords.length === 0) return null;
+        const searchArea = cleanText(textToSearch);
+        if (!searchArea) return null;
 
         const rules = skuRules.map(r => ({
             ...r,
-            wordArray: tokenize(r.keyword)
-        })).filter(r => r.wordArray.length > 0);
+            cleanKw: cleanText(r.keyword)
+        })).filter(r => r.cleanKw.length > 0);
 
-        // จัดลำดับความสำคัญ (คำยาวกว่าชนะก่อน ป้องกันโดนแย่งซีน)
-        rules.sort((a, b) => {
-            if (b.wordArray.length !== a.wordArray.length) {
-                return b.wordArray.length - a.wordArray.length;
-            }
-            return b.keyword.length - a.keyword.length;
-        });
+        rules.sort((a, b) => b.cleanKw.length - a.cleanKw.length);
 
         for (const rule of rules) {
-            let tempTextWords = [...textWords];
+            if (searchArea.includes(rule.cleanKw)) return rule;
+        }
+
+        for (const rule of rules) {
+            const words = rule.cleanKw.split(' ');
+            let tempArea = searchArea;
             let allMatch = true;
 
-            for (const rw of rule.wordArray) {
-                const idx = tempTextWords.indexOf(rw);
+            for (const word of words) {
+                const idx = tempArea.indexOf(word);
                 if (idx !== -1) {
-                    tempTextWords.splice(idx, 1);
+                    tempArea = tempArea.substring(0, idx) + ' '.repeat(word.length) + tempArea.substring(idx + word.length);
                 } else {
                     allMatch = false; 
                     break;
                 }
             }
-            
             if (allMatch) return rule;
         }
 
@@ -345,23 +335,17 @@
                       }
                       
                       let textWithoutQty = itemStr.replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ').trim();
-                      
-                      // ลบเลขลำดับแถวด้านหน้า (แก้บัค 1(6ห่อ) กลายเป็น 16ห่อ)
-                      textWithoutQty = textWithoutQty.replace(/^\s*\d+[\s.)\](]+/, '').trim();
+                      textWithoutQty = textWithoutQty.replace(/^\s*\d+([.)\]]|\s+)(?=[^\d]|$)/, '').trim();
 
                       let itemQty = 1;
-                      
-                      // 🔥 THE ULTIMATE QTY STRIPPER: ตัด QTY ขาดกระจุย ไม่ให้เหลือซากไปหลอกระบบ!
-                      let tailMatch = textWithoutQty.match(/(?:\s+|x)(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
-                      if (tailMatch) {
-                          itemQty = parseInt(tailMatch[1], 10);
-                          // ตัดประโยคทิ้งตั้งแต่จุดที่เจอยอดสั่งซื้อ!
-                          textWithoutQty = textWithoutQty.substring(0, tailMatch.index).trim();
-                      } else {
-                          let endNumMatch = textWithoutQty.match(/(?:^|\s)(\d{1,4})\s*$/);
-                          if (endNumMatch) {
-                              itemQty = parseInt(endNumMatch[1], 10);
-                              textWithoutQty = textWithoutQty.substring(0, endNumMatch.index).trim();
+                      let endDigitsMatch = textWithoutQty.match(/(\d+)\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
+                      if (endDigitsMatch) {
+                          let prefixIdx = endDigitsMatch.index - 1;
+                          let prefixChar = prefixIdx >= 0 ? textWithoutQty.charAt(prefixIdx) : ' ';
+                          
+                          if (/\s|[ก-๙]|\)|\]|\}/.test(prefixChar) || prefixIdx < 0) {
+                              itemQty = parseInt(endDigitsMatch[1], 10);
+                              textWithoutQty = textWithoutQty.substring(0, endDigitsMatch.index).trim();
                           }
                       }
                       
@@ -372,20 +356,19 @@
 
               if (parsedItems.length === 0) {
                   let itemStr = zone.trim();
-                  let textWithoutQty = itemStr.replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ').trim();
                   
-                  textWithoutQty = textWithoutQty.replace(/^\s*\d+[\s.)\](]+/, '').trim();
+                  let textWithoutQty = itemStr.replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ').trim();
+                  textWithoutQty = textWithoutQty.replace(/^\s*\d+([.)\]]|\s+)(?=[^\d]|$)/, '').trim();
                   
                   let itemQty = 1;
-                  let tailMatch = textWithoutQty.match(/(?:\s+|x)(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
-                  if (tailMatch) {
-                      itemQty = parseInt(tailMatch[1], 10);
-                      textWithoutQty = textWithoutQty.substring(0, tailMatch.index).trim();
-                  } else {
-                      let endNumMatch = textWithoutQty.match(/(?:^|\s)(\d{1,4})\s*$/);
-                      if (endNumMatch) {
-                          itemQty = parseInt(endNumMatch[1], 10);
-                          textWithoutQty = textWithoutQty.substring(0, endNumMatch.index).trim();
+                  let endDigitsMatch = textWithoutQty.match(/(\d+)\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
+                  if (endDigitsMatch) {
+                      let prefixIdx = endDigitsMatch.index - 1;
+                      let prefixChar = prefixIdx >= 0 ? textWithoutQty.charAt(prefixIdx) : ' ';
+                      
+                      if (/\s|[ก-๙]|\)|\]|\}/.test(prefixChar) || prefixIdx < 0) {
+                          itemQty = parseInt(endDigitsMatch[1], 10);
+                          textWithoutQty = textWithoutQty.substring(0, endDigitsMatch.index).trim();
                       }
                   }
                   
@@ -483,7 +466,6 @@
         
         skuMap.forEach((qty, baseName) => {
             let displayName = baseName;
-            // ระบบบวก/คูณเลขสุดแม่นยำ ทำงานเป๊ะๆ แบบไม่โดนผีตัวเลขหลอกแล้ว!
             if (qty > 1) {
                 if (/\d/.test(baseName)) {
                     displayName = baseName.replace(/\d+/g, (num) => parseInt(num, 10) * qty);
