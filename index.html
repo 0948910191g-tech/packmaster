@@ -151,19 +151,15 @@
 
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
 
-      // ระบบแกะคำศัพท์ที่แม่นยำ ไม่รวมร่างตัวเลข และรักษาคำไทยไว้
+      // 🔥 THE CLEAN SLATE MATCHER: อิงแค่ตัวเลข และอังกฤษล้วน ตัดภาษาไทยทิ้ง 100%
       const getMatchedRule = useCallback((textToSearch) => {
         if (!textToSearch) return null;
 
+        // สับข้อความทิ้งทุกอย่างที่ไม่ใช่ภาษาอังกฤษและตัวเลข
         const tokenize = (str) => {
             let cleaned = String(str).toLowerCase()
-                .replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ') 
-                .replace(/\u0E33/g, 'า') 
-                .replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/g, '') // ลบสระบนล่าง กัน PDF อ่านเพี้ยน
-                .replace(/[()\[\]\{\}!"#$%&'*+,\-./:;<=>?@\\^_`|~]/g, ' ') // ลบวงเล็บและสัญลักษณ์
-                .replace(/([a-zก-ฮ])(\d)/g, '$1 $2') // แยกตัวอักษรกับตัวเลข (5แถม5 -> 5 แถม 5)
-                .replace(/(\d)([a-zก-ฮ])/g, '$1 $2')
-                .replace(/\bx\b/gi, ' ') // ลบตัว X ทิ้ง (LAVENDER X 3 -> lavender 3)
+                .replace(/[^a-z0-9\s]/g, ' ') // โยนภาษาไทย, วงเล็บ, สัญลักษณ์ทิ้งทั้งหมด!
+                .replace(/\bx\b/g, ' ')       // ถอนรากถอนโคนตัว 'x' เผื่อบิลไม่พิมพ์มา (LAVENDER X 3 จะเหลือ lavender 3)
                 .replace(/\s+/g, ' ')
                 .trim();
             return cleaned.split(' ').filter(w => w.length > 0);
@@ -177,9 +173,7 @@
             wordArray: tokenize(r.keyword)
         })).filter(r => r.wordArray.length > 0);
 
-        // กฎการจัดลำดับ: 
-        // 1. จำนวนคำเยอะกว่า ต้องถูกเช็คก่อน (5 แถม 5 ชนะ 5 เดี่ยวๆ)
-        // 2. ถ้าจำนวนคำเท่ากัน คำที่ตัวอักษรยาวกว่า ต้องถูกเช็คก่อน
+        // จัดเรียงกฎ: กฎที่ความยาวดั้งเดิมยาวกว่า ต้องถูกตรวจก่อนเสมอ (กันตัวสั้นมาแย่งซีน)
         rules.sort((a, b) => {
             if (b.wordArray.length !== a.wordArray.length) {
                 return b.wordArray.length - a.wordArray.length;
@@ -187,6 +181,7 @@
             return b.keyword.length - a.keyword.length;
         });
 
+        // จับคู่แบบหยิบออกจากตะกร้า
         for (const rule of rules) {
             let tempTextWords = [...textWords];
             let allMatch = true;
@@ -194,13 +189,14 @@
             for (const rw of rule.wordArray) {
                 const idx = tempTextWords.indexOf(rw);
                 if (idx !== -1) {
-                    tempTextWords.splice(idx, 1); // ลบคำที่จับคู่แล้วทิ้ง
+                    tempTextWords.splice(idx, 1); // หยิบออกไป ไม่ให้นับซ้ำ (แก้ปัญหา 5แถม5)
                 } else {
-                    allMatch = false; 
+                    allMatch = false; // หาคำนี้ไม่เจอ ปัดตกทันที!
                     break;
                 }
             }
             
+            // เจอครบทุกคำปุ๊บ คือใช่เลย!
             if (allMatch) return rule;
         }
 
@@ -345,13 +341,11 @@
                       }
                       
                       let textWithoutQty = itemStr.replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ').trim();
-                      
-                      // ถอดเลขลำดับแถว (เช่น 1 หรือ 1.) ออกอย่างปลอดภัย ไม่ให้ไปรวมกับชื่อแพ็ค
-                      textWithoutQty = textWithoutQty.replace(/^\s*\d+([\s.)\]]+|(?=[a-zA-Zก-ฮ\(\[]))/, '').trim();
+                      textWithoutQty = textWithoutQty.replace(/^\s*\d+([.)\]]|\s+)(?=[^\d]|$)/, '').trim();
 
                       let itemQty = 1;
-                      // ดึง QTY จากตัวเลขท้ายสุดเสมอ เพื่อป้องกันยอดรั่วไหลไปเป็นคีย์เวิร์ด
-                      let safeEndMatch = textWithoutQty.match(/\s+(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
+                      // ดึงยอด QTY แบบปลอดภัย (ป้องกันการรวมเลข 1 กับ 2 เป็น 12)
+                      let safeEndMatch = textWithoutQty.match(/\s+(\d{1,3})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
                       if (safeEndMatch) {
                           itemQty = parseInt(safeEndMatch[1], 10);
                           textWithoutQty = textWithoutQty.substring(0, safeEndMatch.index).trim();
@@ -365,11 +359,10 @@
               if (parsedItems.length === 0) {
                   let itemStr = zone.trim();
                   let textWithoutQty = itemStr.replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ').trim();
-                  
-                  textWithoutQty = textWithoutQty.replace(/^\s*\d+([\s.)\]]+|(?=[a-zA-Zก-ฮ\(\[]))/, '').trim();
+                  textWithoutQty = textWithoutQty.replace(/^\s*\d+([.)\]]|\s+)(?=[^\d]|$)/, '').trim();
                   
                   let itemQty = 1;
-                  let safeEndMatch = textWithoutQty.match(/\s+(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
+                  let safeEndMatch = textWithoutQty.match(/\s+(\d{1,3})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
                   if (safeEndMatch) {
                       itemQty = parseInt(safeEndMatch[1], 10);
                       textWithoutQty = textWithoutQty.substring(0, safeEndMatch.index).trim();
@@ -469,10 +462,8 @@
         
         skuMap.forEach((qty, baseName) => {
             let displayName = baseName;
-            // ระบบคูณตัวเลข ทำงานตามยอด QTY ที่ดึงมาอย่างปลอดภัย
             if (qty > 1) {
                 if (/\d/.test(baseName)) {
-                    // แทนที่ทุกตัวเลขในชื่อด้วยผลคูณ (เช่น เด้งม่วง5 ชม5 -> เด้งม่วง10 ชม10)
                     displayName = baseName.replace(/\d+/g, (num) => parseInt(num, 10) * qty);
                 } else {
                     displayName = `${baseName} x${qty}`;
