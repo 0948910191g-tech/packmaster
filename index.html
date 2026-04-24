@@ -151,17 +151,22 @@
 
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
 
-      // 🔥 THE CLEAN SLATE MATCHER: อิงแค่ตัวเลข และอังกฤษล้วน ตัดภาษาไทยทิ้ง 100%
+      // 🔥 โค้ดเก่าที่คุณเกมชอบ แต่อัปเกรด "Exact Match" ล้างบางผีตัวเลข!
       const getMatchedRule = useCallback((textToSearch) => {
         if (!textToSearch) return null;
 
-        // สับข้อความทิ้งทุกอย่างที่ไม่ใช่ภาษาอังกฤษและตัวเลข
         const tokenize = (str) => {
             let cleaned = String(str).toLowerCase()
-                .replace(/[^a-z0-9\s]/g, ' ') // โยนภาษาไทย, วงเล็บ, สัญลักษณ์ทิ้งทั้งหมด!
-                .replace(/\bx\b/g, ' ')       // ถอนรากถอนโคนตัว 'x' เผื่อบิลไม่พิมพ์มา (LAVENDER X 3 จะเหลือ lavender 3)
+                .replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ') 
+                .replace(/\u0E33/g, 'า') 
+                .replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/g, '') // ลบสระบนล่างกันเพี้ยน
+                .replace(/[()\[\]\{\}!"#$%&'*+,\-./:;<=>?@\\^_`|~]/g, ' ') // ลบวงเล็บ/สัญลักษณ์ทิ้งทั้งหมด
+                .replace(/([a-zก-ฮ])(\d)/g, '$1 $2') // แยกอักษรกับเลข (แถม5 -> แถม 5)
+                .replace(/(\d)([a-zก-ฮ])/g, '$1 $2') // แยกเลขกับอักษร (5แถม -> 5 แถม)
+                .replace(/\bx\b/gi, ' ') // ลบตัว x
                 .replace(/\s+/g, ' ')
                 .trim();
+            // แตกประโยคออกเป็น Array คำเดี่ยวๆ เพื่อป้องกัน .indexOf() ไปค้นเจอเลขที่ซ่อนในบาร์โค้ด
             return cleaned.split(' ').filter(w => w.length > 0);
         };
 
@@ -173,7 +178,7 @@
             wordArray: tokenize(r.keyword)
         })).filter(r => r.wordArray.length > 0);
 
-        // จัดเรียงกฎ: กฎที่ความยาวดั้งเดิมยาวกว่า ต้องถูกตรวจก่อนเสมอ (กันตัวสั้นมาแย่งซีน)
+        // จัดลำดับ: คำเยอะกว่าต้องชนะก่อน -> อักษรยาวกว่าชนะ
         rules.sort((a, b) => {
             if (b.wordArray.length !== a.wordArray.length) {
                 return b.wordArray.length - a.wordArray.length;
@@ -181,22 +186,22 @@
             return b.keyword.length - a.keyword.length;
         });
 
-        // จับคู่แบบหยิบออกจากตะกร้า
+        // กระบวนการค้นหาแบบหยิบคำในตะกร้า (Exact Word Match)
         for (const rule of rules) {
             let tempTextWords = [...textWords];
             let allMatch = true;
 
             for (const rw of rule.wordArray) {
+                // ค้นหาแบบระบุตัวตนเป๊ะๆ เลข 6 จะไม่ไปตรงกับคำว่า 260423 อีกต่อไป!
                 const idx = tempTextWords.indexOf(rw);
                 if (idx !== -1) {
-                    tempTextWords.splice(idx, 1); // หยิบออกไป ไม่ให้นับซ้ำ (แก้ปัญหา 5แถม5)
+                    tempTextWords.splice(idx, 1); // หยิบออกไป ไม่นับซ้ำ
                 } else {
-                    allMatch = false; // หาคำนี้ไม่เจอ ปัดตกทันที!
+                    allMatch = false; 
                     break;
                 }
             }
             
-            // เจอครบทุกคำปุ๊บ คือใช่เลย!
             if (allMatch) return rule;
         }
 
@@ -341,11 +346,13 @@
                       }
                       
                       let textWithoutQty = itemStr.replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ').trim();
-                      textWithoutQty = textWithoutQty.replace(/^\s*\d+([.)\]]|\s+)(?=[^\d]|$)/, '').trim();
+                      
+                      textWithoutQty = textWithoutQty.replace(/^\s*\d{1,2}(?=[\s.)\]]|\s*[\(\[])/, '').trim();
+                      textWithoutQty = textWithoutQty.replace(/^1(?=[2-9](?:ห่อ|แพ็ค|ชิ้น|กล่อง|แถม))/, '').trim();
 
                       let itemQty = 1;
-                      // ดึงยอด QTY แบบปลอดภัย (ป้องกันการรวมเลข 1 กับ 2 เป็น 12)
-                      let safeEndMatch = textWithoutQty.match(/\s+(\d{1,3})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
+                      
+                      let safeEndMatch = textWithoutQty.match(/(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
                       if (safeEndMatch) {
                           itemQty = parseInt(safeEndMatch[1], 10);
                           textWithoutQty = textWithoutQty.substring(0, safeEndMatch.index).trim();
@@ -359,10 +366,12 @@
               if (parsedItems.length === 0) {
                   let itemStr = zone.trim();
                   let textWithoutQty = itemStr.replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ').trim();
-                  textWithoutQty = textWithoutQty.replace(/^\s*\d+([.)\]]|\s+)(?=[^\d]|$)/, '').trim();
+                  
+                  textWithoutQty = textWithoutQty.replace(/^\s*\d{1,2}(?=[\s.)\]]|\s*[\(\[])/, '').trim();
+                  textWithoutQty = textWithoutQty.replace(/^1(?=[2-9](?:ห่อ|แพ็ค|ชิ้น|กล่อง|แถม))/, '').trim();
                   
                   let itemQty = 1;
-                  let safeEndMatch = textWithoutQty.match(/\s+(\d{1,3})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
+                  let safeEndMatch = textWithoutQty.match(/(\d{1,4})\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
                   if (safeEndMatch) {
                       itemQty = parseInt(safeEndMatch[1], 10);
                       textWithoutQty = textWithoutQty.substring(0, safeEndMatch.index).trim();
