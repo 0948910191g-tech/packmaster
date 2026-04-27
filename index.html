@@ -151,7 +151,7 @@
 
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
 
-      // 🔥 THE ULTIMATE HYBRID MATCHER: เก็บภาษาไทย + ถ่างตัวเลขแก้บัคช่องว่าง 100%
+      // โค้ดเก่าสุดเก๋า (ลบสูตรโกงที่ทำให้ 5แถม5 พังทิ้งไปแล้ว คลีน 100%)
       const getMatchedRule = useCallback((textToSearch) => {
         if (!textToSearch) return null;
 
@@ -160,14 +160,12 @@
                 .replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ')
                 .replace(/\u0E33/g, 'า')
                 .replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/g, '') // ลบสระ
-                .replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, ' ') // ลบสัญลักษณ์
-                // 🔥 ถ่างตัวเลขและอักษรออกจากกันเสมอ! แก้ปัญหา PDF อ่าน 6ห่อ เป็น 6 ห่อ
-                .replace(/([a-zก-ฮ])(\d)/g, '$1 $2') 
-                .replace(/(\d)([a-zก-ฮ])/g, '$1 $2')
-                .replace(/\bx\b/gi, ' ') // ลบตัว X แบบที่เกมชอบ
-                .replace(/\s+/g, ' ')
-                .trim();
-            return cleaned;
+                .replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, ' ') // ลบเครื่องหมายวรรคตอน
+                .replace(/\s+/g, ' ');
+
+            // ลบสูตรโกง 5แถม5 ออกหมดแล้ว 
+            
+            return cleaned.trim();
         };
 
         const searchArea = cleanText(textToSearch);
@@ -178,14 +176,13 @@
             cleanKw: cleanText(r.keyword)
         })).filter(r => r.cleanKw.length > 0);
 
-        // จัดลำดับ: กฎที่ยาวกว่าตรวจก่อน (ป้องกันโดนแย่งซีน)
+        // จัดลำดับกฎที่ยาวกว่าตรวจก่อน (ป้องกันโดนแย่งซีน)
         rules.sort((a, b) => b.cleanKw.length - a.cleanKw.length);
 
         for (const rule of rules) {
             if (searchArea.includes(rule.cleanKw)) return rule;
         }
 
-        // ระบบจับคู่แบบสับคำ (ยืดหยุ่นสุดๆ)
         for (const rule of rules) {
             const words = rule.cleanKw.split(' ');
             let tempArea = searchArea;
@@ -289,7 +286,7 @@
                   }
               }
               
-              // 🛡️ เกราะป้องกัน Order ID Shopee (แก้บัค 36 และ 24 ถาวร)
+              // 🛡️ เกราะป้องกันผีตัวเลข: ลบ Order ID และ รหัสไปรษณีย์ ออกก่อนสแกนหาตัวเลข (แก้บัคเย็นฟ้า 36 และ 24)
               zone = zone.replace(/\b2\d{5}[A-Z0-9]{8,}\b/gi, ''); 
               zone = zone.replace(/\b12160\b/g, '');
 
@@ -348,13 +345,9 @@
                       }
                       
                       let textWithoutQty = itemStr.replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ').trim();
-                      
-                      // ถอดเลขลำดับที่อยู่ข้างหน้าทิ้งอย่างปลอดภัย
                       textWithoutQty = textWithoutQty.replace(/^\s*\d+([.)\]]|\s+)(?=[^\d]|$)/, '').trim();
 
                       let itemQty = 1;
-                      
-                      // 🔪 มีดอีโต้สับ QTY ตัดทิ้งออกจากประโยค ป้องกันการขโมยเลขไปตั้งชื่อ
                       let endDigitsMatch = textWithoutQty.match(/(\d+)\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
                       if (endDigitsMatch) {
                           let prefixIdx = endDigitsMatch.index - 1;
@@ -611,7 +604,7 @@
           {toast.show && <Toast message={toast.message} type={toast.type} onClose={() => setToast({ ...toast, show: false })} />}
           
           {exportStatus.active && (
-            <div className="fixed inset-0 bg-blue-950/20 z-[9999] flex flex-col items-center justify-center no-print backdrop-blur-sm">
+            <div className="fixed inset0 bg-blue-950/20 z-[9999] flex flex-col items-center justify-center no-print backdrop-blur-sm">
                 <div className="bg-white p-12 rounded-[2rem] text-center shadow-2xl border border-blue-50 min-w-[360px]">
                     <span className="text-4xl animate-spin inline-block mb-4">⏳</span>
                     <h3 className="text-2xl font-black text-blue-950 mb-2">กำลังเตรียมไฟล์ PDF</h3>
