@@ -684,7 +684,10 @@
 
         o.parsedItems.forEach(item => {
             let rule = item.optionText ? getMatchedRule(item.optionText) : null;
-            if (!rule && !item.optionText) {
+            if (!rule && item.productText) {
+              rule = getMatchedRule(item.productText);
+            }
+            if (!rule && !item.optionText && !item.productText) {
               rule = getMatchedRule(item.text);
             }
             if (rule) {
