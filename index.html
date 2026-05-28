@@ -126,137 +126,20 @@
 
     const multiplyBaseName = (baseName, qty) => {
       if (qty <= 1) return baseName;
-      const equalsMatch = baseName.match(/^(.*?)(\d+)\s*$/);
-      if (equalsMatch) {
-        return `${equalsMatch[1]}${parseInt(equalsMatch[2], 10) * qty}`;
-      }
-      return `${baseName} ${qty}`;
-    };
-
-    const parseShopeeTableItems = (textContent) => {
-      const rawItems = textContent.items
-        .map((item, idx) => ({
-          idx,
-          text: String(item.str || '').replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ').trim(),
-          x: item.transform ? item.transform[4] : 0,
-          y: item.transform ? item.transform[5] : 0,
-          width: item.width || 0
-        }))
-        .filter(item => item.text);
-
-      if (rawItems.length < 5) return null;
-
-      const pageWidth = Math.max(...rawItems.map(item => item.x + item.width), 1);
-      const lines = [];
-      rawItems
-        .slice()
-        .sort((a, b) => Math.abs(b.y - a.y) > 2 ? b.y - a.y : a.x - b.x)
-        .forEach(item => {
-          let line = lines.find(l => Math.abs(l.y - item.y) <= 3);
-          if (!line) {
-            line = { y: item.y, items: [] };
-            lines.push(line);
-          }
-          line.items.push(item);
-        });
-
-      lines.forEach(line => {
-        line.items.sort((a, b) => a.x - b.x || a.idx - b.idx);
-        line.text = line.items.map(item => item.text).join(' ').replace(/\s+/g, ' ').trim();
-      });
-      lines.sort((a, b) => b.y - a.y);
-
-      const headerIndex = lines.findIndex(line => {
-        const compactText = line.text.replace(/\s+/g, '');
-        return /(?:สินค้า|Product)/i.test(compactText) && /(?:จำนวน|Qty)/i.test(compactText);
-      });
-      if (headerIndex === -1) return null;
-      const headerItems = lines[headerIndex].items;
-      const qtyHeader = headerItems
-        .filter(item => /(?:จำนวน|Qty)/i.test(item.text.replace(/\s+/g, '')))
-        .sort((a, b) => b.x - a.x)[0] || headerItems[headerItems.length - 1];
-      const optionHeader = headerItems
-        .filter(item => /(?:ตัวเลือก|SKU)/i.test(item.text.replace(/\s+/g, '')))
-        .sort((a, b) => b.x - a.x)[0] || headerItems[headerItems.length - 2];
-      const optionStartX = optionHeader ? Math.max(optionHeader.x - 8, pageWidth * 0.35) : pageWidth * 0.50;
-      const qtyStartX = qtyHeader ? Math.max(qtyHeader.x - 8, optionStartX + 20) : pageWidth * 0.82;
-
-      const tableLines = [];
-      for (let i = headerIndex + 1; i < lines.length; i++) {
-        const text = lines[i].text;
-        if (/(?:Shopee\s*Order|Order\s*No|Print\s*Date|Page\s*\d|Powered\s*by|ผู้รับ\s*\(TO\))/i.test(text)) break;
-        tableLines.push(lines[i]);
-      }
-
-      const isRowStart = (line) => {
-        const first = line.items[0];
-        return first && /^\d{1,2}$/.test(first.text) && first.x < optionStartX;
-      };
-
-      const rowStartIndexes = [];
-      tableLines.forEach((line, idx) => {
-        if (isRowStart(line)) rowStartIndexes.push(idx);
-      });
-      if (rowStartIndexes.length === 0) return [];
-
-      const parsed = [];
-      for (let i = 0; i < rowStartIndexes.length; i++) {
-        const start = rowStartIndexes[i];
-        const end = i + 1 < rowStartIndexes.length ? rowStartIndexes[i + 1] : tableLines.length;
-        const rowItems = tableLines.slice(start, end).flatMap(line => line.items);
-
-        const qtyCandidates = rowItems.filter(item =>
-          /^\d{1,4}$/.test(item.text) && item.x >= qtyStartX
-        );
-        const qtyItem = qtyCandidates.length > 0
-          ? qtyCandidates.sort((a, b) => b.x - a.x || a.y - b.y)[0]
-          : null;
-        if (!qtyItem) continue;
-
-        const rowNoItem = rowItems.find(item => /^\d{1,2}$/.test(item.text) && item.x < optionStartX);
-        const optionParts = rowItems
-          .filter(item => item !== qtyItem && item !== rowNoItem)
-          .filter(item => item.x >= optionStartX && item.x < qtyStartX)
-          .map(item => item.text)
-          .filter(text => !/^(?:ตัวเลือกสินค้า|SKU)$/i.test(text));
-        const productParts = rowItems
-          .filter(item => item !== qtyItem && item !== rowNoItem)
-          .filter(item => item.x < optionStartX)
-          .map(item => item.text)
-          .filter(text => !/^(?:สินค้า|Product|Name)$/i.test(text));
-
-        const optionText = optionParts.join(' ').replace(/\s+/g, ' ').trim();
-        const productText = productParts.join(' ').replace(/\s+/g, ' ').trim();
-        const text = [optionText, productText].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-        const qty = parseInt(qtyItem.text, 10);
-        if (text && qty > 0) {
-          parsed.push({ text, optionText, productText, qty });
+      let hasMultiplied = false;
+      const regex = /(\d+)/g;
+      const result = baseName.replace(regex, (match, numStr, offset) => {
+        const prefixPart = baseName.substring(0, offset).trim();
+        const suffixPart = baseName.substring(offset + numStr.length).trim();
+        const ignorePrefixRegex = /(?:สูตร|เบอร์|รุ่น|ขนาด|สี|เลเวล|เลข|ที่|รหัส|no\.?|v|lv(?:el)?|type|version|code)\s*$/i;
+        const ignoreSuffixRegex = /^(?:(?:ml|g|kg|oz|mm|cm|m|l|v|hz|w|a|k)\b|%|(?:มล|กรัม|กก|ออนซ์|มม|ซม|เมตร|ลิตร|วัตต์|แอมป์|เปอร์เซ็นต์))/i;
+        if (ignorePrefixRegex.test(prefixPart) || ignoreSuffixRegex.test(suffixPart)) {
+          return match;
         }
-      }
-
-      return parsed;
-    };
-
-    const escapeRegExp = (text) => String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-    const getQtyNearMatchedKeyword = (itemText, keyword, fallbackQty) => {
-      if (!itemText || !keyword) return fallbackQty;
-      const normalizedText = String(itemText).replace(/\s+/g, ' ').trim();
-      const normalizedKeyword = String(keyword).replace(/\s+/g, ' ').trim();
-      if (!normalizedText || !normalizedKeyword) return fallbackQty;
-
-      const exactPattern = new RegExp(`${escapeRegExp(normalizedKeyword)}\\s+(\\d{1,4})(?=\\s|$)`, 'i');
-      const exactMatch = normalizedText.match(exactPattern);
-      if (exactMatch) return parseInt(exactMatch[1], 10);
-
-      const keywordWords = normalizedKeyword.split(' ').filter(Boolean).map(escapeRegExp);
-      if (keywordWords.length > 1) {
-        const loosePattern = new RegExp(`${keywordWords.join('\\s+')}\\s+(\\d{1,4})(?=\\s|$)`, 'i');
-        const looseMatch = normalizedText.match(loosePattern);
-        if (looseMatch) return parseInt(looseMatch[1], 10);
-      }
-
-      return fallbackQty;
+        hasMultiplied = true;
+        return parseInt(numStr, 10) * qty;
+      });
+      return hasMultiplied ? result : `${baseName} x${qty}`;
     };
 
     function App() {
@@ -454,12 +337,8 @@
               zone = zone.replace(/(?:TikTok\s*Shop|Shopee)/gi, '');
 
               let parsedItems = [];
-              const tableParsedItems = platform === 'SHOPEE' ? parseShopeeTableItems(textContent) : null;
-              if (Array.isArray(tableParsedItems)) {
-                  parsedItems = tableParsedItems;
-              }
 
-              if (parsedItems.length === 0 && platform === 'SHOPEE' && !Array.isArray(tableParsedItems)) {
+              if (platform === 'SHOPEE') {
                   let remainingText = zone.trim();
                   let currentItemNum = 1;
                   
@@ -568,7 +447,7 @@
                   }
               }
 
-              if (parsedItems.length === 0 && !Array.isArray(tableParsedItems)) {
+              if (parsedItems.length === 0) {
                   let itemStr = zone.trim();
                   let textWithoutQty = itemStr.replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ').trim();
                   textWithoutQty = textWithoutQty.replace(/^\s*\d+([.)\]]|\s+)(?=[^\d]|$)/, '').trim();
@@ -607,7 +486,7 @@
                   parsedItems.push({ text: textWithoutQty, qty: itemQty });
               }
 
-              if (parsedItems.length === 1 && platform !== 'TIKTOK' && !Array.isArray(tableParsedItems)) {
+              if (parsedItems.length === 1 && platform !== 'TIKTOK') {
                   const cleanForQty = fullText.replace(/[\s\u200B-\u200D\uFEFF]/g, '').replace(/\u0E4D\u0E32/g, '\u0E33').toLowerCase();
                   const explicitMatch = cleanForQty.match(/(?:จ[ำํา]นวนรวม|qtytotal|totalqty|ยอดรวม)[\:]?(\d{1,4})(?![\d])/);
                   if (explicitMatch) {
@@ -683,18 +562,11 @@
         let hasUnmatched = false;
 
         o.parsedItems.forEach(item => {
-            let rule = item.optionText ? getMatchedRule(item.optionText) : null;
-            if (!rule && item.productText) {
-              rule = getMatchedRule(item.productText);
-            }
-            if (!rule && !item.optionText && !item.productText) {
-              rule = getMatchedRule(item.text);
-            }
+            const rule = getMatchedRule(item.text); 
             if (rule) {
                 const baseName = rule.shortName.trim().replace(/\u00A0/g, ' ');
                 const currentQty = skuMap.get(baseName) || 0;
-                const safeQty = item.optionText ? item.qty : getQtyNearMatchedKeyword(item.text, rule.keyword, item.qty);
-                skuMap.set(baseName, currentQty + safeQty); 
+                skuMap.set(baseName, currentQty + item.qty); 
             } else {
               hasUnmatched = true;
             }
