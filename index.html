@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V48.30 Ultimate (The Master Key Fix)</title>
+  <title>PackMaster V48.12 Ultimate (The Print Perfect)</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -52,7 +52,7 @@
     }
 
     const { useState, useEffect, useCallback, useMemo } = React;
-    
+
     const Toast = ({ message, type, onClose }) => {
       useEffect(() => { const timer = setTimeout(() => onClose(), 3000); return () => clearTimeout(timer); }, [onClose]);
       return (
@@ -65,7 +65,7 @@
 
     const LabelCard = ({ order, isExport = false, thermalMode = true }) => {
       const [displayImg, setDisplayImg] = useState(order.pdfImage);
-      
+
       useEffect(() => {
         if (!order || !order.pdfImage) return;
         if (!thermalMode) {
@@ -84,7 +84,7 @@
         };
         img.src = order.pdfImage;
       }, [order.pdfImage, thermalMode]);
-      
+
       if (!order || !order.pdfImage) return null;
       
       const itemCount = order.displayItems ? order.displayItems.length : 0;
@@ -103,7 +103,7 @@
           fontSize = maxLen > 20 ? '11pt' : '13pt'; 
           lineHeight = 1.1;
       } else {
-          fontSize = '10pt';
+          fontSize = '10pt'; 
           lineHeight = 1.0;
       }
 
@@ -124,24 +124,6 @@
       );
     };
 
-    const multiplyBaseName = (baseName, qty) => {
-      if (qty <= 1) return baseName;
-      let hasMultiplied = false;
-      const regex = /(\d+)/g;
-      const result = baseName.replace(regex, (match, numStr, offset) => {
-        const prefixPart = baseName.substring(0, offset).trim();
-        const suffixPart = baseName.substring(offset + numStr.length).trim();
-        const ignorePrefixRegex = /(?:สูตร|เบอร์|รุ่น|ขนาด|สี|เลเวล|เลข|ที่|รหัส|no\.?|v|lv(?:el)?|type|version|code)\s*$/i;
-        const ignoreSuffixRegex = /^(?:(?:ml|g|kg|oz|mm|cm|m|l|v|hz|w|a|k)\b|%|(?:มล|กรัม|กก|ออนซ์|มม|ซม|เมตร|ลิตร|วัตต์|แอมป์|เปอร์เซ็นต์))/i;
-        if (ignorePrefixRegex.test(prefixPart) || ignoreSuffixRegex.test(suffixPart)) {
-          return match;
-        }
-        hasMultiplied = true;
-        return parseInt(numStr, 10) * qty;
-      });
-      return hasMultiplied ? result : `${baseName} x${qty}`;
-    };
-
     function App() {
       const [activeTab, setActiveTab] = useState('upload');
       const [orders, setOrders] = useState([]);
@@ -158,15 +140,16 @@
       const [testInput, setTestInput] = useState('');
       const [testQty, setTestQty] = useState('1');
       const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+
       const [thermalMode, setThermalMode] = useState(() => {
         try { const saved = localStorage.getItem('thermalMode'); if (saved !== null) return JSON.parse(saved); } catch (e) {} return true;
       });
-      
+
       useEffect(() => { localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); }, [skuRules]);
       useEffect(() => { localStorage.setItem('thermalMode', JSON.stringify(thermalMode)); }, [thermalMode]);
-      
+
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
-      
+
       const getMatchedRule = useCallback((textToSearch) => {
         if (!textToSearch) return null;
 
@@ -198,12 +181,13 @@
             const words = rule.cleanKw.split(' ');
             let tempArea = searchArea;
             let allMatch = true;
+
             for (const word of words) {
                 const idx = tempArea.indexOf(word);
                 if (idx !== -1) {
                     tempArea = tempArea.substring(0, idx) + ' '.repeat(word.length) + tempArea.substring(idx + word.length);
                 } else {
-                    allMatch = false;
+                    allMatch = false; 
                     break;
                 }
             }
@@ -212,7 +196,7 @@
 
         return null;
       }, [skuRules]);
-      
+
       const handleFileUpload = async (e) => {
         const files = Array.from(e.target.files);
         if (files.length === 0) return;
@@ -232,6 +216,7 @@
 
           let totalNewPages = 0;
           let pdfDocuments = [];
+          
           for (const file of files) {
             if (!file.name.toLowerCase().endsWith('.pdf')) continue;
             const arrayBuffer = await file.arrayBuffer();
@@ -262,6 +247,7 @@
           for (const { pdf } of pdfDocuments) {
             for (let i = 1; i <= pdf.numPages; i++) {
               currentPageCount++;
+              
               if (currentPageCount % 5 === 0 || currentPageCount === totalNewPages) {
                   setLoadingStatus(prev => ({ ...prev, current: currentPageCount, total: totalNewPages }));
                   await new Promise(resolve => setTimeout(resolve, 1));
@@ -271,7 +257,7 @@
               const textContent = await page.getTextContent();
               const fullText = textContent.items.map(item => item.str).join(' ');
 
-              const viewport = page.getViewport({ scale: 2.5 });
+              const viewport = page.getViewport({ scale: 2.5 }); 
               const canvas = document.createElement('canvas');
               const context = canvas.getContext('2d');
               canvas.height = viewport.height; canvas.width = viewport.width;
@@ -280,22 +266,12 @@
 
               let platform = 'SHOPEE';
               if (fullText.match(/Order\s*ID/i) || fullText.match(/In\s*transit/i) || fullText.match(/TikTok/i)) platform = 'TIKTOK';
-              
-              // --- 🌟 ดึงยอดรวมที่แท้จริงจากท้ายบิลมาเก็บไว้เป็นเกราะป้องกัน 🌟 ---
-              let knownTotalQty = 0;
-              if (platform === 'SHOPEE') {
-                  const cleanForTotal = fullText.replace(/[\s\u200B-\u200D\uFEFF]/g, '').toLowerCase();
-                  const explicitTotalMatch = cleanForTotal.match(/(?:จ[ำํา]นวนรวม|qtytotal|totalqty|ยอดรวม|รวมทั้งสิ้น)[\:]?(\d{1,4})(?![\d])/);
-                  if (explicitTotalMatch) {
-                      knownTotalQty = parseInt(explicitTotalMatch[1], 10);
-                  }
-              }
-              // --------------------------------------------------------------------
 
               let zone = fullText;
 
               const tableStartRegex = /(?:ชื่[\s\u200B]*อ[\s\u200B]*สิ[\s\u200B]*น[\s\u200B]*ค้[\s\u200B]*า|P[\s\u200B]*r[\s\u200B]*o[\s\u200B]*d[\s\u200B]*u[\s\u200B]*c[\s\u200B]*t|#\s*ชื่[\s\u200B]*อ)/i;
               const tableStartMatch = zone.match(tableStartRegex);
+              
               if (tableStartMatch) {
                   zone = zone.substring(tableStartMatch.index);
                   zone = zone.replace(/(?:ชื่[\s\u200B]*อ[\s\u200B]*สิ[\s\u200B]*น[\s\u200B]*ค้[\s\u200B]*า|P[\s\u200B]*r[\s\u200B]*o[\s\u200B]*d[\s\u200B]*u[\s\u200B]*c[\s\u200B]*t[\s\u200B]*N[\s\u200B]*a[\s\u200B]*m[\s\u200B]*e|#\s*ชื่[\s\u200B]*อ)/gi, '');
@@ -308,25 +284,27 @@
                   }
               }
               
-              zone = zone.replace(/\b2\d{5}[A-Z0-9]{8,}\b/gi, '');
+              zone = zone.replace(/\b2\d{5}[A-Z0-9]{8,}\b/gi, ''); 
               zone = zone.replace(/\b12160\b/g, '');
 
               zone = zone.replace(/(?:ไม่ต้องเก็บเงิน|เก็บเงินปลายทาง|PICK[\s-]*UP|NDD|HOME|OFFICE|ROS|SUB|CON|LGN|DROP|Bulky)/gi, '');
               zone = zone.replace(/\b[A-Z0-9]{1,4}-\([A-Z0-9.]+\)/gi, ''); 
               zone = zone.replace(/\b[A-Z]+-[A-Z]\s+-\s+[ก-๙]+\b/gi, ''); 
-              zone = zone.replace(/\b[A-Z0-9]+_[0-9]+_[A-Z0-9]+_[A-Z0-9-]+\b/gi, '');
+              zone = zone.replace(/\b[A-Z0-9]+_[0-9]+_[A-Z0-9]+_[A-Z0-9-]+\b/gi, ''); 
+
               zone = zone.replace(/\b[A-Z]\d\s+[A-Z0-9]+-\d+\b/gi, ''); 
               zone = zone.replace(/\b[A-Z]\d-\([A-Z0-9.]+\)\b/gi, ''); 
               zone = zone.replace(/\b\d{3}[A-Z]\b/gi, ''); 
               zone = zone.replace(/\b\d{5}\b/g, ''); 
-              zone = zone.replace(/\b0\d{8,9}\b/g, '');
+              zone = zone.replace(/\b0\d{8,9}\b/g, ''); 
               zone = zone.replace(/\b\d{6}[A-Z0-9]{5,}\b/gi, ''); 
               zone = zone.replace(/\b(?:TH|JT|SPX)[A-Z0-9]+\b/gi, '');
               zone = zone.replace(/\b\d{12,}\b/g, ''); 
               zone = zone.replace(/(?:บ้านเลขที่|เลขที่|หมู่ที่|หมู่|ม\.|ซอย|ซ\.|ถนน|ถ\.)\s*\d+[\/\d]*/g, '');
-              zone = zone.replace(/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/g, '');
+              zone = zone.replace(/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/g, ''); 
               zone = zone.replace(/\d{1,2}:\d{2}/g, ''); 
               
+              // 🟢 ตัดข้อความส่วนยอดรวมทิ้ง ป้องกันระบบดึงเลขผิดมาใส่ SKU
               const endOfTableRegex = /(?:จ[ำํา]นวนรวม|ยอดรวม|รวมทั้งสิ้น|Total\s*Qty|Qty\s*Total)/i;
               const endOfTableMatch = zone.match(endOfTableRegex);
               if (endOfTableMatch) {
@@ -375,30 +353,16 @@
                           let currentPrefixRegex = new RegExp(prefixRegexStr);
                           let currentMatch = remainingText.match(currentPrefixRegex);
                           
-                          if (!currentMatch) break;
+                          if (!currentMatch) break; 
                           
-                          let nextPrefixRegexStr = `(?<=\\s|^)${currentItemNum + 1}(?:\\s*[.)\\]]\\s*|\\s+|(?=\\(|\\[))`;
-                          let nextPrefixRegex = new RegExp(nextPrefixRegexStr, 'g'); 
-                          let nextMatches = [...remainingText.matchAll(nextPrefixRegex)];
+                          let nextPrefixRegex = new RegExp(`(?:^|\\s)${currentItemNum + 1}(?:\\s*[.)\\]]\\s*|\\s+|(?=\\(|\\[))`); 
+                          let nextMatch = remainingText.match(nextPrefixRegex);
                           
-                          let nextMatch = null;
-                          if (nextMatches.length > 0) {
-                              for (let m of nextMatches) {
-                                  let textAfterNext = remainingText.substring(m.index + m[0].length).trim();
-                                  
-                                  let startsWithSameNumRegex = new RegExp(`^${currentItemNum + 1}(?:\\s|\\(|\\)|\\[|\\]|\\.)`);
-                                  if (startsWithSameNumRegex.test(textAfterNext)) {
-                                      continue;
-                                  }
-                                  
-                                  let cleanAfter = textAfterNext.replace(/(?:ไม่ต้องเก็บเงิน|เก็บเงินปลายทาง|PICK[\s-]*UP|NDD|HOME|OFFICE|ROS)/gi, '').replace(/\b[A-Z0-9_-]+\b/gi, '').trim();
-                                  if (/[a-zA-Zก-๙]/.test(cleanAfter) && cleanAfter.length >= 5) {
-                                      nextMatch = m;
-                                      break;
-                                  }
-                              }
-                              if (!nextMatch) {
-                                  nextMatch = nextMatches[0];
+                          if (nextMatch) {
+                              let textAfterNext = remainingText.substring(nextMatch.index + nextMatch[0].length).trim();
+                              let cleanAfter = textAfterNext.replace(/(?:ไม่ต้องเก็บเงิน|เก็บเงินปลายทาง|PICK[\s-]*UP|NDD|HOME|OFFICE|ROS)/gi, '').replace(/\b[A-Z0-9_-]+\b/gi, '').trim();
+                              if (!/[a-zA-Zก-๙]/.test(cleanAfter) || cleanAfter.length < 5) {
+                                  nextMatch = null; 
                               }
                           }
 
@@ -413,21 +377,6 @@
                           
                           let textWithoutQty = itemStr.replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ').trim();
                           textWithoutQty = textWithoutQty.replace(/^\s*\d+([.)\]]|\s+)(?=[^\d]|$)/, '').trim();
-
-                          // --- 🌟 SURGICAL FIX FOR THE LAST SKU (Multi-Item) 🌟 ---
-                          if (!nextMatch) {
-                              if (knownTotalQty > 0) {
-                                  let rogueTotalRegex = new RegExp(`(?:\\s|^)${knownTotalQty}$`);
-                                  if (rogueTotalRegex.test(textWithoutQty)) {
-                                      textWithoutQty = textWithoutQty.replace(rogueTotalRegex, '').trim();
-                                  }
-                              }
-                              let rogueRowRegex = new RegExp(`(?:\\s|^)${currentItemNum}$`);
-                              if (rogueRowRegex.test(textWithoutQty)) {
-                                  textWithoutQty = textWithoutQty.replace(rogueRowRegex, '').trim();
-                              }
-                          }
-                          // ------------------------------------------------------------
 
                           let itemQty = 1;
                           let endDigitsMatch = textWithoutQty.match(/(\d+)\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
@@ -449,28 +398,10 @@
 
               if (parsedItems.length === 0) {
                   let itemStr = zone.trim();
+                  
                   let textWithoutQty = itemStr.replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ').trim();
                   textWithoutQty = textWithoutQty.replace(/^\s*\d+([.)\]]|\s+)(?=[^\d]|$)/, '').trim();
                   
-                  // --- 🌟 SURGICAL FIX FOR SINGLE ITEM 🌟 ---
-                  if (knownTotalQty > 0) {
-                      let rogueTotalRegex = new RegExp(`(?:\\s|^)${knownTotalQty}$`);
-                      if (rogueTotalRegex.test(textWithoutQty)) {
-                          let temp = textWithoutQty.replace(rogueTotalRegex, '').trim();
-                          if (temp.match(/\d+(?:\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+))?\s*$/i)) {
-                              textWithoutQty = temp;
-                          }
-                      }
-                  }
-                  let rogueRowRegex = new RegExp(`(?:\\s|^)1$`);
-                  if (rogueRowRegex.test(textWithoutQty)) {
-                      let temp = textWithoutQty.replace(rogueRowRegex, '').trim();
-                      if (temp.match(/\d+(?:\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+))?\s*$/i)) {
-                          textWithoutQty = temp;
-                      }
-                  }
-                  // ------------------------------------------
-
                   let itemQty = 1;
                   let endDigitsMatch = textWithoutQty.match(/(\d+)\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
                   if (endDigitsMatch) {
@@ -495,6 +426,7 @@
               }
 
               const trackingMatch = fullText.match(/(TH\d{10,}|JT\d{10,}|SPX[A-Z0-9]+|KER[A-Z0-9]+|KA[A-Z0-9]+|66\d{10,}|82\d{10,}|\b\d{12}\b)/i);
+              
               let currentOrderId = null;
               let orderMatch = fullText.match(/(?:Shopee\s*Order\s*No\.?|Order\s*ID)[\s:]*([A-Z0-9]+)/i);
               if (orderMatch) {
@@ -537,7 +469,7 @@
           }
           
           if (allNewOrders.length > 0) {
-            setOrders(prev => [...prev, ...allNewOrders]);
+            setOrders(prev => [...prev, ...allNewOrders]); 
             setActiveTab('preview');
             showToast(`เพิ่มข้อมูลสำเร็จ ${allNewOrders.length} ใบ`, 'success');
           }
@@ -552,7 +484,7 @@
         
         e.target.value = null; 
       };
-      
+
       const MappedOrders = useMemo(() => orders.map(o => {
         if (o.parsedItems.length === 0) {
             return { ...o, displayItems: [], originalQty: 0 };
@@ -568,18 +500,23 @@
                 const currentQty = skuMap.get(baseName) || 0;
                 skuMap.set(baseName, currentQty + item.qty); 
             } else {
-              hasUnmatched = true;
+                hasUnmatched = true;
             }
         });
 
         let finalDisplayItems = [];
         
-        // --- ⚙️ IMPROVED V48.31 MATH ⚙️ (ระบบคูณเลขที่ฉลาดขึ้น ป้องกันคูณเลขสูตร/รุ่น) ---
         skuMap.forEach((qty, baseName) => {
-            const displayName = multiplyBaseName(baseName, qty);
-            finalDisplayItems.push(`• ${displayName}`);
+            let displayName = baseName;
+            if (qty > 1) {
+                if (/\d/.test(baseName)) {
+                    displayName = baseName.replace(/\d+/g, (num) => parseInt(num, 10) * qty);
+                } else {
+                    displayName = `${baseName} x${qty}`;
+                }
+            }
+            finalDisplayItems.push(`• ${displayName}`); 
         });
-        // ---------------------------------------------------------------------------------
 
         if (finalDisplayItems.length === 0) {
             finalDisplayItems.push('ยังไม่ตั้งชื่อ (เพิ่มกฎ SKU)');
@@ -592,14 +529,16 @@
         }
 
         const totalQty = o.parsedItems.reduce((sum, item) => sum + item.qty, 0);
+
         return { ...o, displayItems: finalDisplayItems, originalQty: totalQty };
       }), [orders, getMatchedRule]);
-      
+
       const handleExportPDF = async () => {
         if (MappedOrders.length === 0) return;
         setExportStatus({ active: true, current: 0, total: MappedOrders.length });
         
         await new Promise(resolve => setTimeout(resolve, 800));
+
         try {
           const pdf = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'mm', format: [100, 150] });
           for (let i = 0; i < MappedOrders.length; i++) {
@@ -631,7 +570,7 @@
         URL.revokeObjectURL(url);
         showToast('สำรองข้อมูลสำเร็จ', 'success');
       };
-      
+
       const handleImportRules = (e) => {
         const file = e.target.files[0]; if (!file) return;
         const reader = new FileReader();
@@ -649,10 +588,11 @@
         };
         reader.readAsText(file); e.target.value = null;
       };
-      
+
       const handleSubmitRule = (e) => {
         e.preventDefault(); 
         if (!newRule.keyword.trim() || !newRule.shortName.trim()) return;
+        
         if (editingId) {
             setSkuRules(prev => prev.map(r => r.id === editingId ? { ...newRule, id: editingId } : r));
             setEditingId(null);
@@ -663,7 +603,7 @@
         }
         setNewRule({ keyword: '', shortName: '' });
       };
-      
+
       const handleEditClick = (rule) => {
         setNewRule({ keyword: rule.keyword, shortName: rule.shortName });
         setEditingId(rule.id);
@@ -682,9 +622,15 @@
         if (!rule) return 'ไม่พบคีย์เวิร์ด';
         
         const baseName = rule.shortName.trim().replace(/\u00A0/g, ' ');
-        return multiplyBaseName(baseName, totalQty);
+        if (totalQty > 1) {
+            if (/\d/.test(baseName)) {
+                return baseName.replace(/\d+/g, (num) => parseInt(num, 10) * totalQty);
+            }
+            return `${baseName} x${totalQty}`;
+        }
+        return baseName;
       }, [testInput, testQty, getMatchedRule]);
-      
+
       return (
         <div className="min-h-screen bg-[#f8fafc] text-blue-950 font-sans relative">
           {toast.show && <Toast message={toast.message} type={toast.type} onClose={() => setToast({ ...toast, show: false })} />}
@@ -695,7 +641,6 @@
                     <span className="text-4xl animate-spin inline-block mb-4">⏳</span>
                     <h3 className="text-2xl font-black text-blue-950 mb-2">กำลังเตรียมไฟล์ PDF</h3>
                     <p className="text-blue-600/70 font-bold text-sm mb-8">หน้า {exportStatus.current} จาก {exportStatus.total}</p>
-                    
                     <div className="w-full bg-blue-50 rounded-full h-2.5 overflow-hidden"><div className="bg-blue-900 h-full transition-all duration-300 rounded-full" style={{ width: `${(exportStatus.current / exportStatus.total) * 100}%` }}></div></div>
                 </div>
             </div>
@@ -703,12 +648,12 @@
 
           <div className="no-print flex h-screen overflow-hidden">
             <aside className="w-72 bg-white border-r border-blue-50 flex flex-col z-20 shadow-[4px_0_24px_rgba(23,37,84,0.02)]">
-               <div className="p-8 border-b border-blue-50 flex items-center gap-4">
+              <div className="p-8 border-b border-blue-50 flex items-center gap-4">
                 <div className="bg-blue-950 p-2.5 rounded-[14px] text-white text-xl shadow-md shadow-blue-900/20">📦</div>
                 <div><h1 className="font-black text-2xl tracking-tight text-blue-950 leading-none">PackMaster</h1><div className="mt-1.5"><span className="text-[9px] font-black text-blue-500 uppercase tracking-widest bg-blue-50 px-2 py-0.5 rounded-md">Navy Minimal</span></div></div>
               </div>
               <nav className="flex-1 p-5 space-y-2 mt-4">
-                 <button onClick={() => setActiveTab('upload')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 border ${activeTab === 'upload' ? 'bg-blue-50/80 border-blue-100 text-blue-900 font-bold shadow-sm' : 'border-transparent text-blue-950/60 hover:bg-slate-50 hover:text-blue-900 font-semibold'}`}><span className="text-xl">☁️</span> <span className="text-[15px]">อัปโหลดคำสั่งซื้อ</span></button>
+                <button onClick={() => setActiveTab('upload')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 border ${activeTab === 'upload' ? 'bg-blue-50/80 border-blue-100 text-blue-900 font-bold shadow-sm' : 'border-transparent text-blue-950/60 hover:bg-slate-50 hover:text-blue-900 font-semibold'}`}><span className="text-xl">☁️</span> <span className="text-[15px]">อัปโหลดคำสั่งซื้อ</span></button>
                 <button onClick={() => setActiveTab('settings')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 border ${activeTab === 'settings' ? 'bg-blue-50/80 border-blue-100 text-blue-900 font-bold shadow-sm' : 'border-transparent text-blue-950/60 hover:bg-slate-50 hover:text-blue-900 font-semibold'}`}><span className="text-xl">⚙️</span> <span className="text-[15px]">ตั้งค่ารหัสสินค้า</span></button>
                 <button onClick={() => setActiveTab('preview')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 border ${activeTab === 'preview' ? 'bg-blue-50/80 border-blue-100 text-blue-900 font-bold shadow-sm' : 'border-transparent text-blue-950/60 hover:bg-slate-50 hover:text-blue-900 font-semibold'}`}><span className="text-xl">📄</span> <span className="text-[15px]">พรีวิว & สั่งพิมพ์</span> {orders.length > 0 && <span className="ml-auto bg-blue-900 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full shadow-sm">{orders.length}</span>}</button>
               </nav>
@@ -716,14 +661,14 @@
 
             <main className="flex-1 overflow-y-auto relative z-10">
               {activeTab === 'upload' && (
-                 <div className="p-12 max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-500">
+                <div className="p-12 max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-500">
                   <div className="mb-10 text-center"><h2 className="text-4xl font-black text-blue-950 mb-4 tracking-tight">จัดเตรียมใบปะหน้า</h2><p className="text-blue-950/60 text-lg font-medium">แปลงใบแพ็คของจาก Shopee และ TikTok ให้อ่านง่ายในคลิกเดียว</p></div>
                   <div className={`bg-white p-20 rounded-[3rem] border-2 transition-all duration-300 shadow-xl shadow-blue-900/5 ${loadingStatus.active ? 'border-blue-200 bg-blue-50/30' : 'border-blue-50 hover:border-blue-100'}`}>
                     {loadingStatus.active ? (
-                       <div className="flex flex-col items-center py-4"><span className="text-6xl animate-spin inline-block mb-6">⏳</span><h3 className="text-xl font-black text-blue-950 mb-2">กำลังประมวลผล PDF</h3><p className="text-blue-900/60 font-bold text-sm">อ่านข้อมูลหน้าที่ {loadingStatus.current} (รวมหลายไฟล์)</p></div>
+                      <div className="flex flex-col items-center py-4"><span className="text-6xl animate-spin inline-block mb-6">⏳</span><h3 className="text-xl font-black text-blue-950 mb-2">กำลังประมวลผล PDF</h3><p className="text-blue-900/60 font-bold text-sm">อ่านข้อมูลหน้าที่ {loadingStatus.current} (รวมหลายไฟล์)</p></div>
                     ) : (
                       <div className="text-center py-4">
-                         <div className="w-24 h-24 bg-blue-50/80 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-blue-100/50 text-4xl shadow-sm">☁️</div>
+                        <div className="w-24 h-24 bg-blue-50/80 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-blue-100/50 text-4xl shadow-sm">☁️</div>
                         <h3 className="text-2xl font-black mb-3 text-blue-950">เลือกไฟล์ PDF ของคุณตรงนี้</h3>
                         <p className="text-blue-950/50 font-semibold text-sm mb-10">รองรับการอัปโหลดหลายไฟล์พร้อมกัน (สูงสุด 150 ใบ)</p>
                         <label className="bg-blue-950 hover:bg-blue-900 text-white px-10 py-4 rounded-2xl cursor-pointer font-bold text-sm transition-all inline-flex items-center gap-3 shadow-lg shadow-blue-900/20 active:scale-95"><span>📥</span> เลือกไฟล์ PDF <input type="file" accept=".pdf" multiple className="hidden" onChange={handleFileUpload} /></label>
@@ -739,7 +684,7 @@
                   <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
                     <div><h2 className="text-4xl font-black text-blue-950 mb-3 tracking-tight">คลังคำศัพท์</h2><p className="text-blue-950/60 text-base font-semibold">ตั้งค่าการแปลงชื่อสินค้า ระบบจะบันทึกอัตโนมัติ</p></div>
                     <div className="flex gap-3">
-                       <label className="bg-white border-2 border-blue-50 text-blue-950 hover:border-blue-100 hover:bg-blue-50/30 px-5 py-3 rounded-2xl text-sm font-bold cursor-pointer transition-all flex items-center gap-2 shadow-sm"><span>📤</span> นำเข้า <input type="file" accept=".json" className="hidden" onChange={handleImportRules} /></label>
+                      <label className="bg-white border-2 border-blue-50 text-blue-950 hover:border-blue-100 hover:bg-blue-50/30 px-5 py-3 rounded-2xl text-sm font-bold cursor-pointer transition-all flex items-center gap-2 shadow-sm"><span>📤</span> นำเข้า <input type="file" accept=".json" className="hidden" onChange={handleImportRules} /></label>
                       <button onClick={handleExportRules} className="bg-white border-2 border-blue-50 text-blue-950 hover:border-blue-100 hover:bg-blue-50/30 px-5 py-3 rounded-2xl text-sm font-bold transition-all flex items-center gap-2 shadow-sm"><span>💾</span> สำรองข้อมูล</button>
                     </div>
                   </div>
@@ -829,7 +774,7 @@
                                       <span key={idx} className={`font-black text-xl px-4 py-1.5 rounded-xl inline-block ${text.includes('ยังไม่ตั้งชื่อ') ? 'text-red-500 bg-red-50' : 'text-blue-900 bg-blue-100/50'}`}>
                                         {text}
                                       </span>
-                                     ))
+                                    ))
                                   ) : (
                                     <span className="text-blue-950/30 font-bold text-sm">(หน้าต่อท้ายบิล)</span>
                                   )}
@@ -851,7 +796,7 @@
           </div>
 
           <div className="fixed pointer-events-none opacity-0" style={{ top: 0, left: 0, width: '100mm', height: 0, overflow: 'hidden', zIndex: -100 }}>
-             {MappedOrders.map((order) => (
+            {MappedOrders.map((order) => (
               <div key={`render-arena-${order.id}`} id={`render-target-${order.id}`} style={{ position: 'relative', width: '100mm', height: '150mm', backgroundColor: 'white' }}>
                 <LabelCard order={order} thermalMode={thermalMode} isExport={true} />
               </div>
