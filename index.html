@@ -124,11 +124,77 @@
       );
     };
 
+    const normalizeRuleKeyword = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+    const sanitizeSkuRule = (rule, fallbackId) => {
+      if (!rule || typeof rule !== 'object') return null;
+      if (typeof rule.keyword !== 'string' || typeof rule.shortName !== 'string') return null;
+
+      const keyword = rule.keyword.trim();
+      const shortName = rule.shortName.trim();
+      if (!keyword || !shortName) return null;
+
+      return {
+        id: rule.id ?? fallbackId,
+        keyword,
+        shortName
+      };
+    };
+
+    const getAggregatedShortName = (baseName, qty) => {
+      const cleanBaseName = String(baseName || '').trim().replace(/\u00A0/g, ' ');
+      const normalizedQty = Math.max(1, parseInt(qty, 10) || 1);
+      if (normalizedQty <= 1) return cleanBaseName;
+
+      // จำนวนในชื่อย่อหมายถึงจำนวนต่อ 1 ชิ้น เช่น หมูเด้ง5
+      // เมื่อซื้อซ้ำให้บวกจำนวนเดิมสะสม เช่น 5 + 5 = 10
+      // เปลี่ยนเฉพาะตัวเลขชุดสุดท้าย เพื่อไม่ให้ตัวเลขรุ่น/ชื่ออื่นถูกคำนวณตามไปด้วย
+      const numberMatches = Array.from(cleanBaseName.matchAll(/\d+/g));
+      if (numberMatches.length === 0) return cleanBaseName;
+
+      const target = numberMatches[numberMatches.length - 1];
+      const perItemQty = parseInt(target[0], 10);
+      if (!Number.isFinite(perItemQty)) return cleanBaseName;
+
+      const aggregatedQty = perItemQty * normalizedQty;
+      return `${cleanBaseName.substring(0, target.index)}${aggregatedQty}${cleanBaseName.substring(target.index + target[0].length)}`;
+    };
+
+    const waitForLabelRender = async (element, order, thermalMode, timeoutMs = 10000) => {
+      const image = element.querySelector('img[alt="Label Base"]');
+      if (!image) throw new Error(`ไม่พบรูปใบปะหน้าสำหรับ ${order.id}`);
+
+      const startedAt = Date.now();
+      while (true) {
+        const imageLoaded = image.complete && image.naturalWidth > 0;
+        const thermalReady = !thermalMode || image.src !== order.pdfImage;
+        if (imageLoaded && thermalReady) return;
+
+        if (Date.now() - startedAt > timeoutMs) {
+          throw new Error(`รอรูปใบปะหน้าไม่สำเร็จภายในเวลาที่กำหนด: ${order.id}`);
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    };
+
     function App() {
       const [activeTab, setActiveTab] = useState('upload');
       const [orders, setOrders] = useState([]);
       const [skuRules, setSkuRules] = useState(() => {
-        try { const saved = localStorage.getItem('skuMappingRules'); if (saved) return JSON.parse(saved); } catch (e) {} return [];
+        try {
+          const saved = localStorage.getItem('skuMappingRules');
+          if (!saved) return [];
+
+          const parsedRules = JSON.parse(saved);
+          if (!Array.isArray(parsedRules)) return [];
+
+          return parsedRules
+            .map((rule, index) => sanitizeSkuRule(rule, `saved-${Date.now()}-${index}`))
+            .filter(Boolean);
+        } catch (e) {
+          console.warn('โหลดกฎ SKU จาก localStorage ไม่สำเร็จ', e);
+          return [];
+        }
       });
       const [newRule, setNewRule] = useState({ keyword: '', shortName: '' });
       const [editingId, setEditingId] = useState(null); 
@@ -330,7 +396,7 @@
                   }
 
                   if (isNewFormat) {
-                      while (remainingText.length > 0 && currentItemNum < 20) {
+                      while (remainingText.length > 0 && currentItemNum <= 20) {
                           let regex = new RegExp(`^(.*?)(?:^|\\s)${currentItemNum}\\s+(\\d+)(?:\\s+|$)`);
                           let match = remainingText.match(regex);
                           if (match) {
@@ -348,7 +414,7 @@
                           }
                       }
                   } else {
-                      while (remainingText.length > 0 && currentItemNum < 20) {
+                      while (remainingText.length > 0 && currentItemNum <= 20) {
                           let prefixRegexStr = `(?:^|\\s)${currentItemNum}(?:\\s*[.)\\]]\\s*|\\s+|(?=\\(|\\[))`;
                           let currentPrefixRegex = new RegExp(prefixRegexStr);
                           let currentMatch = remainingText.match(currentPrefixRegex);
@@ -460,7 +526,7 @@
               allNewOrders.push({ 
                   id: `label-${Date.now()}-${allNewOrders.length}-${i}`, 
                   tracking: trackingMatch ? trackingMatch[0] : `PAGE-${i}`, 
-                  parsedItems: parsedItems, 
+                  parsedItems: parsedItems,
                   pdfImage, 
                   platform,
                   orderId: currentOrderId 
@@ -507,14 +573,7 @@
         let finalDisplayItems = [];
         
         skuMap.forEach((qty, baseName) => {
-            let displayName = baseName;
-            if (qty > 1) {
-                if (/\d/.test(baseName)) {
-                    displayName = baseName.replace(/\d+/g, (num) => parseInt(num, 10) * qty);
-                } else {
-                    displayName = `${baseName} x${qty}`;
-                }
-            }
+            const displayName = getAggregatedShortName(baseName, qty);
             finalDisplayItems.push(`• ${displayName}`); 
         });
 
@@ -537,23 +596,41 @@
         if (MappedOrders.length === 0) return;
         setExportStatus({ active: true, current: 0, total: MappedOrders.length });
         
-        await new Promise(resolve => setTimeout(resolve, 800));
+        await new Promise(resolve => setTimeout(resolve, 100));
 
         try {
+          if (!window.jspdf || !window.jspdf.jsPDF) throw new Error('โหลดระบบสร้าง PDF ไม่สำเร็จ');
+          if (!window.html2canvas) throw new Error('โหลดระบบจับภาพใบปะหน้าไม่สำเร็จ');
+
           const pdf = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'mm', format: [100, 150] });
+          let exportedPages = 0;
+
           for (let i = 0; i < MappedOrders.length; i++) {
+            const order = MappedOrders[i];
             setExportStatus(prev => ({ ...prev, current: i + 1 }));
-            const element = document.getElementById(`render-target-${MappedOrders[i].id}`);
-            if (element) {
-              const canvas = await window.html2canvas(element, { scale: 3, useCORS: true, logging: false, backgroundColor: '#ffffff' });
-              if (i > 0) pdf.addPage();
-              pdf.addImage(canvas.toDataURL('image/jpeg', 0.98), 'JPEG', 0, 0, 100, 150);
+
+            const element = document.getElementById(`render-target-${order.id}`);
+            if (!element) {
+              throw new Error(`ไม่พบหน้าสำหรับ Export ลำดับ ${i + 1}: ${order.id}`);
             }
+
+            await waitForLabelRender(element, order, thermalMode);
+            const canvas = await window.html2canvas(element, { scale: 3, useCORS: true, logging: false, backgroundColor: '#ffffff' });
+
+            if (i > 0) pdf.addPage();
+            pdf.addImage(canvas.toDataURL('image/jpeg', 0.98), 'JPEG', 0, 0, 100, 150);
+            exportedPages++;
           }
+
+          if (exportedPages !== MappedOrders.length) {
+            throw new Error(`Export ไม่ครบ: ได้ ${exportedPages} จาก ${MappedOrders.length} หน้า`);
+          }
+
           pdf.save(`PackMaster_Labels_${new Date().getTime()}.pdf`);
-          showToast('ดาวน์โหลด PDF เรียบร้อย', 'success');
+          showToast(`ดาวน์โหลด PDF เรียบร้อย ${exportedPages} หน้า`, 'success');
         } catch (err) {
-          showToast('สร้างไฟล์ PDF ล้มเหลว', 'error');
+          console.error('PackMaster PDF export failed:', err);
+          showToast(err.message || 'สร้างไฟล์ PDF ล้มเหลว', 'error');
         } finally {
           setExportStatus({ active: false, current: 0, total: 0 });
         }
@@ -577,14 +654,37 @@
         reader.onload = (event) => {
           try {
             const importedRules = JSON.parse(event.target.result);
-            if (Array.isArray(importedRules)) {
-              setSkuRules(prev => {
-                const merged = [...importedRules, ...prev];
-                return Array.from(new Map(merged.map(item => [item.keyword, item])).values());
-              });
-              showToast(`นำเข้าสำเร็จ ${importedRules.length} ข้อ`, 'success');
-            } else showToast('รูปแบบไฟล์ไม่ถูกต้อง', 'error');
-          } catch (err) { showToast('ไฟล์เสียหาย', 'error'); }
+            if (!Array.isArray(importedRules)) {
+              showToast('รูปแบบไฟล์ไม่ถูกต้อง', 'error');
+              return;
+            }
+
+            const validRules = importedRules
+              .map((rule, index) => sanitizeSkuRule(rule, `import-${Date.now()}-${index}`))
+              .filter(Boolean);
+            const skippedCount = importedRules.length - validRules.length;
+
+            if (validRules.length === 0) {
+              showToast('ไม่พบกฎ SKU ที่ใช้งานได้', 'error');
+              return;
+            }
+
+            setSkuRules(prev => {
+              const merged = [...validRules, ...prev];
+              const deduped = new Map();
+              merged.forEach(rule => deduped.set(normalizeRuleKeyword(rule.keyword), rule));
+              return Array.from(deduped.values());
+            });
+
+            if (skippedCount > 0) {
+              showToast(`นำเข้า ${validRules.length} ข้อ (ข้าม ${skippedCount} ข้อที่ไม่ถูกต้อง)`, 'success');
+            } else {
+              showToast(`นำเข้าสำเร็จ ${validRules.length} ข้อ`, 'success');
+            }
+          } catch (err) {
+            console.error('นำเข้ากฎ SKU ไม่สำเร็จ', err);
+            showToast('ไฟล์เสียหาย', 'error');
+          }
         };
         reader.readAsText(file); e.target.value = null;
       };
@@ -622,13 +722,7 @@
         if (!rule) return 'ไม่พบคีย์เวิร์ด';
         
         const baseName = rule.shortName.trim().replace(/\u00A0/g, ' ');
-        if (totalQty > 1) {
-            if (/\d/.test(baseName)) {
-                return baseName.replace(/\d+/g, (num) => parseInt(num, 10) * totalQty);
-            }
-            return `${baseName} x${totalQty}`;
-        }
-        return baseName;
+        return getAggregatedShortName(baseName, totalQty);
       }, [testInput, testQty, getMatchedRule]);
 
       return (
@@ -765,7 +859,7 @@
                             <tr key={order.id} className="hover:bg-blue-50/30 transition-colors">
                               <td className="px-10 py-6 font-mono text-[15px] font-bold text-blue-950/60">{order.tracking}</td>
                               <td className="px-10 py-6 text-center font-black text-2xl text-blue-950/40">
-                                {order.originalQty > 0 ? `x${order.originalQty}` : '-'}
+                                {order.originalQty > 0 ? order.originalQty : '-'}
                               </td>
                               <td className="px-10 py-6">
                                 <div className="flex flex-col gap-2 items-start">
