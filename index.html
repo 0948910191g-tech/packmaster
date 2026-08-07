@@ -126,6 +126,28 @@
 
     const normalizeRuleKeyword = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
 
+    const normalizeMatchText = (str) => {
+      let cleaned = String(str || '').toLowerCase()
+          .replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ')
+          .replace(/[\uF700-\uF71A]/g, '')
+          .replace(/\u0E33/g, 'า')
+          .replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/g, '')
+          .replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, ' ')
+          .replace(/\s+/g, ' ');
+      return cleaned.trim();
+    };
+
+    const hasQuantityNumber = (value) => /\d+/.test(String(value || ''));
+
+    const findDuplicateRule = (rules, keyword, editingId = null) => {
+      const normalizedKeyword = normalizeRuleKeyword(keyword);
+      if (!normalizedKeyword) return null;
+
+      return (Array.isArray(rules) ? rules : []).find(rule =>
+        rule && rule.id !== editingId && normalizeRuleKeyword(rule.keyword) === normalizedKeyword
+      ) || null;
+    };
+
     const sanitizeSkuRule = (rule, fallbackId) => {
       if (!rule || typeof rule !== 'object') return null;
       if (typeof rule.keyword !== 'string' || typeof rule.shortName !== 'string') return null;
@@ -219,22 +241,12 @@
       const getMatchedRule = useCallback((textToSearch) => {
         if (!textToSearch) return null;
 
-        const cleanText = (str) => {
-            let cleaned = String(str).toLowerCase()
-                .replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ')
-                .replace(/\u0E33/g, 'า')
-                .replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/g, '')
-                .replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, ' ')
-                .replace(/\s+/g, ' ');
-            return cleaned.trim();
-        };
-
-        const searchArea = cleanText(textToSearch);
+        const searchArea = normalizeMatchText(textToSearch);
         if (!searchArea) return null;
 
         const rules = skuRules.map(r => ({
             ...r,
-            cleanKw: cleanText(r.keyword)
+            cleanKw: normalizeMatchText(r.keyword)
         })).filter(r => r.cleanKw.length > 0);
 
         rules.sort((a, b) => b.cleanKw.length - a.cleanKw.length);
@@ -512,7 +524,7 @@
 
                       allNewOrders.push({ 
                           id: `label-${Date.now()}-${allNewOrders.length}-${i}`, 
-                          tracking: trackingMatch ? trackingMatch[0] : existingOrder.tracking, 
+                          tracking: trackingMatch ? trackingMatch[0] : existingOrder.tracking,
                           parsedItems: [], 
                           pdfImage, 
                           platform,
@@ -525,7 +537,7 @@
 
               allNewOrders.push({ 
                   id: `label-${Date.now()}-${allNewOrders.length}-${i}`, 
-                  tracking: trackingMatch ? trackingMatch[0] : `PAGE-${i}`, 
+                  tracking: trackingMatch ? trackingMatch[0] : `PAGE-${i}`,
                   parsedItems: parsedItems,
                   pdfImage, 
                   platform,
@@ -690,15 +702,31 @@
       };
 
       const handleSubmitRule = (e) => {
-        e.preventDefault(); 
-        if (!newRule.keyword.trim() || !newRule.shortName.trim()) return;
+        e.preventDefault();
+
+        const keyword = newRule.keyword.trim();
+        const shortName = newRule.shortName.trim();
+        if (!keyword || !shortName) return;
+
+        if (!hasQuantityNumber(shortName)) {
+          showToast('ชื่อย่อต้องมีเลขจำนวน เช่น ฮากุ 1 ลัง', 'error');
+          return;
+        }
+
+        const duplicateRule = findDuplicateRule(skuRules, keyword, editingId);
+        if (duplicateRule) {
+          showToast(`Keyword "${keyword}" มีอยู่แล้ว กรุณาแก้รายการเดิม`, 'error');
+          return;
+        }
+
+        const cleanedRule = { keyword, shortName };
         
         if (editingId) {
-            setSkuRules(prev => prev.map(r => r.id === editingId ? { ...newRule, id: editingId } : r));
+            setSkuRules(prev => prev.map(r => r.id === editingId ? { ...cleanedRule, id: editingId } : r));
             setEditingId(null);
             showToast('แก้ไขกฎสำเร็จ', 'success');
         } else {
-            setSkuRules([{ ...newRule, id: Date.now() }, ...skuRules]);
+            setSkuRules([{ ...cleanedRule, id: Date.now() }, ...skuRules]);
             showToast('เพิ่มกฎใหม่สำเร็จ', 'success');
         }
         setNewRule({ keyword: '', shortName: '' });
