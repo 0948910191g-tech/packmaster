@@ -1,0 +1,186 @@
+name: PackMaster Phase 3A Browser Smoke
+
+on:
+  push:
+    branches:
+      - phase3-local-hardening
+
+permissions:
+  contents: read
+
+jobs:
+  browser-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Playwright
+        run: |
+          npm install --no-save --no-package-lock playwright
+          npx playwright install --with-deps chromium
+
+      - name: Start local static server
+        run: |
+          python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/packmaster-http.log 2>&1 &
+          echo $! > /tmp/packmaster-http.pid
+          for i in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:4173/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/packmaster-http.log
+          exit 1
+
+      - name: Exercise Backup and Restore UI
+        run: |
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const { chromium } = require('playwright');
+
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            const context = await browser.newContext({ acceptDownloads: true });
+            const page = await context.newPage();
+            const unexpectedErrors = [];
+
+            page.on('pageerror', error => unexpectedErrors.push(`pageerror: ${error.message}`));
+            page.on('console', message => {
+              if (message.type() !== 'error') return;
+              const text = message.text();
+              if (text.includes('Workspace restore file validation failed')) return;
+              unexpectedErrors.push(`console: ${text}`);
+            });
+
+            await page.goto('http://127.0.0.1:4173/', { waitUntil: 'domcontentloaded', timeout: 90000 });
+            await page.waitForFunction(() => Boolean(window.PackMasterBatch && window.PackMasterWorkspace), null, { timeout: 60000 });
+            await page.getByRole('heading', { name: 'งานแพ็ก' }).waitFor({ timeout: 60000 });
+
+            // Create the first local Batch using the real UI.
+            await page.getByRole('button', { name: /สร้าง Batch/ }).first().click();
+            await page.getByRole('button', { name: /กลับรายการ Batch/ }).waitFor();
+            const firstBatchName = (await page.locator('h2').filter({ hasText: 'Batch #' }).first().textContent()).trim();
+            assert.match(firstBatchName, /Batch #001$/);
+            await page.getByRole('button', { name: /กลับรายการ Batch/ }).click();
+            await page.getByRole('heading', { name: 'งานแพ็ก' }).waitFor();
+
+            // Seed one sanitized parsed-order record while no Batch is active, so React auto-save cannot overwrite it.
+            await page.evaluate(async () => {
+              const rows = await window.PackMasterBatch.listBatches();
+              assert = undefined;
+              if (rows.length !== 1) throw new Error('Expected exactly one batch before seed');
+              const loaded = await window.PackMasterBatch.loadBatch(rows[0].id);
+              await window.PackMasterBatch.saveBatch(loaded.meta, [{
+                id: 'sanitized-order-1',
+                tracking: 'SANITIZED-TRACKING',
+                orderId: 'SANITIZED-ORDER',
+                platform: 'TIKTOK',
+                parsedItems: [],
+                displayItems: ['SANITIZED OUTPUT'],
+                originalQty: 1,
+                qtyWarning: false,
+                parserWarning: false,
+                pdfImage: ''
+              }]);
+            });
+
+            // Add one sanitized SKU rule through the actual Settings UI.
+            await page.getByRole('button', { name: /คลังคำศัพท์/ }).click();
+            await page.getByRole('heading', { name: 'คลังคำศัพท์' }).waitFor();
+            await page.getByPlaceholder('เช่น baby Wipes 10').fill('SANITIZED PRODUCT');
+            await page.getByPlaceholder('เช่น เด้งม่วง 10').fill('ชื่อภายใน1');
+            await page.locator('form').getByRole('button', { name: /เพิ่ม/ }).click();
+            await page.getByText('SANITIZED PRODUCT', { exact: true }).waitFor();
+
+            // Backup through the real Workspace Safety button and validate the downloaded file.
+            const downloadPromise = page.waitForEvent('download');
+            await page.getByRole('button', { name: /สำรอง Workspace/ }).click();
+            const download = await downloadPromise;
+            const downloadPath = await download.path();
+            assert.ok(downloadPath, 'Workspace backup download path must exist');
+            const downloadedText = fs.readFileSync(downloadPath, 'utf8');
+            const downloadedBackup = JSON.parse(downloadedText);
+            assert.equal(downloadedBackup.schema, 'packmaster-workspace-backup');
+            assert.equal(downloadedBackup.version, 1);
+            assert.equal(downloadedBackup.skuRules.length, 1);
+            assert.equal(downloadedBackup.batches.length, 1);
+            assert.equal(downloadedBackup.batchOrders.length, 1);
+            assert.equal(downloadedBackup.batchOrders[0].orders.length, 1);
+            assert.equal(downloadedBackup.batchOrders[0].orders[0].tracking, 'SANITIZED-TRACKING');
+
+            // Make the current workspace different by creating a second Batch.
+            await page.getByRole('button', { name: /งานแพ็ก/ }).click();
+            await page.getByRole('heading', { name: 'งานแพ็ก' }).waitFor();
+            await page.getByRole('button', { name: /สร้าง Batch ใหม่/ }).click();
+            await page.getByRole('button', { name: /กลับรายการ Batch/ }).waitFor();
+            await page.getByRole('button', { name: /กลับรายการ Batch/ }).click();
+            let rows = await page.evaluate(() => window.PackMasterBatch.listBatches());
+            assert.equal(rows.length, 2, 'workspace must differ before restore');
+
+            // Restore the downloaded Backup via the actual file input and Replace confirmation.
+            await page.getByRole('button', { name: /คลังคำศัพท์/ }).click();
+            await page.getByRole('heading', { name: 'คลังคำศัพท์' }).waitFor();
+            const restoreInput = page.locator('input[type="file"][accept=".json,application/json"]');
+            await restoreInput.setInputFiles({
+              name: 'workspace-restore.json',
+              mimeType: 'application/json',
+              buffer: Buffer.from(downloadedText, 'utf8')
+            });
+            await page.getByText('พร้อมกู้คืนจาก workspace-restore.json', { exact: false }).waitFor();
+            await page.getByRole('button', { name: 'Replace Workspace' }).waitFor();
+            page.once('dialog', dialog => dialog.accept());
+            await page.getByRole('button', { name: 'Replace Workspace' }).click();
+            await page.getByRole('heading', { name: 'งานแพ็ก' }).waitFor({ timeout: 30000 });
+
+            rows = await page.evaluate(() => window.PackMasterBatch.listBatches());
+            assert.equal(rows.length, 1, 'restore must replace extra Batch');
+            assert.equal(rows[0].name, firstBatchName);
+            let restored = await page.evaluate(async id => window.PackMasterBatch.loadBatch(id), rows[0].id);
+            assert.equal(restored.orders.length, 1);
+            assert.equal(restored.orders[0].tracking, 'SANITIZED-TRACKING');
+
+            // Reload to prove persistence through the existing IndexedDB adapter.
+            await page.reload({ waitUntil: 'domcontentloaded' });
+            await page.waitForFunction(() => Boolean(window.PackMasterBatch && window.PackMasterWorkspace));
+            await page.getByRole('heading', { name: 'งานแพ็ก' }).waitFor();
+            rows = await page.evaluate(() => window.PackMasterBatch.listBatches());
+            assert.equal(rows.length, 1);
+            restored = await page.evaluate(async id => window.PackMasterBatch.loadBatch(id), rows[0].id);
+            assert.equal(restored.orders.length, 1);
+
+            // SKU rule must also survive restore/reload through localStorage state.
+            await page.getByRole('button', { name: /คลังคำศัพท์/ }).click();
+            await page.getByText('SANITIZED PRODUCT', { exact: true }).waitFor();
+
+            // Invalid backup must never mutate the current local workspace.
+            const beforeInvalid = await page.evaluate(() => window.PackMasterBatch.listBatches());
+            await page.locator('input[type="file"][accept=".json,application/json"]').setInputFiles({
+              name: 'invalid-workspace.json',
+              mimeType: 'application/json',
+              buffer: Buffer.from(JSON.stringify({ schema: 'wrong', version: 1 }), 'utf8')
+            });
+            await page.getByText(/ไฟล์ Backup ใช้งานไม่ได้/).waitFor();
+            const afterInvalid = await page.evaluate(() => window.PackMasterBatch.listBatches());
+            assert.deepEqual(afterInvalid.map(row => row.id), beforeInvalid.map(row => row.id));
+
+            if (unexpectedErrors.length) {
+              throw new Error(`Unexpected browser errors:\n${unexpectedErrors.join('\n')}`);
+            }
+
+            console.log('PackMaster Phase 3A browser backup/restore smoke passed');
+            await browser.close();
+          })().catch(error => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+
+      - name: Stop local server
+        if: always()
+        run: |
+          if [ -f /tmp/packmaster-http.pid ]; then kill $(cat /tmp/packmaster-http.pid) || true; fi
