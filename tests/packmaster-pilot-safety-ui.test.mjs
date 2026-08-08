@@ -21,8 +21,9 @@ test('print and Save PDF remain full-batch operations after safety gate', () => 
   mustInclude('{MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}');
 });
 
-test('SKU/unmapped exception can jump to SKU Library with a prefilled editable keyword', () => {
+test('SKU/unmapped exception can jump to SKU Library only with safely resolved product identity', () => {
   mustInclude('const handleFixSkuException = (row) => {');
+  mustInclude('const seed = pilotSafetyApi.getSkuFixSeed(row, getMatchResult);');
   mustInclude("setActiveTab('settings');");
   mustInclude('setSkuSearch(seed);');
   mustInclude("setSkuFilter('ALL');");
@@ -30,8 +31,9 @@ test('SKU/unmapped exception can jump to SKU Library with a prefilled editable k
   mustInclude('ตั้งชื่อ SKU');
 });
 
-test('batch status UI uses exception-first effective status', () => {
+test('batch status UI uses exception-first effective status and invalidates stale completed state', () => {
   mustInclude('const getEffectiveBatchStatus = (batch) => pilotSafetyApi ? pilotSafetyApi.getEffectiveBatchStatus(batch) : batch.status;');
   mustInclude('const statusUi = getBatchStatusUi(getEffectiveBatchStatus(batch));');
   mustInclude('const ui = getBatchStatusUi(getEffectiveBatchStatus(activeBatch));');
+  mustInclude('printedAt: printBlocked ? null : activeBatch.printedAt');
 });
