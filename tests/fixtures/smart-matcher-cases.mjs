@@ -16,6 +16,10 @@ export const productionRuleSubset = [
   { id: 1776996502978, keyword: 'Haku 1', shortName: 'ฮากุเบบี้1' },
   { id: 1775707478916, keyword: 'JASMINE (12)', shortName: 'เย็นเขียว 12' },
   { id: 1777027733055, keyword: '(12ห่อ) JASMINE', shortName: 'เย็นเขียว 12' },
+  { id: 1775542347979, keyword: 'MENTHOL  12', shortName: 'เย็นฟ้า12' },
+  { id: 1775707111772, keyword: 'MENTHOL (12)', shortName: 'เย็นฟ้า 12' },
+  { id: 1777342120530, keyword: 'LAVENDER  6', shortName: 'เย็น ม.6' },
+  { id: 1775706284411, keyword: 'LAVENDER (6)', shortName: 'เย็นม่วง 6' },
   { id: 1783752746037, keyword: 'HOYA Value Pack 5', shortName: 'HOYA Value 5' }
 ];
 
