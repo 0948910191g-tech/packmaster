@@ -93,7 +93,7 @@ assert.equal(groupedTikTok.items[0].qty, 1);
 
 assert.ok(parseShopeePositionedItems, 'Shopee must have a deterministic positioned-column parser');
 const shopee3 = parseShopeePositionedItems(shopeeThreeSkuPositioned, 3);
-assert.deepEqual(shopee3.items.map(item => item.qty), [1, 1, 1], 'Shopee row Qty must come from the Qty column, never row numbers/footer total');
+assert.deepEqual([...shopee3.items].map(item => item.qty), [1, 1, 1], 'Shopee row Qty must come from the Qty column, never row numbers/footer total');
 assert.equal(shopee3.items.length, 3);
 assert.equal(hasQtyWarning(shopee3.items, 3, shopee3.parserWarning), false);
 
