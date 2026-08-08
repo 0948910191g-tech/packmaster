@@ -1,0 +1,137 @@
+name: PackMaster Frontend V3 Chromium Smoke
+
+on:
+  push:
+    branches:
+      - frontend-v3-operational-ui
+
+permissions:
+  contents: read
+
+jobs:
+  browser-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: frontend-v3-operational-ui
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Playwright Chromium
+        run: |
+          npm install --no-save --no-package-lock playwright
+          npx playwright install --with-deps chromium
+
+      - name: Start local static server
+        run: |
+          python3 -m http.server 4173 > /tmp/packmaster-v3-server.log 2>&1 &
+          echo $! > /tmp/packmaster-v3-server.pid
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:4173/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/packmaster-v3-server.log
+          exit 1
+
+      - name: Exercise Frontend V3 workflow
+        run: |
+          cat > /tmp/frontend-v3-smoke.mjs <<'JS'
+          import { chromium } from 'playwright';
+
+          const browser = await chromium.launch({ headless: true });
+          const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+          const pageErrors = [];
+          const consoleErrors = [];
+          page.on('pageerror', error => pageErrors.push(String(error)));
+          page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+
+          const assert = (condition, message) => { if (!condition) throw new Error(message); };
+          const gotoView = async (label, view) => {
+            await page.getByRole('button', { name: label, exact: true }).first().click();
+            await page.locator(`[data-pm-view="${view}"]`).waitFor({ state: 'visible' });
+          };
+
+          await page.goto('http://127.0.0.1:4173/', { waitUntil: 'networkidle' });
+          await page.locator('[data-pm-shell="v3"]').waitFor({ state: 'visible' });
+          await page.locator('[data-pm-view="batches"]').waitFor({ state: 'visible' });
+          console.log('STEP 1: V3 shell and Batch view loaded');
+
+          const create = page.locator('[data-pm-action="create-batch"]');
+          await create.waitFor({ state: 'visible' });
+          await create.click();
+          await page.locator('[data-pm-view="upload"]').waitFor({ state: 'visible' });
+          await page.getByText('Active Batch', { exact: true }).waitFor({ state: 'visible' });
+          const fileInput = page.locator('input[type="file"][accept=".pdf"]');
+          assert(await fileInput.count() >= 1, 'Upload PDF input missing');
+          console.log('STEP 2: Create Batch -> Upload view and PDF control passed');
+
+          await gotoView('คลังคำศัพท์', 'sku');
+          const keyword = page.getByPlaceholder('เช่น HOYA Cooling 5 ห่อ');
+          await keyword.fill('Smoke Keyword');
+          assert(await keyword.inputValue() === 'Smoke Keyword', 'SKU Keyword input is not interactive');
+          const skuSearch = page.getByPlaceholder('ค้นหา Keyword / ชื่อภายใน');
+          await skuSearch.fill('HOYA');
+          assert(await skuSearch.inputValue() === 'HOYA', 'SKU search is not interactive');
+          console.log('STEP 3: SKU Library real inputs/search passed');
+
+          await gotoView('รีวิว & พิมพ์', 'review');
+          await page.locator('[data-pm-action="print"]').waitFor({ state: 'visible' });
+          await page.locator('[data-pm-action="save-pdf"]').waitFor({ state: 'visible' });
+          assert(await page.locator('[data-pm-action="print"]').isDisabled(), 'Print should be disabled for empty Batch');
+          await page.getByTitle('Grid').click();
+          await page.getByTitle('Compact list').click();
+          console.log('STEP 4: Review controls/grid-list/print safety passed');
+
+          await gotoView('สำรองข้อมูล', 'safety');
+          const backup = page.locator('[data-pm-action="workspace-backup"]');
+          await backup.waitFor({ state: 'visible' });
+          assert(!(await backup.isDisabled()), 'Workspace Backup should be available after storage initialization');
+          const downloadPromise = page.waitForEvent('download');
+          await backup.click();
+          const download = await downloadPromise;
+          assert(download.suggestedFilename().endsWith('.json'), 'Workspace Backup did not produce JSON');
+          await page.getByText('Diagnostics แบบไม่รวมข้อมูลลูกค้า', { exact: true }).waitFor({ state: 'visible' });
+          console.log('STEP 5: Local Safety Backup/Diagnostics passed');
+
+          await gotoView('งานแพ็ก', 'batches');
+          const batchCardsBefore = await page.getByRole('button', { name: 'เปิดงาน', exact: true }).count();
+          assert(batchCardsBefore >= 1, 'Created Batch missing from Batch view');
+          const archiveButton = page.getByRole('button', { name: 'เก็บเข้าคลัง', exact: true }).first();
+          if (await archiveButton.count()) {
+            page.once('dialog', dialog => dialog.accept());
+            await archiveButton.click();
+            await page.waitForTimeout(250);
+            await page.getByRole('button', { name: /เก็บแล้ว/ }).click();
+            const restoreButton = page.getByRole('button', { name: 'นำกลับ', exact: true }).first();
+            await restoreButton.waitFor({ state: 'visible' });
+            await restoreButton.click();
+            await page.waitForTimeout(250);
+          }
+          console.log('STEP 6: Archive/Restore UI passed');
+
+          await page.reload({ waitUntil: 'networkidle' });
+          await page.locator('[data-pm-shell="v3"]').waitFor({ state: 'visible' });
+          await page.locator('[data-pm-view="batches"]').waitFor({ state: 'visible' });
+          const batchCardsAfter = await page.getByRole('button', { name: 'เปิดงาน', exact: true }).count();
+          assert(batchCardsAfter >= 1, 'Batch did not persist after reload');
+          console.log('STEP 7: Reload persistence passed');
+
+          assert(pageErrors.length === 0, `Page errors: ${pageErrors.join(' | ')}`);
+          const relevantConsoleErrors = consoleErrors.filter(text => !/favicon|ERR_BLOCKED_BY_CLIENT/i.test(text));
+          assert(relevantConsoleErrors.length === 0, `Console errors: ${relevantConsoleErrors.join(' | ')}`);
+
+          await page.screenshot({ path: '/tmp/packmaster-v3-batches.png', fullPage: true });
+          await browser.close();
+          console.log('PackMaster Frontend V3 Chromium smoke passed');
+          JS
+          node /tmp/frontend-v3-smoke.mjs
+
+      - name: Stop local server
+        if: always()
+        run: |
+          if [ -f /tmp/packmaster-v3-server.pid ]; then kill "$(cat /tmp/packmaster-v3-server.pid)" || true; fi
