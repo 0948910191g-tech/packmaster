@@ -136,6 +136,8 @@
     .pm-view-toggle { width: 34px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 7px; color: #8997a8; }
     .pm-view-toggle-active { background: white; color: #0b63ce; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
     .pm-order-card { background: white; border: 1px solid #dfe7f1; border-radius: 14px; padding: 12px; box-shadow: 0 4px 14px rgba(26,54,93,.04); min-width: 0; }
+    .pm-full-preview-stage { min-height: 610px; border: 1px solid #e1e8f0; border-radius: 14px; background: linear-gradient(180deg, #f8fafc 0%, #eef4fa 100%); padding: 20px; display: flex; align-items: flex-start; justify-content: center; overflow: auto; }
+    .pm-full-preview-info { border: 1px solid #e1e8f0; border-radius: 14px; background: #fbfcfe; padding: 16px; }
     .pm-label-thumb { aspect-ratio: 2 / 2.65; max-height: 230px; width: 100%; overflow: hidden; border: 1px solid #e3e9f0; border-radius: 10px; background: #f7f9fc; }
     .pm-label-thumb img { width: 100%; height: 100%; object-fit: cover; object-position: center top; }
     .pm-feature-icon { width: 38px; height: 38px; border-radius: 11px; display: flex; align-items: center; justify-content: center; color: #0b63ce; background: #edf6ff; border: 1px solid #d7e9fb; flex: 0 0 auto; }
@@ -867,6 +869,7 @@
       // PackMaster Frontend V3 — presentation-only navigation/pagination.
       const [activeView, setActiveView] = useState('batches');
       const [reviewPage, setReviewPage] = useState(1);
+      const [reviewPreviewIndex, setReviewPreviewIndex] = useState(0);
       const [reviewPageSize, setReviewPageSize] = useState(12);
       const [skuPage, setSkuPage] = useState(1);
       const [skuPageSize, setSkuPageSize] = useState(20);
@@ -894,7 +897,7 @@
       const [uploadError, setUploadError] = useState('');
       const [loadingStatus, setLoadingStatus] = useState({ active: false, current: 0, total: 0 });
       const [exportStatus, setExportStatus] = useState({ active: false, current: 0, total: 0 });
-      const [previewMode, setPreviewMode] = useState('table');
+      const [previewMode, setPreviewMode] = useState('labels');
       const [testInput, setTestInput] = useState('');
       const [testQty, setTestQty] = useState('1');
       const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
@@ -1501,6 +1504,7 @@
         exceptionApi ? exceptionApi.buildExceptionRows(MappedOrders) : [],
       [MappedOrders]);
       const printBlocked = pilotSafetyApi ? pilotSafetyApi.hasBlockingExceptions(exceptionRows) : exceptionRows.length > 0;
+      const currentPreviewException = CurrentPreviewOrder ? exceptionRows.find(item => item.order?.id === CurrentPreviewOrder.id) : null;
 
       const filteredExceptionRows = useMemo(() =>
         exceptionApi ? exceptionApi.filterExceptionRows(exceptionRows, exceptionType, exceptionSearch) : exceptionRows,
@@ -2252,11 +2256,35 @@
 
       const reviewPageCount = Math.max(1, Math.ceil(FilteredOrders.length / reviewPageSize));
       const visibleReviewOrders = FilteredOrders.slice((reviewPage - 1) * reviewPageSize, reviewPage * reviewPageSize);
+      const safeReviewPreviewIndex = FilteredOrders.length > 0 ? Math.min(reviewPreviewIndex, FilteredOrders.length - 1) : 0;
+      const CurrentPreviewOrder = FilteredOrders[safeReviewPreviewIndex] || null;
+      const CurrentPreviewFlags = CurrentPreviewOrder ? getReviewFlags(CurrentPreviewOrder) : null;
+
+      const moveReviewPreview = (delta) => {
+        if (FilteredOrders.length === 0) return;
+        setReviewPreviewIndex(prev => Math.max(0, Math.min(FilteredOrders.length - 1, prev + delta)));
+      };
 
       useEffect(() => { setSkuPage(1); }, [skuSearch, skuFilter, skuSort]);
       useEffect(() => { setReviewPage(1); }, [reviewSearch, reviewPlatform, reviewStatus, previewMode, activeBatchId]);
+      useEffect(() => { setReviewPreviewIndex(0); }, [reviewSearch, reviewPlatform, reviewStatus, activeBatchId]);
       useEffect(() => { if (skuPage > skuPageCount) setSkuPage(skuPageCount); }, [skuPage, skuPageCount]);
       useEffect(() => { if (reviewPage > reviewPageCount) setReviewPage(reviewPageCount); }, [reviewPage, reviewPageCount]);
+      useEffect(() => {
+        if (reviewPreviewIndex > Math.max(0, FilteredOrders.length - 1)) setReviewPreviewIndex(Math.max(0, FilteredOrders.length - 1));
+      }, [reviewPreviewIndex, FilteredOrders.length]);
+      useEffect(() => {
+        if (activeView !== 'review' || previewMode !== 'labels' || FilteredOrders.length === 0) return;
+        const onReviewPreviewKey = (event) => {
+          const target = event.target;
+          const tag = target && target.tagName ? target.tagName.toLowerCase() : '';
+          if (['input', 'textarea', 'select'].includes(tag) || (target && target.isContentEditable)) return;
+          if (event.key === 'ArrowLeft') { event.preventDefault(); moveReviewPreview(-1); }
+          if (event.key === 'ArrowRight') { event.preventDefault(); moveReviewPreview(1); }
+        };
+        window.addEventListener('keydown', onReviewPreviewKey);
+        return () => window.removeEventListener('keydown', onReviewPreviewKey);
+      }, [activeView, previewMode, FilteredOrders.length]);
 
       const activeBatchRows = batches.filter(batch => !getBatchArchivedAt(batch));
       const batchDashboard = activeBatchRows.reduce((acc, batch) => {
@@ -2588,7 +2616,7 @@
                         <div className="relative flex-1 min-w-[220px]"><PMIcon name="search" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="search" value={reviewSearch} onChange={(e)=>setReviewSearch(e.target.value)} placeholder="ค้นหา Order / SKU / ชื่อภายใน" className="pm-input !py-2.5 !pl-9"/></div>
                         <select value={reviewPlatform} onChange={(e)=>setReviewPlatform(e.target.value)} className="pm-select"><option value="ALL">ทุกแพลตฟอร์ม</option><option value="SHOPEE">Shopee</option><option value="TIKTOK">TikTok</option></select>
                         <select value={reviewStatus} onChange={(e)=>setReviewStatus(e.target.value)} className="pm-select"><option value="ALL">ทุกสถานะ</option><option value="READY">พร้อมพิมพ์</option><option value="REVIEW_SKU">ตรวจสอบ SKU</option><option value="REVIEW_QTY">ตรวจสอบ Qty</option><option value="UNMAPPED">ยังไม่ตั้งชื่อ</option></select>
-                        <div className="flex p-1 bg-slate-100 rounded-lg"><button onClick={()=>setPreviewMode('labels')} className={`pm-view-toggle ${previewMode==='labels'?'pm-view-toggle-active':''}`} title="Grid"><PMIcon name="grid" className="w-4 h-4"/></button><button onClick={()=>setPreviewMode('table')} className={`pm-view-toggle ${previewMode==='table'?'pm-view-toggle-active':''}`} title="Compact list"><PMIcon name="list" className="w-4 h-4"/></button></div>
+                        <div className="flex p-1 bg-slate-100 rounded-lg"><button onClick={()=>setPreviewMode('labels')} className={`pm-view-toggle ${previewMode==='labels'?'pm-view-toggle-active':''}`} title="พรีวิวเต็มหน้า" aria-label="พรีวิวเต็มหน้า"><PMIcon name="file" className="w-4 h-4"/></button><button onClick={()=>setPreviewMode('table')} className={`pm-view-toggle ${previewMode==='table'?'pm-view-toggle-active':''}`} title="มุมมองรายการ" aria-label="มุมมองรายการ"><PMIcon name="list" className="w-4 h-4"/></button></div>
                         {(reviewSearch||reviewPlatform!=='ALL'||reviewStatus!=='ALL')&&<button onClick={()=>{setReviewSearch('');setReviewPlatform('ALL');setReviewStatus('ALL');}} className="pm-ghost-btn">ล้างตัวกรอง</button>}
                       </div>
                       <div className="flex items-center justify-between gap-2 mt-2 px-1"><span className="text-[10px] font-bold text-slate-400">แสดง {FilteredOrders.length} จาก {MappedOrders.length} รายการ</span><span className="hidden md:inline text-[10px] font-bold text-blue-600">Filter / Pagination ใช้เฉพาะหน้าจอ • Print ยังใช้ข้อมูลเต็ม Batch</span></div>
@@ -2608,10 +2636,28 @@
                     ):previewMode==='table'?(
                       <div className="pm-card overflow-x-auto"><table className="pm-table min-w-[820px]"><thead><tr><th>Order / Platform</th><th>สถานะ</th><th className="text-center">Qty</th><th>ชื่อภายใน</th><th className="text-right">Action</th></tr></thead><tbody>{visibleReviewOrders.map(order=>{const flags=getReviewFlags(order);const row=exceptionRows.find(item=>item.order?.id===order.id);return <tr key={order.id}><td><div className="font-mono text-xs font-bold text-slate-700">{order.tracking||order.orderId||order.id}</div><PMStatusPill tone={order.platform==='TIKTOK'?'dark':'orange'}>{order.platform==='TIKTOK'?'TikTok':'Shopee'}</PMStatusPill></td><td><div className="flex flex-wrap gap-1">{flags.ready&&<PMStatusPill tone="green">พร้อมพิมพ์</PMStatusPill>}{flags.hasSkuReview&&<PMStatusPill tone="amber">ตรวจสอบ SKU</PMStatusPill>}{flags.hasQtyReview&&<PMStatusPill tone="red">ตรวจสอบ Qty</PMStatusPill>}{flags.hasUnmapped&&<PMStatusPill tone="slate">ยังไม่ตั้งชื่อ</PMStatusPill>}</div></td><td className="text-center font-black text-slate-700">{(order.parsedItems||[]).reduce((sum,item)=>sum+(Number(item.qty)||0),0)||order.originalQty||'-'}</td><td><div className="space-y-1">{(order.displayItems||[]).map((text,idx)=><div key={idx} className={`text-xs font-black ${text.includes('ตรวจสอบ')||text.includes('ยังไม่ตั้งชื่อ')?'text-red-600':'text-blue-700'}`}>{text}</div>)}</div></td><td><div className="flex justify-end gap-1">{row&&(flags.hasSkuReview||flags.hasUnmapped)&&<button onClick={()=>handleFixSkuException(row)} className="pm-secondary-btn !py-2 !px-3">ตั้งชื่อ SKU</button>}</div></td></tr>})}</tbody></table></div>
                     ):(
-                      <div className="grid sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">{visibleReviewOrders.map(order=>{const flags=getReviewFlags(order);const row=exceptionRows.find(item=>item.order?.id===order.id);return <article key={order.id} className="pm-order-card"><div className="flex items-center justify-between gap-2 mb-2"><PMStatusPill tone={order.platform==='TIKTOK'?'dark':'orange'}>{order.platform==='TIKTOK'?'TikTok':'Shopee'}</PMStatusPill><div className="flex gap-1">{flags.ready&&<PMStatusPill tone="green">พร้อมพิมพ์</PMStatusPill>}{flags.hasSkuReview&&<PMStatusPill tone="amber">SKU</PMStatusPill>}{flags.hasQtyReview&&<PMStatusPill tone="red">Qty</PMStatusPill>}{flags.hasUnmapped&&<PMStatusPill tone="slate">Unmapped</PMStatusPill>}</div></div><div className="text-[10px] font-mono font-bold text-slate-500 truncate mb-2">{order.tracking||order.orderId||order.id}</div>{order.pdfImage?<div className="pm-label-thumb"><img src={order.pdfImage} alt="Order label preview"/></div>:<div className="pm-label-thumb flex items-center justify-center text-xs font-bold text-slate-400">ไม่มีภาพ Reprint</div>}<div className="mt-3 space-y-1 min-h-[42px]">{(order.displayItems||[]).map((text,idx)=><div key={idx} className={`text-xs font-black leading-5 ${text.includes('ตรวจสอบ')||text.includes('ยังไม่ตั้งชื่อ')?'text-red-600':'text-blue-700'}`}>{text}</div>)}</div>{row&&(flags.hasSkuReview||flags.hasUnmapped)&&<button onClick={()=>handleFixSkuException(row)} className="pm-secondary-btn w-full justify-center mt-3">ตั้งชื่อ SKU</button>}</article>})}</div>
+                      <div data-pm-review-preview="full" className="pm-card p-4 lg:p-5">
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-4">
+                          <div><div className="pm-section-kicker">พรีวิวเต็มหน้า</div><div className="text-sm font-black text-slate-900 mt-1">เห็น Label จริงก่อนพิมพ์ • {safeReviewPreviewIndex + 1} / {FilteredOrders.length}</div></div>
+                          <div className="flex flex-wrap items-center gap-2">{CurrentPreviewFlags?.ready&&<PMStatusPill tone="green">พร้อมพิมพ์</PMStatusPill>}{CurrentPreviewFlags?.hasSkuReview&&<PMStatusPill tone="amber">ตรวจสอบ SKU</PMStatusPill>}{CurrentPreviewFlags?.hasQtyReview&&<PMStatusPill tone="red">ตรวจสอบ Qty</PMStatusPill>}{CurrentPreviewFlags?.hasUnmapped&&<PMStatusPill tone="slate">ยังไม่ตั้งชื่อ</PMStatusPill>}</div>
+                        </div>
+                        <div className="grid xl:grid-cols-[minmax(0,1fr)_320px] gap-4 items-start">
+                          <div className="pm-full-preview-stage"><LabelCard order={CurrentPreviewOrder} thermalMode={thermalMode} /></div>
+                          <aside className="pm-full-preview-info xl:sticky xl:top-4">
+                            <div className="text-[9px] uppercase tracking-[.13em] font-black text-slate-400">Order</div>
+                            <div className="font-mono text-sm font-black text-slate-800 break-all mt-1">{CurrentPreviewOrder?.tracking||CurrentPreviewOrder?.orderId||CurrentPreviewOrder?.id}</div>
+                            <div className="mt-2"><PMStatusPill tone={CurrentPreviewOrder?.platform==='TIKTOK'?'dark':'orange'}>{CurrentPreviewOrder?.platform==='TIKTOK'?'TikTok':'Shopee'}</PMStatusPill></div>
+                            <div className="grid grid-cols-2 gap-2 mt-4"><div className="pm-mini-stat"><span>Qty</span><strong>{(CurrentPreviewOrder?.parsedItems||[]).reduce((sum,item)=>sum+(Number(item.qty)||0),0)||CurrentPreviewOrder?.originalQty||'-'}</strong></div><div className="pm-mini-stat"><span>ลำดับ</span><strong>{safeReviewPreviewIndex+1}/{FilteredOrders.length}</strong></div></div>
+                            <div className="mt-4 pt-4 border-t border-slate-200"><div className="text-[10px] font-black text-slate-500 mb-2">ชื่อภายใน / ผลลัพธ์ที่จะพิมพ์</div><div className="space-y-2">{(CurrentPreviewOrder?.displayItems||[]).map((text,idx)=><div key={idx} className={`rounded-lg px-3 py-2 text-sm font-black ${text.includes('ตรวจสอบ')||text.includes('ยังไม่ตั้งชื่อ')?'bg-red-50 text-red-700 border border-red-100':'bg-blue-50 text-blue-800 border border-blue-100'}`}>{text}</div>)}</div></div>
+                            {currentPreviewException&&(CurrentPreviewFlags?.hasSkuReview||CurrentPreviewFlags?.hasUnmapped)&&<button onClick={()=>handleFixSkuException(currentPreviewException)} className="pm-secondary-btn w-full justify-center mt-4">ตั้งชื่อ SKU</button>}
+                            <div className="grid grid-cols-2 gap-2 mt-5 pt-4 border-t border-slate-200"><button data-pm-action="review-preview-prev" onClick={()=>moveReviewPreview(-1)} disabled={safeReviewPreviewIndex<=0} className="pm-secondary-btn justify-center"><PMIcon name="arrow-left"/> ก่อนหน้า</button><button data-pm-action="review-preview-next" onClick={()=>moveReviewPreview(1)} disabled={safeReviewPreviewIndex>=FilteredOrders.length-1} className="pm-primary-btn justify-center">ถัดไป <PMIcon name="arrow-right"/></button></div>
+                            <p className="text-[10px] font-semibold text-slate-400 text-center mt-2">ใช้ปุ่ม ← → บนคีย์บอร์ดได้ • เปลี่ยนเฉพาะ Preview ไม่เปลี่ยนขอบเขต Print</p>
+                          </aside>
+                        </div>
+                      </div>
                     )}
 
-                    {FilteredOrders.length>0&&<div className="pm-pagination mt-4"><div className="text-[11px] font-bold text-slate-400">หน้า {reviewPage} / {reviewPageCount} • แสดง {visibleReviewOrders.length} รายการ</div><div className="flex items-center gap-2"><select value={reviewPageSize} onChange={(e)=>{setReviewPageSize(Number(e.target.value));setReviewPage(1);}} className="pm-select !py-1.5"><option value="12">12/หน้า</option><option value="24">24/หน้า</option><option value="48">48/หน้า</option></select><button disabled={reviewPage<=1} onClick={()=>setReviewPage(p=>Math.max(1,p-1))} className="pm-page-btn">‹</button><button disabled={reviewPage>=reviewPageCount} onClick={()=>setReviewPage(p=>Math.min(reviewPageCount,p+1))} className="pm-page-btn">›</button></div></div>}
+                    {previewMode==='table'&&FilteredOrders.length>0&&<div className="pm-pagination mt-4"><div className="text-[11px] font-bold text-slate-400">หน้า {reviewPage} / {reviewPageCount} • แสดง {visibleReviewOrders.length} รายการ</div><div className="flex items-center gap-2"><select value={reviewPageSize} onChange={(e)=>{setReviewPageSize(Number(e.target.value));setReviewPage(1);}} className="pm-select !py-1.5"><option value="12">12/หน้า</option><option value="24">24/หน้า</option><option value="48">48/หน้า</option></select><button disabled={reviewPage<=1} onClick={()=>setReviewPage(p=>Math.max(1,p-1))} className="pm-page-btn">‹</button><button disabled={reviewPage>=reviewPageCount} onClick={()=>setReviewPage(p=>Math.min(reviewPageCount,p+1))} className="pm-page-btn">›</button></div></div>}
                   </section>
                 )}
 
