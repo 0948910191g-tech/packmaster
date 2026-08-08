@@ -7,6 +7,7 @@ on:
     paths:
       - scripts/apply-parser-matcher-v2.py
       - scripts/apply-shopee-positioned-parser.py
+      - scripts/apply-output-alias-fix.py
       - .github/workflows/apply-hotfix-v2.yml
 
 permissions:
@@ -23,6 +24,8 @@ jobs:
         run: python3 scripts/apply-parser-matcher-v2.py
       - name: Apply Shopee positioned parser hotfix
         run: python3 scripts/apply-shopee-positioned-parser.py
+      - name: Apply internal-name alias hotfix
+        run: python3 scripts/apply-output-alias-fix.py
       - name: Check patch whitespace
         run: git diff --check
       - name: Commit patched index
@@ -34,5 +37,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add index.html
-          git commit -m "fix: parse Shopee row quantities by positioned columns"
+          git commit -m "fix: treat formatting-only internal names as same SKU"
           git push origin HEAD:hotfix/parser-matcher-v2
