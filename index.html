@@ -1339,7 +1339,7 @@
 
       const handleFixSkuException = (row) => {
         if (!row || !row.order || !pilotSafetyApi) return;
-        const seed = pilotSafetyApi.getSkuFixSeed(row);
+        const seed = pilotSafetyApi.getSkuFixSeed(row, getMatchResult);
         if (!seed) {
           openExceptionInTable(row);
           showToast('Exception นี้ไม่มีข้อความ SKU ที่ปลอดภัยสำหรับเติมอัตโนมัติ — เปิดในตารางแทน', 'error');
@@ -1693,7 +1693,7 @@
 
         const timer = setTimeout(async () => {
           try {
-            const updated = batchApi.buildBatchMeta(activeBatch, reviewSummary, { now: new Date() });
+            const updated = batchApi.buildBatchMeta(activeBatch, reviewSummary, { printedAt: printBlocked ? null : activeBatch.printedAt, now: new Date() });
             await batchApi.saveBatch(updated, orders);
             upsertBatchMeta(updated);
           } catch (err) {
