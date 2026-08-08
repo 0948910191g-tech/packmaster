@@ -51,7 +51,8 @@ jobs:
               raise SystemExit('text/babel script not found')
           Path('/tmp/packmaster-app.jsx').write_text(match.group(1), encoding='utf-8')
           PY
-          npx --yes -p @babel/core -p @babel/cli -p @babel/preset-react babel /tmp/packmaster-app.jsx --presets @babel/preset-react --out-file /tmp/packmaster-app.js
+          npm install --no-save --no-package-lock @babel/core @babel/cli @babel/preset-react
+          ./node_modules/.bin/babel /tmp/packmaster-app.jsx --presets @babel/preset-react --out-file /tmp/packmaster-app.js
 
       - name: Verify frozen Batch adapter and no paid/database drift
         run: |
