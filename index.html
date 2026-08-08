@@ -200,6 +200,19 @@
       [...extractPackTokens(value)].map(token => parseInt(token.split(':')[0], 10)).filter(Number.isFinite)
     );
 
+    const extractBundleSignature = (value) => {
+      const compact = normalizeMatchText(value).replace(/\s+/g, '');
+      const match = compact.match(/(\d{1,3})(?:แถม|free)(\d{1,3})/i);
+      return match ? `${parseInt(match[1], 10)}+${parseInt(match[2], 10)}` : null;
+    };
+
+    const bundleCompatible = (ruleText, searchText) => {
+      const ruleBundle = extractBundleSignature(ruleText);
+      const textBundle = extractBundleSignature(searchText);
+      if (textBundle) return ruleBundle === textBundle;
+      return !ruleBundle;
+    };
+
     const scoreSkuRule = (rule, textToSearch, allRules = []) => {
       const searchArea = normalizeMatchText(textToSearch);
       const cleanKw = normalizeMatchText(rule && rule.keyword);
@@ -213,6 +226,19 @@
       const coverage = ruleTokens.length ? matchedTokens.length / ruleTokens.length : 0;
       const textConcepts = getVariantConcepts(searchArea);
       const ruleConcepts = getVariantConcepts(cleanKw);
+      const textBundle = extractBundleSignature(searchArea);
+      const ruleBundle = extractBundleSignature(cleanKw);
+
+      if (textBundle || ruleBundle) {
+        if (textBundle && ruleBundle === textBundle) {
+          score += 180;
+          reasons.push(`bundle:${textBundle}`);
+        } else {
+          score -= 240;
+          hardConflict = true;
+          reasons.push(textBundle ? 'bundle-mismatch' : 'missing-bundle');
+        }
+      }
 
       if (searchArea.includes(cleanKw)) {
         score += 140;
@@ -313,7 +339,7 @@
         .filter(entry => entry.cleanKw);
 
       const exactMatches = normalizedRules
-        .filter(entry => searchArea.includes(entry.cleanKw))
+        .filter(entry => searchArea.includes(entry.cleanKw) && bundleCompatible(entry.cleanKw, searchArea))
         .sort((a, b) => b.cleanKw.length - a.cleanKw.length);
 
       if (exactMatches.length > 0) {
@@ -532,9 +558,12 @@
 
       rowMarkers.forEach((rowMarker, rowIndex) => {
         const currentDistance = distance(rowMarker);
+        const previousDistance = rowIndex > 0 ? distance(rowMarkers[rowIndex - 1]) : 4;
         const nextDistance = rowIndex < rowMarkers.length - 1 ? distance(rowMarkers[rowIndex + 1]) : footerDistance;
-        const lower = currentDistance - 16;
-        const upper = Number.isFinite(nextDistance) ? nextDistance - 2 : Infinity;
+        const lower = rowIndex === 0 ? 4 : (previousDistance + currentDistance) / 2;
+        const upper = rowIndex < rowMarkers.length - 1
+          ? (currentDistance + nextDistance) / 2
+          : (Number.isFinite(footerDistance) ? footerDistance : Infinity);
         const rowEntries = entries.filter(item => {
           const d = distance(item);
           return d >= lower && d < upper && item.index !== rowMarker.index;
@@ -584,13 +613,31 @@
       return { id: rule.id ?? fallbackId, keyword, shortName };
     };
 
-    const getAggregatedShortName = (baseName, qty) => {
+    const getAggregatedShortName = (baseName, qty, sourceKeyword = '') => {
       const cleanBaseName = String(baseName || '').trim().replace(/\u00A0/g, ' ');
       const normalizedQty = Math.max(1, parseInt(qty, 10) || 1);
       if (normalizedQty <= 1) return cleanBaseName;
 
       const numberMatches = Array.from(cleanBaseName.matchAll(/\d+/g));
       if (numberMatches.length === 0) return cleanBaseName;
+
+      const bundleSignature = extractBundleSignature(sourceKeyword);
+      if (bundleSignature) {
+        const componentQtys = bundleSignature.split('+').map(value => parseInt(value, 10)).filter(Number.isFinite);
+        if (componentQtys.length > 0 && numberMatches.length >= componentQtys.length) {
+          const targets = numberMatches.slice(-componentQtys.length);
+          const aligned = targets.every((match, index) => parseInt(match[0], 10) === componentQtys[index]);
+          if (aligned) {
+            let result = cleanBaseName;
+            for (let index = targets.length - 1; index >= 0; index--) {
+              const target = targets[index];
+              const replacement = String(componentQtys[index] * normalizedQty);
+              result = `${result.substring(0, target.index)}${replacement}${result.substring(target.index + target[0].length)}`;
+            }
+            return result;
+          }
+        }
+      }
 
       const target = numberMatches[numberMatches.length - 1];
       const perItemQty = parseInt(target[0], 10);
@@ -976,8 +1023,11 @@
             const match = getMatchResult(item.text);
             if (match.status === 'matched' && match.rule) {
                 const baseName = match.rule.shortName.trim().replace(/\u00A0/g, ' ');
-                const currentQty = skuMap.get(baseName) || 0;
-                skuMap.set(baseName, currentQty + item.qty);
+                const current = skuMap.get(baseName) || { qty: 0, sourceKeyword: match.rule.keyword || '' };
+                skuMap.set(baseName, {
+                    qty: current.qty + item.qty,
+                    sourceKeyword: current.sourceKeyword || match.rule.keyword || ''
+                });
             } else if (match.status === 'ambiguous') {
                 hasAmbiguous = true;
             } else {
@@ -986,8 +1036,8 @@
         });
 
         const finalDisplayItems = [];
-        skuMap.forEach((qty, baseName) => {
-            finalDisplayItems.push(`• ${getAggregatedShortName(baseName, qty)}`);
+        skuMap.forEach((entry, baseName) => {
+            finalDisplayItems.push(`• ${getAggregatedShortName(baseName, entry.qty, entry.sourceKeyword)}`);
         });
 
         if (hasAmbiguous || o.parserWarning) finalDisplayItems.push('• ⚠️ ตรวจสอบ SKU');
