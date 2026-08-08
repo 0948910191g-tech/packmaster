@@ -1,0 +1,63 @@
+name: Fix Full Review Preview Declaration Order
+
+on:
+  push:
+    branches:
+      - frontend-v3-full-review-preview
+    paths:
+      - .github/workflows/fix-full-review-preview-order.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: frontend-v3-full-review-preview
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Move derived exception after current preview order
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          text=p.read_text()
+          old="      const currentPreviewException = CurrentPreviewOrder ? exceptionRows.find(item => item.order?.id === CurrentPreviewOrder.id) : null;\n"
+          if text.count(old)!=1:
+              raise SystemExit(f'expected one misplaced declaration, found {text.count(old)}')
+          text=text.replace(old,'',1)
+          anchor="      const CurrentPreviewFlags = CurrentPreviewOrder ? getReviewFlags(CurrentPreviewOrder) : null;\n"
+          if text.count(anchor)!=1:
+              raise SystemExit(f'CurrentPreviewFlags anchor count={text.count(anchor)}')
+          text=text.replace(anchor,anchor+"      const currentPreviewException = CurrentPreviewOrder ? exceptionRows.find(item => item.order?.id === CurrentPreviewOrder.id) : null;\n",1)
+          p.write_text(text)
+          PY
+      - name: Run all regression tests
+        run: |
+          set -e
+          for test in tests/*.test.mjs; do node "$test"; done
+      - name: Compile JSX
+        run: |
+          npm install --no-save --no-package-lock @babel/core @babel/cli @babel/preset-react
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          html=Path('index.html').read_text()
+          m=re.search(r'<script type="text/babel">(.*?)</script>',html,re.S)
+          if not m: raise SystemExit('babel block missing')
+          Path('/tmp/full-preview.jsx').write_text(m.group(1))
+          PY
+          npx babel /tmp/full-preview.jsx --presets @babel/preset-react --out-file /tmp/full-preview.js
+      - name: Commit repair
+        run: |
+          git config user.name "0948910191g-tech"
+          git config user.email "0948910191g@gmail.com"
+          git add index.html
+          git diff --check
+          git commit -m 'fix: order full preview derived state safely'
+          git push origin HEAD:frontend-v3-full-review-preview
