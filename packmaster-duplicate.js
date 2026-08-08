@@ -163,7 +163,7 @@
 
   const exportFingerprintStore = (storageLike) => JSON.parse(JSON.stringify(readFingerprintStore(storageLike)));
 
-  const replaceFingerprintStore = (candidate, storageLike) => {
+  const validateFingerprintStore = (candidate) => {
     if (!isPlainObject(candidate)) throw new Error('Duplicate fingerprint store must be an object');
     const clean = {};
 
@@ -184,6 +184,11 @@
       if (rows.length > 0) clean[batchId] = rows;
     }
 
+    return clean;
+  };
+
+  const replaceFingerprintStore = (candidate, storageLike) => {
+    const clean = validateFingerprintStore(candidate);
     writeFingerprintStore(clean, storageLike);
     return JSON.parse(JSON.stringify(clean));
   };
@@ -200,6 +205,7 @@
     appendBatchFingerprints,
     clearBatchFingerprints,
     exportFingerprintStore,
+    validateFingerprintStore,
     replaceFingerprintStore
   };
 });
