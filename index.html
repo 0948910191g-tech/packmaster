@@ -304,6 +304,8 @@
       return { rule, score, hardConflict, reason: reasons.join(',') || 'weak' };
     };
 
+    const normalizeOutputIdentity = (value) => normalizeMatchText(value).replace(/\s+/g, '');
+
     const matchSkuRule = (textToSearch, rules) => {
       const searchArea = normalizeMatchText(textToSearch);
       const normalizedRules = (Array.isArray(rules) ? rules : [])
@@ -317,7 +319,7 @@
       if (exactMatches.length > 0) {
         const longestLength = exactMatches[0].cleanKw.length;
         const longest = exactMatches.filter(entry => entry.cleanKw.length === longestLength);
-        const outputs = new Set(longest.map(entry => String(entry.rule && entry.rule.shortName || '').trim()));
+        const outputs = new Set(longest.map(entry => normalizeOutputIdentity(entry.rule && entry.rule.shortName)));
         if (outputs.size > 1) {
           return { status: 'ambiguous', rule: null, score: 1000, runnerUpScore: 1000, reason: 'exact-conflict' };
         }
@@ -342,7 +344,7 @@
       }
 
       if (runnerUp && !runnerUp.hardConflict &&
-          String(runnerUp.rule && runnerUp.rule.shortName || '').trim() !== String(best.rule && best.rule.shortName || '').trim() &&
+          normalizeOutputIdentity(runnerUp.rule && runnerUp.rule.shortName) !== normalizeOutputIdentity(best.rule && best.rule.shortName) &&
           best.score - runnerUp.score < 20) {
         return { status: 'ambiguous', rule: null, score: best.score, runnerUpScore, reason: 'score-gap' };
       }
