@@ -1,0 +1,68 @@
+name: Apply Phase 3B Duplicate Detection
+
+on:
+  push:
+    branches:
+      - phase3b-duplicate-detection
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Duplicate helper tests
+        run: node tests/packmaster-duplicate.test.mjs
+
+      - name: Confirm UI RED before first patch
+        run: |
+          if grep -Fq '<script src="./packmaster-duplicate.js"></script>' index.html; then
+            echo "Phase 3B patch already present; skip RED gate"
+          else
+            if node tests/packmaster-phase3b-ui.test.mjs; then
+              echo "Expected Phase 3B UI test to fail before patch" >&2
+              exit 1
+            else
+              echo "TDD RED confirmed"
+            fi
+          fi
+
+      - name: Apply UI patch
+        run: node tools/patch-phase3b-duplicate.cjs
+
+      - name: Phase 3B UI GREEN
+        run: node tests/packmaster-phase3b-ui.test.mjs
+
+      - name: Existing regressions
+        run: |
+          node tests/packmaster-smart-matcher.test.mjs
+          node tests/packmaster-batch.test.mjs
+          node tests/packmaster-workspace.test.mjs
+          node tests/packmaster-workspace-validation.test.mjs
+
+      - name: Safety checks
+        run: |
+          grep -F 'for (let i = 0; i < MappedOrders.length; i++)' index.html
+          grep -F '{MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}' index.html
+          git diff --check
+
+      - name: Commit patched UI when changed
+        run: |
+          if git diff --quiet; then
+            echo "No generated UI changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Integrate Phase 3B duplicate upload safety"
+          git push
