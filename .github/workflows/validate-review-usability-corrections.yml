@@ -59,7 +59,6 @@ jobs:
             const batch = batches[0];
             localStorage.setItem('skuMappingRules', JSON.stringify([{ id:'known', keyword:'KNOWN REVIEW SKU', shortName:'เด้งม่วง5' }]));
             const image = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1200"><rect width="100%" height="100%" fill="white"/><text x="50" y="100" font-size="44">REVIEW QA</text></svg>');
-            // Deliberately place Unmapped before Qty. Exception Mode must reorder Qty first.
             const orders = [
               { id:'unmapped-first', tracking:'UNMAPPED-0001', orderId:'UNMAPPEDORDER1', platform:'SHOPEE', parsedItems:[{text:'NEW REVIEW SKU',qty:1}], declaredTotalQty:1, parserWarning:false, pdfImage:image },
               { id:'ready-middle', tracking:'READY-0001', orderId:'READYORDER1', platform:'SHOPEE', parsedItems:[{text:'KNOWN REVIEW SKU',qty:1}], declaredTotalQty:1, parserWarning:false, pdfImage:image },
@@ -80,7 +79,6 @@ jobs:
           await cards.nth(0).getByText('QTY-0001', { exact: true }).waitFor();
           await cards.nth(1).getByText('UNMAPPED-0001', { exact: true }).waitFor();
 
-          // Fixed action bar must remain viewport-bound after scrolling deep into Review.
           const actionWrap = page.locator('.pm-review-action-wrap');
           await actionWrap.waitFor({ state: 'visible' });
           const position = await actionWrap.evaluate(el => getComputedStyle(el).position);
@@ -92,18 +90,15 @@ jobs:
           assert(before && after, 'Review action bar must have a viewport bounding box');
           assert(Math.abs(before.y - after.y) < 4, `Fixed Review action bar moved with document: ${before.y} -> ${after.y}`);
 
-          // Real exception type values must filter correctly.
-          const exceptionCard = page.getByText('รายการที่ต้องตรวจ', { exact: true }).locator('..').locator('..');
-          const exceptionSelect = page.locator('select').filter({ has: page.locator('option[value="REVIEW_QTY"]') }).first();
+          const exceptionInbox = page.locator('.pm-card').filter({ hasText: 'รายการที่ต้องตรวจ' }).first();
+          const exceptionSelect = exceptionInbox.locator('select').first();
           await exceptionSelect.selectOption('REVIEW_QTY');
-          await page.waitForTimeout(50);
-          await page.getByText('1 รายการที่ต้องตัดสินใจ', { exact: true }).waitFor();
+          await exceptionInbox.getByText('1 รายการที่ต้องตัดสินใจ', { exact: true }).waitFor();
           await exceptionSelect.selectOption('REVIEW_SKU');
-          await page.waitForTimeout(50);
-          await page.getByText('0 รายการที่ต้องตัดสินใจ', { exact: true }).waitFor();
+          await exceptionInbox.getByText('0 รายการที่ต้องตัดสินใจ', { exact: true }).waitFor();
           await exceptionSelect.selectOption('ALL');
+          await exceptionInbox.getByText('2 รายการที่ต้องตัดสินใจ', { exact: true }).waitFor();
 
-          // Quick Mapping must still work for real UNMAPPED type and must not guess short name.
           const unmappedCard = cards.filter({ hasText:'UNMAPPED-0001' });
           await unmappedCard.getByRole('button', { name:'ตั้งชื่อ SKU', exact:true }).click();
           const quick = page.locator('[data-pm-quick-mapping]');
@@ -116,7 +111,6 @@ jobs:
           await page.waitForFunction(() => document.querySelectorAll('[data-pm-review-preview-item]').length === 1);
           await cards.first().getByText('QTY-0001', { exact:true }).waitFor();
 
-          // Qty remains authoritative for print safety.
           assert(await page.locator('[data-pm-action="print"]').isDisabled(), 'Print must stay locked while Qty exception remains');
           assert(await page.locator('[data-pm-action="save-pdf"]').isDisabled(), 'Save PDF must stay locked while Qty exception remains');
 
