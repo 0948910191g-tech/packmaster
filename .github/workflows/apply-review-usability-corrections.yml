@@ -1,0 +1,63 @@
+name: Apply Review Usability Corrections
+
+on:
+  push:
+    branches:
+      - frontend-usability-pilot-pass
+    paths:
+      - tools/fix-review-usability-contracts.py
+      - .github/workflows/apply-review-usability-corrections.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: frontend-usability-pilot-pass
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply targeted Review corrections
+        run: python3 tools/fix-review-usability-contracts.py
+      - name: Run full regression suite
+        run: |
+          set -euo pipefail
+          for test_file in tests/*.test.mjs; do
+            echo "Running ${test_file}"
+            node "${test_file}"
+          done
+      - name: Compile JSX
+        run: |
+          npm install --no-save --no-package-lock @babel/core @babel/cli @babel/preset-react
+          python3 - <<'PY'
+          from pathlib import Path
+          html = Path('index.html').read_text(encoding='utf-8')
+          start = html.index('<script type="text/babel">') + len('<script type="text/babel">')
+          end = html.index('</script>', start)
+          Path('/tmp/review-usability.jsx').write_text(html[start:end], encoding='utf-8')
+          PY
+          npx babel /tmp/review-usability.jsx --presets @babel/preset-react --out-file /tmp/review-usability.js
+      - name: Verify safety invariants
+        run: |
+          set -euo pipefail
+          git diff --exit-code origin/main...HEAD -- packmaster-batch.js packmaster-workspace.js packmaster-duplicate.js packmaster-exceptions.js packmaster-pilot-safety.js packmaster-archive.js packmaster-storage-health.js packmaster-diagnostics.js
+          grep -Fq 'for (let i = 0; i < MappedOrders.length; i++)' index.html
+          grep -Fq 'MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}' index.html
+          grep -Fq "row.primaryStatus === 'REVIEW_QTY' ? 0 : row.primaryStatus === 'REVIEW_SKU' ? 1 : 2" index.html
+          grep -Fq '<option value="REVIEW_QTY">Qty</option>' index.html
+          grep -Fq '<option value="REVIEW_SKU">SKU</option>' index.html
+          grep -Fq '.pm-review-action-wrap { position: fixed;' index.html
+          git diff --check
+      - name: Commit Review corrections
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git diff --cached --check
+          git commit -m "ui: fix exception priority and persistent Review actions"
+          git push origin HEAD:frontend-usability-pilot-pass
