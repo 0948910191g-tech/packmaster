@@ -533,7 +533,7 @@
       rowMarkers.forEach((rowMarker, rowIndex) => {
         const currentDistance = distance(rowMarker);
         const nextDistance = rowIndex < rowMarkers.length - 1 ? distance(rowMarkers[rowIndex + 1]) : footerDistance;
-        const lower = currentDistance - 6;
+        const lower = currentDistance - 16;
         const upper = Number.isFinite(nextDistance) ? nextDistance - 2 : Infinity;
         const rowEntries = entries.filter(item => {
           const d = distance(item);
