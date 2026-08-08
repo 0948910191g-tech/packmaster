@@ -1,0 +1,48 @@
+name: Apply Smart Matcher
+
+on:
+  push:
+    branches:
+      - agent/smart-matcher
+    paths:
+      - scripts/apply-smart-matcher.py
+      - .github/workflows/apply-smart-matcher.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout smart matcher branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/smart-matcher
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Apply scoped patch
+        run: python3 scripts/apply-smart-matcher.py
+
+      - name: Run smart matcher regression tests
+        run: node tests/packmaster-smart-matcher.test.mjs
+
+      - name: Check whitespace errors
+        run: git diff --check
+
+      - name: Commit verified implementation
+        run: |
+          if git diff --quiet; then
+            echo "No implementation changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html tests/packmaster-smart-matcher.test.mjs
+          git commit -m "feat: implement smart matcher and TikTok multi-SKU parser"
+          git push origin HEAD:agent/smart-matcher
