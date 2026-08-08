@@ -36,6 +36,12 @@ jobs:
       - name: Workspace strict validation tests
         run: node tests/packmaster-workspace-validation.test.mjs
 
+      - name: Duplicate detection regression tests
+        run: node tests/packmaster-duplicate.test.mjs
+
+      - name: Duplicate upload UI guard
+        run: node tests/packmaster-phase3b-ui.test.mjs
+
       - name: Existing guardrail tests when present
         run: |
           if [ -f tests/packmaster-guardrails.test.mjs ]; then
