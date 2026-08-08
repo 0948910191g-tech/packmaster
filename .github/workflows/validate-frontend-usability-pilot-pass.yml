@@ -1,0 +1,172 @@
+name: Validate Frontend Usability Pilot Pass
+
+on:
+  push:
+    branches:
+      - frontend-usability-pilot-pass
+    paths:
+      - .github/workflows/validate-frontend-usability-pilot-pass.yml
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: frontend-usability-pilot-pass
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Chromium
+        run: |
+          npm install --no-save --no-package-lock playwright
+          npx playwright install --with-deps chromium
+      - name: Start static server
+        run: |
+          python3 -m http.server 4173 >/tmp/packmaster-usability-http.log 2>&1 &
+          echo $! >/tmp/packmaster-usability-http.pid
+          for attempt in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:4173/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/packmaster-usability-http.log
+          exit 1
+      - name: Exercise pre-pilot usability workflow
+        run: |
+          cat > frontend-usability-smoke.mjs <<'JS'
+          import { chromium } from 'playwright';
+
+          const browser = await chromium.launch({ headless: true });
+          const context = await browser.newContext({ viewport: { width: 1536, height: 1050 } });
+          const page = await context.newPage();
+          const pageErrors = [];
+          const consoleErrors = [];
+          page.on('pageerror', error => pageErrors.push(String(error)));
+          page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+          const assert = (condition, message) => { if (!condition) throw new Error(message); };
+
+          await page.goto('http://127.0.0.1:4173/', { waitUntil: 'networkidle' });
+          await page.locator('[data-pm-shell="v3"]').waitFor({ state: 'visible' });
+
+          // Start Packing flow uses the real Batch creation handler and must land on Upload.
+          await page.getByRole('button', { name: 'เริ่มงานแพ็กใหม่', exact: true }).click();
+          await page.locator('[data-pm-view="upload"]').waitFor({ state: 'visible' });
+          await page.locator('[data-pm-active-batch-bar]').waitFor({ state: 'visible' });
+
+          // Seed sanitized synthetic orders using the existing local Batch API only.
+          await page.evaluate(async () => {
+            const api = window.PackMasterBatch;
+            if (!api) throw new Error('PackMasterBatch unavailable');
+            const batches = await api.listBatches();
+            const batch = batches[0];
+            if (!batch) throw new Error('Created Batch not found');
+            localStorage.setItem('skuMappingRules', JSON.stringify([
+              { id: 'known-rule', keyword: 'KNOWN PILOT SKU', shortName: 'เด้งม่วง5' }
+            ]));
+            const image = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1200"><rect width="100%" height="100%" fill="white"/><text x="50" y="100" font-size="46">PACKMASTER PILOT</text></svg>');
+            const orders = [
+              { id:'ready-1', tracking:'READY-0001', orderId:'READYORDER1', platform:'SHOPEE', parsedItems:[{text:'KNOWN PILOT SKU',qty:1}], declaredTotalQty:1, parserWarning:false, pdfImage:image },
+              { id:'safe-new-1', tracking:'SAFE-0001', orderId:'SAFEORDER1', platform:'SHOPEE', parsedItems:[{text:'SAFE NEW SKU',qty:1}], declaredTotalQty:1, parserWarning:false, pdfImage:image },
+              { id:'qty-1', tracking:'QTY-0001', orderId:'QTYORDER1', platform:'TIKTOK', parsedItems:[{text:'KNOWN PILOT SKU',qty:1}], declaredTotalQty:2, parserWarning:false, pdfImage:image }
+            ];
+            const meta = api.buildBatchMeta(batch, { total:3, ready:1, reviewSku:0, reviewQty:1, unmapped:1 }, { now:new Date('2026-08-08T23:58:00+07:00') });
+            await api.saveBatch(meta, orders);
+          });
+
+          await page.reload({ waitUntil: 'networkidle' });
+          await page.getByRole('button', { name: 'เปิดงาน', exact: true }).first().click();
+          await page.locator('[data-pm-view="upload"]').waitFor({ state: 'visible' });
+          const activeBar = page.locator('[data-pm-active-batch-bar]');
+          await activeBar.waitFor({ state: 'visible' });
+          await activeBar.getByText('3', { exact: true }).first().waitFor();
+          const exceptionCta = activeBar.locator('[data-pm-action="resolve-active-exceptions"]');
+          await exceptionCta.waitFor({ state: 'visible' });
+          assert((await exceptionCta.textContent()).includes('2'), 'Active Batch Bar should show two unresolved orders');
+
+          // Exception Mode should show only unresolved orders.
+          await exceptionCta.click();
+          await page.locator('[data-pm-view="review"]').waitFor({ state: 'visible' });
+          await page.locator('[data-pm-exception-mode]').waitFor({ state: 'visible' });
+          const cards = page.locator('[data-pm-review-preview-item]');
+          await page.waitForFunction(() => document.querySelectorAll('[data-pm-review-preview-item]').length === 2);
+          assert(await cards.count() === 2, 'Exception Mode should show exactly two unresolved cards');
+          assert(await page.getByText('READY-0001', { exact: true }).count() === 0, 'Ready order must be hidden in Exception Mode');
+
+          // Safe SKU/Unmapped exception opens inline Quick Mapping, not a navigation detour.
+          const safeCard = cards.filter({ hasText: 'SAFE-0001' });
+          await safeCard.getByRole('button', { name: 'ตั้งชื่อ SKU', exact: true }).click();
+          const quickMap = page.locator('[data-pm-quick-mapping]');
+          await quickMap.waitFor({ state: 'visible' });
+          const keywordInput = quickMap.locator('input').nth(0);
+          const shortInput = quickMap.getByPlaceholder('เช่น เด้งม่วง5');
+          assert((await keywordInput.inputValue()).includes('SAFE NEW SKU'), 'Quick Mapping must use the safe unresolved product seed');
+          assert(await shortInput.inputValue() === '', 'Quick Mapping must never guess an internal short name');
+          const saveButton = quickMap.getByRole('button', { name: 'บันทึกและใช้', exact: true });
+          assert(await saveButton.isDisabled(), 'Quick Mapping save must be disabled while short name is empty');
+          await shortInput.fill('เด้งเขียว7');
+          assert(!(await saveButton.isDisabled()), 'Quick Mapping save should enable after explicit internal name');
+          await saveButton.click();
+          await quickMap.waitFor({ state: 'hidden' });
+          await page.waitForFunction(() => document.querySelectorAll('[data-pm-review-preview-item]').length === 1);
+          assert(await cards.count() === 1, 'Resolved SKU exception should leave only the Qty exception in Exception Mode');
+          await cards.first().getByText('QTY-0001', { exact: true }).waitFor();
+
+          // Qty exception remains authoritative; Print and Save PDF stay locked.
+          const printButton = page.locator('[data-pm-action="print"]');
+          const savePdfButton = page.locator('[data-pm-action="save-pdf"]');
+          assert(await printButton.isDisabled(), 'Print must remain locked while Qty exception exists');
+          assert(await savePdfButton.isDisabled(), 'Save PDF must remain locked while Qty exception exists');
+          const sticky = page.locator('[data-pm-review-action-bar]');
+          await sticky.waitFor({ state: 'visible' });
+          assert((await sticky.textContent()).includes('ต้องตรวจ 1'), 'Sticky Review bar must reflect the remaining exception');
+
+          // Exit Exception Mode returns the normal hybrid overview of all orders.
+          await page.getByRole('button', { name: 'ออกจากโหมดตรวจปัญหา', exact: true }).click();
+          await page.locator('[data-pm-exception-mode]').waitFor({ state: 'detached' });
+          await page.waitForFunction(() => document.querySelectorAll('[data-pm-review-preview-item]').length === 3);
+          assert(await cards.count() === 3, 'Normal Review should restore all three orders');
+
+          // Simplified navigation keeps three primary workspaces and secondary tools.
+          const primaryNav = page.locator('[data-pm-primary-nav]');
+          await primaryNav.waitFor({ state: 'visible' });
+          const primaryButtons = primaryNav.locator('button');
+          assert(await primaryButtons.count() === 3, `Expected 3 primary workspace buttons, got ${await primaryButtons.count()}`);
+          const secondaryNav = page.locator('[data-pm-secondary-nav]');
+          await secondaryNav.getByRole('button', { name: 'อัปโหลดไฟล์', exact: true }).click();
+          await page.locator('[data-pm-view="upload"]').waitFor({ state: 'visible' });
+          await secondaryNav.getByRole('button', { name: 'เครื่องมือ / ความปลอดภัย', exact: true }).click();
+          await page.locator('[data-pm-view="safety"]').waitFor({ state: 'visible' });
+
+          // Reload and reopen the existing Batch: orders and saved mapping remain local/persistent.
+          await page.reload({ waitUntil: 'networkidle' });
+          await page.getByRole('button', { name: 'เปิดงาน', exact: true }).first().click();
+          await page.getByRole('button', { name: 'รีวิว & พิมพ์', exact: true }).first().click();
+          await page.locator('[data-pm-view="review"]').waitFor({ state: 'visible' });
+          await page.waitForFunction(() => document.querySelectorAll('[data-pm-review-preview-item]').length === 3);
+          assert(await page.getByText('เด้งเขียว7', { exact: true }).count() >= 1, 'Quick Mapping rule must persist through reload using existing SKU storage');
+
+          assert(pageErrors.length === 0, `Page errors: ${pageErrors.join(' | ')}`);
+          const relevantConsoleErrors = consoleErrors.filter(text => !/favicon|ERR_BLOCKED_BY_CLIENT/i.test(text));
+          assert(relevantConsoleErrors.length === 0, `Console errors: ${relevantConsoleErrors.join(' | ')}`);
+
+          await page.evaluate(async () => {
+            const api = window.PackMasterBatch;
+            for (const batch of await api.listBatches()) await api.deleteBatch(batch.id);
+            localStorage.removeItem('skuMappingRules');
+          });
+          await browser.close();
+          console.log('PackMaster frontend usability Chromium smoke passed');
+          JS
+          node frontend-usability-smoke.mjs
+      - name: Verify full-Batch print/export and frozen adapter
+        run: |
+          set -euo pipefail
+          grep -Fq 'for (let i = 0; i < MappedOrders.length; i++)' index.html
+          grep -Fq 'MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}' index.html
+          test "$(git hash-object packmaster-batch.js)" = "941bddd557803aa27e58bd23372b9f51d6ca1605"
+      - name: Stop server
+        if: always()
+        run: kill "$(cat /tmp/packmaster-usability-http.pid)" 2>/dev/null || true
