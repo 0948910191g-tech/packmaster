@@ -49,8 +49,8 @@ assert.equal(matchSkuRule('Haku Cooling 3 ห่อ', rules).rule?.id, 5, 'Cooli
 assert.equal(matchSkuRule('Haku Extra Cooling 3 ห่อ', rules).rule?.id, 6, 'Extra Cooling must beat Cooling');
 
 const ambiguousRules = [
-  { id: 'a', keyword: 'HOYA baby 5', shortName: 'A5' },
-  { id: 'b', keyword: 'HOYA wipes 5', shortName: 'B5' }
+  { id: 'a', keyword: 'HOYA baby wipes 5', shortName: 'A5' },
+  { id: 'b', keyword: 'HOYA baby wipes 5', shortName: 'B5' }
 ];
 assert.equal(matchSkuRule('HOYA baby wipes 5', ambiguousRules).status, 'ambiguous', 'close candidates must require review');
 
