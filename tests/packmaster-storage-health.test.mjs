@@ -6,12 +6,11 @@ import path from 'node:path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const storage = require(path.resolve(__dirname, '../packmaster-storage-health.js'));
-const batch = require(path.resolve(__dirname, '../packmaster-batch.js'));
 
 assert.equal(typeof storage.estimateStorage, 'function');
 assert.equal(typeof storage.stripReprintPayload, 'function');
+assert.equal(typeof storage.cleanupArchivedReprintImages, 'function');
 assert.equal(typeof storage.formatBytes, 'function');
-assert.equal(typeof batch.cleanupArchivedReprintImages, 'function');
 
 const unsupported = await storage.estimateStorage({});
 assert.deepEqual(unsupported, { supported: false, usage: null, quota: null, percent: null });
@@ -38,6 +37,25 @@ assert.equal(stripped.platform, 'SHOPEE');
 assert.deepEqual(stripped.parsedItems, source.parsedItems);
 assert.deepEqual(stripped.displayItems, source.displayItems);
 assert.equal(source.pdfImage.startsWith('data:image'), true, 'source order must not be mutated');
+
+const records = new Map([
+  ['archived-1', { meta: { id: 'archived-1', archivedAt: '2026-08-01T00:00:00.000Z' }, orders: [source, { ...source, id: 'two', pdfImage: 'data:image/png;base64,TWO' }] }],
+  ['active-1', { meta: { id: 'active-1', archivedAt: null }, orders: [source] }]
+]);
+const saves = [];
+const fakeBatchApi = {
+  async loadBatch(id) { return records.get(id) || { meta: null, orders: [] }; },
+  async saveBatch(meta, orders) { saves.push({ meta, orders }); return meta; }
+};
+
+const cleanup = await storage.cleanupArchivedReprintImages(fakeBatchApi, ['archived-1', 'active-1', 'missing']);
+assert.equal(cleanup.cleanedBatches, 1);
+assert.equal(cleanup.cleanedOrders, 2);
+assert.equal(cleanup.skippedBatches, 2, 'active or missing batches must be skipped');
+assert.equal(saves.length, 1);
+assert.equal(saves[0].meta.id, 'archived-1');
+assert.equal(saves[0].orders.every((order) => !Object.prototype.hasOwnProperty.call(order, 'pdfImage')), true);
+assert.equal(records.get('archived-1').orders[0].pdfImage.startsWith('data:image'), true, 'stored source fixture must not be mutated in place');
 
 assert.equal(storage.formatBytes(0), '0 B');
 assert.match(storage.formatBytes(1024), /1(\.0)? KB/);
