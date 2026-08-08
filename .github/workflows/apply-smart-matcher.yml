@@ -57,6 +57,21 @@ jobs:
       - name: Batch archive UI guard
         run: node tests/packmaster-phase3d-ui.test.mjs
 
+      - name: Storage health regression tests
+        run: node tests/packmaster-storage-health.test.mjs
+
+      - name: Diagnostics privacy tests
+        run: node tests/packmaster-diagnostics.test.mjs
+
+      - name: Synthetic high-volume performance guard
+        run: node tests/packmaster-performance.test.mjs
+
+      - name: Pilot hardening UI guard
+        run: node tests/packmaster-phase3e-ui.test.mjs
+
+      - name: Pilot readiness package guard
+        run: node tests/packmaster-pilot-ready.test.mjs
+
       - name: Existing guardrail tests when present
         run: |
           if [ -f tests/packmaster-guardrails.test.mjs ]; then
