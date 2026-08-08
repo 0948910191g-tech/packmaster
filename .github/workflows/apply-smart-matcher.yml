@@ -72,6 +72,9 @@ jobs:
       - name: Pilot readiness package guard
         run: node tests/packmaster-pilot-ready.test.mjs
 
+      - name: Production smoke workflow regression guard
+        run: node tests/packmaster-production-smoke-workflow.test.mjs
+
       - name: Existing guardrail tests when present
         run: |
           if [ -f tests/packmaster-guardrails.test.mjs ]; then

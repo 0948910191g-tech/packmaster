@@ -20,10 +20,10 @@ jobs:
           for attempt in $(seq 1 18); do
             echo "Production smoke attempt ${attempt}/18"
             html="$(curl -fsSL --max-time 20 "${PROD_URL}?smoke=${GITHUB_SHA}" || true)"
-            if printf '%s' "$html" | grep -Fq 'PackMaster Pilot' \
-              && printf '%s' "$html" | grep -Fq './packmaster-storage-health.js' \
-              && printf '%s' "$html" | grep -Fq './packmaster-diagnostics.js' \
-              && printf '%s' "$html" | grep -Fq 'รีวิวและพิมพ์'; then
+            if grep -Fq 'PackMaster Pilot' <<< "$html" \
+              && grep -Fq './packmaster-storage-health.js' <<< "$html" \
+              && grep -Fq './packmaster-diagnostics.js' <<< "$html" \
+              && grep -Fq 'รีวิวและพิมพ์' <<< "$html"; then
               echo "Production smoke passed"
               exit 0
             fi
