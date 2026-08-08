@@ -77,7 +77,7 @@ assert.deepEqual(duplicate.getBatchFingerprints('batch-1', storage), []);
 
 const html = fs.readFileSync(path.resolve(__dirname, '../index.html'), 'utf8');
 const requiredMarkers = [
-  'duplicateApi.getKnownFingerprints(activeBatchId, activeBatch?.sourceFiles || [])',
+  'duplicateApi.getKnownFingerprints(activeBatchId, orders.length > 0 ? (activeBatch?.sourceFiles || []) : [])',
   'duplicateApi.appendBatchFingerprints(activeBatchId, acceptedSourceFiles)',
   'duplicateApi.clearBatchFingerprints(batch.id)',
   'duplicateApi.clearBatchFingerprints(activeBatchId)',
