@@ -1,0 +1,51 @@
+name: PackMaster Phase 3D Archive Sidecar TDD
+
+on:
+  push:
+    branches:
+      - phase3d-archive-sidecar-correction
+    paths:
+      - .github/workflows/phase3d-archive-sidecar-tdd.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Archive sidecar tests
+        run: node tests/packmaster-archive.test.mjs
+
+      - name: Archive UI frozen-adapter guard
+        if: always()
+        run: node tests/packmaster-phase3d-ui.test.mjs
+
+      - name: Existing duplicate sidecar regressions
+        if: always()
+        run: |
+          node tests/packmaster-duplicate.test.mjs
+          node tests/packmaster-duplicate-sidecar.test.mjs
+          node tests/packmaster-phase3b-ui.test.mjs
+
+      - name: Existing Exception and Workspace regressions
+        if: always()
+        run: |
+          node tests/packmaster-exceptions.test.mjs
+          node tests/packmaster-phase3c-ui.test.mjs
+          node tests/packmaster-workspace.test.mjs
+          node tests/packmaster-workspace-validation.test.mjs
+
+      - name: Existing Batch and Smart Matcher regressions
+        if: always()
+        run: |
+          node tests/packmaster-batch.test.mjs
+          node tests/packmaster-smart-matcher.test.mjs
