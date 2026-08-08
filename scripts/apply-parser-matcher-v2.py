@@ -231,4 +231,60 @@ new_block = r'''    const normalizeMatchText = (str) => String(str || '').toLowe
 
 '''
 
-path.write_text(text[:start] + new_block + text[end:], encoding='utf-8')
+text = text[:start] + new_block + text[end:]
+
+old_header = r'''      const hasTableSignal = normalizeMatchText(entries.map(item => item.text).join(' ')).includes('product name');
+      const qtyHeaders = entries.filter(item => normalizeMatchText(item.text) === 'qty');
+      let header = null;
+
+      for (const qtyHeader of qtyHeaders) {
+        const sameLine = entries.filter(item => Math.abs(item.y - qtyHeader.y) <= 5);
+        const normalized = sameLine.map(item => normalizeMatchText(item.text));
+        const skuHeaders = sameLine.filter(item => normalizeMatchText(item.text) === 'sku').sort((a, b) => a.x - b.x);
+        const sellerHeader = sameLine.find(item => normalizeMatchText(item.text) === 'seller');
+        if (normalized.includes('product') && normalized.includes('name') && skuHeaders.length >= 1 && sellerHeader) {
+          header = {
+            y: qtyHeader.y,
+            qtyX: qtyHeader.x,
+            firstSkuX: skuHeaders[0].x,
+            sellerX: sellerHeader.x
+          };
+          break;
+        }
+      }
+'''
+
+new_header = r'''      const hasTableSignal = normalizeMatchText(entries.map(item => item.text).join(' ')).includes('product name');
+      const qtyHeaders = entries.filter(item => normalizeMatchText(item.text) === 'qty');
+      let header = null;
+
+      for (const qtyHeader of qtyHeaders) {
+        const sameLine = entries.filter(item => Math.abs(item.y - qtyHeader.y) <= 5);
+        const lineText = normalizeMatchText(sameLine.map(item => item.text).join(' '));
+        const sellerHeader = sameLine.find(item => normalizeMatchText(item.text).includes('seller'));
+        const skuHeaders = sameLine
+          .filter(item => /(^|\s)sku($|\s)/.test(normalizeMatchText(item.text)))
+          .sort((a, b) => a.x - b.x);
+        const firstSkuHeader = sellerHeader
+          ? (skuHeaders.find(item => item.x < sellerHeader.x - 1) || skuHeaders[0])
+          : skuHeaders[0];
+
+        if (lineText.includes('product name') && firstSkuHeader && sellerHeader && qtyHeader.x > sellerHeader.x) {
+          header = {
+            y: qtyHeader.y,
+            qtyX: qtyHeader.x,
+            firstSkuX: firstSkuHeader.x,
+            sellerX: sellerHeader.x
+          };
+          break;
+        }
+      }
+'''
+
+if old_header not in text:
+    if new_header not in text:
+        raise SystemExit('TikTok header block not found')
+else:
+    text = text.replace(old_header, new_header, 1)
+
+path.write_text(text, encoding='utf-8')
