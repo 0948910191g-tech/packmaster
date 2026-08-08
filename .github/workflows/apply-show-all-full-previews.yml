@@ -6,6 +6,7 @@ on:
       - fix-review-show-all-full-previews
     paths:
       - tools/apply-show-all-full-previews.py
+      - .github/workflows/apply-show-all-full-previews.yml
 
 permissions:
   contents: write
