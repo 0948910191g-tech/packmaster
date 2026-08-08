@@ -6,6 +6,7 @@ import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const adapterPath = path.resolve(__dirname, '../packmaster-batch.js');
+const indexPath = path.resolve(__dirname, '../index.html');
 
 assert.ok(fs.existsSync(adapterPath), 'packmaster-batch.js must exist');
 
@@ -60,4 +61,26 @@ assert.equal(built.unmappedCount, 1);
 assert.equal(built.status, 'REVIEW');
 assert.equal(built.updatedAt, '2026-08-08T12:00:00.000Z');
 
-console.log('PackMaster local batch helper tests passed');
+const html = fs.readFileSync(indexPath, 'utf8');
+const requiredUiMarkers = [
+  '<script src="./packmaster-batch.js"></script>',
+  'const [batches, setBatches] = useState([]);',
+  'const [activeBatchId, setActiveBatchId] = useState(null);',
+  'const handleCreateBatch = async () => {',
+  'const handleOpenBatch = async (batch) => {',
+  'const handleBackToBatchList = async () => {',
+  'const handleDeleteBatch = async (batch) => {',
+  'const markActiveBatchPrinted = async () => {',
+  'const handlePrint = async () => {',
+  '+ สร้าง Batch ใหม่',
+  'กลับรายการ Batch'
+];
+
+requiredUiMarkers.forEach((marker) => {
+  assert.ok(html.includes(marker), `index.html must include Phase 2 marker: ${marker}`);
+});
+
+assert.ok(html.includes('for (let i = 0; i < MappedOrders.length; i++)'), 'Save PDF must keep full MappedOrders export loop');
+assert.ok(html.includes('{MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}'), 'Print area must keep full MappedOrders rendering');
+
+console.log('PackMaster local batch helper and UI integration tests passed');
