@@ -12,7 +12,9 @@ assert.ok(workflow.includes("grep -Fq './packmaster-storage-health.js' <<< \"$ht
 assert.ok(workflow.includes("grep -Fq './packmaster-diagnostics.js' <<< \"$html\""));
 assert.ok(workflow.includes("grep -Fq './packmaster-pilot-safety.js' <<< \"$html\""), 'production smoke must verify the pilot safety module is deployed');
 assert.ok(workflow.includes("grep -Fq 'แก้ Exception ให้ครบก่อนพิมพ์' <<< \"$html\""), 'production smoke must verify the visible print-lock UX is deployed');
-assert.ok(workflow.includes("grep -Fq 'รีวิวและพิมพ์' <<< \"$html\""));
+assert.ok(workflow.includes("grep -Fq 'data-pm-view=\"review\"' <<< \"$html\""), 'production smoke must verify the stable Frontend V3 Review workspace marker');
+assert.ok(workflow.includes("grep -Fq 'data-pm-review-preview=\"full\"' <<< \"$html\""), 'production smoke must verify the Full Review Preview build is deployed');
+assert.equal(workflow.includes("grep -Fq 'รีวิวและพิมพ์' <<< \"$html\""), false, 'do not rely on obsolete Review copy as a deployment marker');
 assert.equal(workflow.includes("printf '%s' \"$html\" | grep -Fq"), false, 'do not pipe printf into grep -q under pipefail');
 
 console.log('PackMaster production smoke workflow regression test passed');
