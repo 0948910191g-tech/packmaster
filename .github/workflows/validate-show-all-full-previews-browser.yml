@@ -1,0 +1,112 @@
+name: Validate Show All Full Previews Browser
+
+on:
+  push:
+    branches:
+      - fix-review-show-all-full-previews
+    paths:
+      - .github/workflows/validate-show-all-full-previews-browser.yml
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix-review-show-all-full-previews
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Chromium
+        run: |
+          npm install --no-save --no-package-lock playwright
+          npx playwright install --with-deps chromium
+      - name: Start static server
+        run: |
+          python3 -m http.server 4173 >/tmp/packmaster-http.log 2>&1 &
+          echo $! >/tmp/packmaster-http.pid
+          for attempt in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:4173/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/packmaster-http.log
+          exit 1
+      - name: Exercise 73 full previews
+        run: |
+          cat > show-all-full-previews-smoke.mjs <<'JS'
+          import { chromium } from 'playwright';
+          const browser = await chromium.launch({ headless: true });
+          const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+          const page = await context.newPage();
+          const pageErrors = [];
+          const consoleErrors = [];
+          page.on('pageerror', error => pageErrors.push(String(error)));
+          page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+          const assert = (condition, message) => { if (!condition) throw new Error(message); };
+
+          await page.goto('http://127.0.0.1:4173/', { waitUntil: 'networkidle' });
+          await page.locator('[data-pm-shell="v3"]').waitFor({ state: 'visible' });
+          await page.evaluate(async () => {
+            const api = window.PackMasterBatch;
+            if (!api) throw new Error('PackMasterBatch unavailable');
+            for (const batch of await api.listBatches()) await api.deleteBatch(batch.id);
+            localStorage.setItem('skuMappingRules', JSON.stringify([{ id: 'all-preview-rule', keyword: 'ALL PREVIEW SKU', shortName: 'preview1' }]));
+            const meta = api.createBatchMeta([], new Date('2026-08-08T16:05:00Z'));
+            const img = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1200"><rect width="100%" height="100%" fill="white"/><text x="60" y="120" font-size="50" fill="black">FULL PREVIEW LABEL</text></svg>');
+            const orders = Array.from({ length: 73 }, (_, idx) => {
+              const n = idx + 1;
+              return { id: `all-preview-order-${n}`, tracking: `SYNTH-${String(n).padStart(4, '0')}`, parsedItems: [{ text: 'ALL PREVIEW SKU', qty: 1 }], pdfImage: img, platform: n % 2 ? 'SHOPEE' : 'TIKTOK', orderId: `SYNTHORDER${String(n).padStart(4, '0')}`, declaredTotalQty: null, parserWarning: false };
+            });
+            const savedMeta = api.buildBatchMeta(meta, { total: 73, ready: 73, reviewSku: 0, reviewQty: 0, unmapped: 0 }, { now: new Date('2026-08-08T16:05:00Z') });
+            await api.saveBatch(savedMeta, orders);
+          });
+
+          await page.reload({ waitUntil: 'networkidle' });
+          await page.getByRole('button', { name: 'เปิดงาน', exact: true }).first().click();
+          await page.locator('[data-pm-view="upload"]').waitFor({ state: 'visible' });
+          await page.getByRole('button', { name: 'รีวิว & พิมพ์', exact: true }).first().click();
+          await page.locator('[data-pm-review-preview="full"]').waitFor({ state: 'visible' });
+
+          const items = page.locator('[data-pm-review-preview-item]');
+          await items.nth(72).waitFor({ state: 'attached' });
+          assert(await items.count() === 73, `Expected 73 full previews, got ${await items.count()}`);
+          await page.getByText('เห็น Label จริงก่อนพิมพ์ • 1 / 73', { exact: true }).waitFor();
+          await page.getByText('เห็น Label จริงก่อนพิมพ์ • 73 / 73', { exact: true }).waitFor();
+          assert(await page.locator('[data-pm-action="review-preview-prev"]').count() === 0, 'Previous paging control must not exist');
+          assert(await page.locator('[data-pm-action="review-preview-next"]').count() === 0, 'Next paging control must not exist');
+
+          const search = page.getByPlaceholder('ค้นหา Order / SKU / ชื่อภายใน');
+          await search.fill('SYNTH-0073');
+          await page.waitForFunction(() => document.querySelectorAll('[data-pm-review-preview-item]').length === 1);
+          await page.getByText('เห็น Label จริงก่อนพิมพ์ • 1 / 1', { exact: true }).waitFor();
+          await search.fill('');
+          await page.waitForFunction(() => document.querySelectorAll('[data-pm-review-preview-item]').length === 73);
+
+          await page.getByRole('button', { name: 'มุมมองรายการ', exact: true }).click();
+          await page.getByText('หน้า 1 / 7 • แสดง 12 รายการ', { exact: true }).waitFor();
+          assert(await page.locator('[data-pm-review-preview-item]').count() === 0, 'Full previews must hide in compact list mode');
+          await page.getByRole('button', { name: 'พรีวิวเต็มหน้า', exact: true }).click();
+          await page.waitForFunction(() => document.querySelectorAll('[data-pm-review-preview-item]').length === 73);
+
+          assert(pageErrors.length === 0, `Page errors: ${pageErrors.join(' | ')}`);
+          const relevantConsoleErrors = consoleErrors.filter(text => !/favicon|ERR_BLOCKED_BY_CLIENT/i.test(text));
+          assert(relevantConsoleErrors.length === 0, `Console errors: ${relevantConsoleErrors.join(' | ')}`);
+          await page.evaluate(async () => {
+            const api = window.PackMasterBatch;
+            for (const batch of await api.listBatches()) await api.deleteBatch(batch.id);
+            localStorage.removeItem('skuMappingRules');
+          });
+          await browser.close();
+          console.log('PackMaster 73-order show-all full preview Chromium smoke passed');
+          JS
+          node show-all-full-previews-smoke.mjs
+      - name: Verify frozen print scope
+        run: |
+          grep -Fq 'for (let i = 0; i < MappedOrders.length; i++)' index.html
+          grep -Fq 'MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}' index.html
+      - name: Stop server
+        if: always()
+        run: kill "$(cat /tmp/packmaster-http.pid)" 2>/dev/null || true
