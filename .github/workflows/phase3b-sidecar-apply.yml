@@ -1,0 +1,84 @@
+name: Apply PackMaster Phase 3B Sidecar Guardrail
+
+on:
+  push:
+    branches:
+      - phase3b-sidecar-guardrail
+    paths:
+      - .github/workflows/phase3b-sidecar-apply.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: phase3b-sidecar-guardrail
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Apply guarded sidecar patch
+        run: python3 .github/scripts/apply-phase3b-sidecar.py
+
+      - name: Duplicate sidecar guard
+        run: node tests/packmaster-duplicate-sidecar.test.mjs
+
+      - name: Duplicate helper and UI regressions
+        run: |
+          node tests/packmaster-duplicate.test.mjs
+          node tests/packmaster-phase3b-ui.test.mjs
+
+      - name: Exception Inbox regressions
+        run: |
+          node tests/packmaster-exceptions.test.mjs
+          node tests/packmaster-phase3c-ui.test.mjs
+
+      - name: Workspace regressions
+        run: |
+          node tests/packmaster-workspace.test.mjs
+          node tests/packmaster-workspace-validation.test.mjs
+
+      - name: Core regressions
+        run: |
+          node tests/packmaster-batch.test.mjs
+          node tests/packmaster-smart-matcher.test.mjs
+
+      - name: JSX compile
+        run: |
+          npm install --no-save --no-package-lock @babel/core @babel/preset-react
+          node <<'NODE'
+          const fs = require('fs');
+          const babel = require('@babel/core');
+          const html = fs.readFileSync('index.html', 'utf8');
+          const match = html.match(/<script type="text\/babel">([\s\S]*?)<\/script>/);
+          if (!match) throw new Error('Babel app script missing');
+          babel.transformSync(match[1], { presets: ['@babel/preset-react'] });
+          console.log('JSX compile passed');
+          NODE
+
+      - name: Safety invariants
+        run: |
+          grep -F 'for (let i = 0; i < MappedOrders.length; i++)' index.html
+          grep -F '{MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}' index.html
+          grep -F "const DB_VERSION = 1;" packmaster-batch.js
+          git diff --check
+
+      - name: Commit guarded implementation
+        run: |
+          if git diff --quiet -- packmaster-duplicate.js index.html; then
+            echo "No implementation diff"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packmaster-duplicate.js index.html
+          git commit -m "fix: move duplicate fingerprints to LocalStorage sidecar"
+          git push origin HEAD:phase3b-sidecar-guardrail
