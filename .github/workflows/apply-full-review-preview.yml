@@ -1,0 +1,67 @@
+name: Apply PackMaster Full Review Preview
+
+on:
+  push:
+    branches:
+      - frontend-v3-full-review-preview
+    paths:
+      - tools/apply-full-review-preview.py
+      - .github/workflows/apply-full-review-preview.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: frontend-v3-full-review-preview
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply minimal frontend patch
+        run: python3 tools/apply-full-review-preview.py
+      - name: Run all regression tests
+        run: |
+          set -e
+          for test in tests/*.test.mjs; do
+            echo "==> $test"
+            node "$test"
+          done
+      - name: Compile JSX with Babel
+        run: |
+          npm install --no-save --no-package-lock @babel/core @babel/cli @babel/preset-react
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          html = Path('index.html').read_text()
+          m = re.search(r'<script type="text/babel">(.*?)</script>', html, re.S)
+          if not m:
+              raise SystemExit('text/babel block not found')
+          Path('/tmp/packmaster-review-preview.jsx').write_text(m.group(1))
+          PY
+          npx babel /tmp/packmaster-review-preview.jsx --presets @babel/preset-react --out-file /tmp/packmaster-review-preview.js
+      - name: Guard frozen core and print scope
+        run: |
+          git diff --exit-code origin/main -- packmaster-batch.js packmaster-duplicate.js packmaster-exceptions.js packmaster-pilot-safety.js || (echo 'Frozen local/core helper changed' && exit 1)
+          grep -Fq 'for (let i = 0; i < MappedOrders.length; i++)' index.html
+          grep -Fq 'MappedOrders.map((order) => (<LabelCard' index.html
+          grep -Fq 'data-pm-review-preview="full"' index.html
+          grep -Fq 'data-pm-action="review-preview-prev"' index.html
+          grep -Fq 'data-pm-action="review-preview-next"' index.html
+          ! grep -Eq 'supabase|firebase|sentry|mixpanel' index.html
+          git diff --check
+      - name: Commit verified UI patch
+        run: |
+          git config user.name "0948910191g-tech"
+          git config user.email "0948910191g@gmail.com"
+          git add index.html
+          if git diff --cached --quiet; then
+            echo 'No index change to commit'
+          else
+            git commit -m 'ui: use full-page review preview'
+            git push origin HEAD:frontend-v3-full-review-preview
+          fi
