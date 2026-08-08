@@ -1,0 +1,161 @@
+name: Smoke PackMaster Phase 3A Production
+
+on:
+  push:
+    branches:
+      - phase3a-prod-smoke
+
+permissions:
+  contents: read
+
+jobs:
+  production-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout smoke branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verify live assets
+        run: |
+          curl --fail --silent --show-error --location --retry 5 --retry-delay 2 https://0948910191g-tech.github.io/packmaster/ -o /tmp/production.html
+          curl --fail --silent --show-error --location --retry 5 --retry-delay 2 https://0948910191g-tech.github.io/packmaster/packmaster-workspace.js -o /tmp/workspace.js
+          grep -F './packmaster-workspace.js' /tmp/production.html
+          grep -F 'ความปลอดภัย Workspace' /tmp/production.html
+          grep -F 'packmaster-workspace-backup' /tmp/workspace.js
+          grep -F 'for (let i = 0; i < MappedOrders.length; i++)' /tmp/production.html
+
+      - name: Install Playwright
+        run: |
+          npm install --no-save --no-package-lock playwright
+          npx playwright install --with-deps chromium
+
+      - name: Exercise production backup restore flow
+        run: |
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const { chromium } = require('playwright');
+
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            const context = await browser.newContext({ acceptDownloads: true });
+            const page = await context.newPage();
+            const errors = [];
+
+            page.on('pageerror', error => errors.push(`pageerror: ${error.message}`));
+            page.on('console', message => {
+              if (message.type() !== 'error') return;
+              const text = message.text();
+              if (text.includes('Workspace restore file validation failed')) return;
+              errors.push(`console: ${text}`);
+            });
+
+            await page.goto('https://0948910191g-tech.github.io/packmaster/', {
+              waitUntil: 'domcontentloaded',
+              timeout: 90000
+            });
+            await page.waitForFunction(() => Boolean(window.PackMasterBatch && window.PackMasterWorkspace), null, { timeout: 60000 });
+            await page.getByRole('heading', { name: 'งานแพ็ก' }).waitFor({ timeout: 60000 });
+
+            let rows = await page.evaluate(() => window.PackMasterBatch.listBatches());
+            assert.equal(rows.length, 0, 'isolated browser starts empty');
+
+            await page.getByRole('button', { name: /สร้าง Batch/ }).first().click();
+            await page.getByRole('button', { name: /กลับรายการ Batch/ }).waitFor();
+            const firstName = (await page.locator('h2').filter({ hasText: 'Batch #' }).first().textContent()).trim();
+            await page.getByRole('button', { name: /กลับรายการ Batch/ }).click();
+
+            await page.evaluate(async () => {
+              const rows = await window.PackMasterBatch.listBatches();
+              if (rows.length !== 1) throw new Error('Expected one batch before seed');
+              const loaded = await window.PackMasterBatch.loadBatch(rows[0].id);
+              await window.PackMasterBatch.saveBatch(loaded.meta, [{
+                id: 'production-smoke-order',
+                tracking: 'SANITIZED-PROD-TRACK',
+                orderId: 'SANITIZED-PROD-ORDER',
+                platform: 'TIKTOK',
+                parsedItems: [],
+                displayItems: ['SANITIZED OUTPUT'],
+                originalQty: 1,
+                qtyWarning: false,
+                parserWarning: false,
+                pdfImage: ''
+              }]);
+            });
+
+            await page.getByRole('button', { name: /คลังคำศัพท์/ }).click();
+            await page.getByRole('heading', { name: 'คลังคำศัพท์' }).waitFor();
+            await page.getByPlaceholder('เช่น baby Wipes 10').fill('SANITIZED PROD PRODUCT');
+            await page.getByPlaceholder('เช่น เด้งม่วง 10').fill('ชื่อภายในทดสอบ');
+            await page.locator('form').getByRole('button', { name: /เพิ่ม/ }).click();
+            await page.getByText('SANITIZED PROD PRODUCT', { exact: true }).waitFor();
+
+            const downloadPromise = page.waitForEvent('download');
+            await page.getByRole('button', { name: /สำรอง Workspace/ }).click();
+            const download = await downloadPromise;
+            const downloadPath = await download.path();
+            const backupText = fs.readFileSync(downloadPath, 'utf8');
+            const backup = JSON.parse(backupText);
+            assert.equal(backup.schema, 'packmaster-workspace-backup');
+            assert.equal(backup.version, 1);
+            assert.equal(backup.batches.length, 1);
+            assert.equal(backup.batchOrders[0].orders.length, 1);
+
+            await page.getByRole('button', { name: /งานแพ็ก/ }).click();
+            await page.getByRole('button', { name: /สร้าง Batch ใหม่/ }).click();
+            await page.getByRole('button', { name: /กลับรายการ Batch/ }).waitFor();
+            await page.getByRole('button', { name: /กลับรายการ Batch/ }).click();
+            rows = await page.evaluate(() => window.PackMasterBatch.listBatches());
+            assert.equal(rows.length, 2);
+
+            await page.getByRole('button', { name: /คลังคำศัพท์/ }).click();
+            const restoreInput = page.locator('input[type="file"][accept=".json,application/json"]');
+            await restoreInput.setInputFiles({ name: 'prod-backup.json', mimeType: 'application/json', buffer: Buffer.from(backupText) });
+            await page.getByText(/พร้อมกู้คืนจาก prod-backup.json/).waitFor();
+            page.once('dialog', dialog => dialog.accept());
+            await page.getByRole('button', { name: 'Replace Workspace' }).click();
+            await page.getByRole('heading', { name: 'งานแพ็ก' }).waitFor({ timeout: 30000 });
+
+            rows = await page.evaluate(() => window.PackMasterBatch.listBatches());
+            assert.equal(rows.length, 1);
+            assert.equal(rows[0].name, firstName);
+            let restored = await page.evaluate(id => window.PackMasterBatch.loadBatch(id), rows[0].id);
+            assert.equal(restored.orders[0].tracking, 'SANITIZED-PROD-TRACK');
+
+            await page.reload({ waitUntil: 'domcontentloaded' });
+            await page.waitForFunction(() => Boolean(window.PackMasterBatch && window.PackMasterWorkspace));
+            await page.getByRole('heading', { name: 'งานแพ็ก' }).waitFor();
+            rows = await page.evaluate(() => window.PackMasterBatch.listBatches());
+            assert.equal(rows.length, 1);
+
+            await page.getByRole('button', { name: /คลังคำศัพท์/ }).click();
+            const beforeInvalid = await page.evaluate(() => window.PackMasterBatch.listBatches());
+            await page.locator('input[type="file"][accept=".json,application/json"]').setInputFiles({
+              name: 'invalid.json',
+              mimeType: 'application/json',
+              buffer: Buffer.from(JSON.stringify({ schema: 'wrong', version: 1 }))
+            });
+            await page.getByText(/ไฟล์ Backup ใช้งานไม่ได้/).waitFor();
+            const afterInvalid = await page.evaluate(() => window.PackMasterBatch.listBatches());
+            assert.deepEqual(afterInvalid.map(x => x.id), beforeInvalid.map(x => x.id));
+
+            await page.evaluate(async () => {
+              const rows = await window.PackMasterBatch.listBatches();
+              for (const row of rows) await window.PackMasterBatch.deleteBatch(row.id);
+              localStorage.removeItem('skuMappingRules');
+              localStorage.removeItem('thermalMode');
+            });
+
+            if (errors.length) throw new Error(errors.join('\n'));
+            console.log('PackMaster Phase 3A production smoke passed');
+            await browser.close();
+          })().catch(error => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
