@@ -1,0 +1,68 @@
+name: Apply Frontend Usability Pilot Pass
+
+on:
+  push:
+    branches:
+      - frontend-usability-pilot-pass
+    paths:
+      - tools/apply-frontend-usability-pilot-pass.py
+      - .github/workflows/apply-frontend-usability-pilot-pass.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: frontend-usability-pilot-pass
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply targeted Frontend usability patch
+        run: python3 tools/apply-frontend-usability-pilot-pass.py
+      - name: Run repository regression tests
+        run: |
+          set -euo pipefail
+          for test_file in tests/*.test.mjs; do
+            echo "Running ${test_file}"
+            node "${test_file}"
+          done
+      - name: Compile JSX
+        run: |
+          npm install --no-save --no-package-lock @babel/core @babel/cli @babel/preset-react
+          python3 - <<'PY'
+          from pathlib import Path
+          html = Path('index.html').read_text(encoding='utf-8')
+          start = html.index('<script type="text/babel">') + len('<script type="text/babel">')
+          end = html.index('</script>', start)
+          Path('/tmp/packmaster-usability.jsx').write_text(html[start:end], encoding='utf-8')
+          PY
+          npx babel /tmp/packmaster-usability.jsx --presets @babel/preset-react --out-file /tmp/packmaster-usability.js
+      - name: Verify frozen core and print scope
+        run: |
+          set -euo pipefail
+          git diff --exit-code origin/main...HEAD -- packmaster-batch.js packmaster-workspace.js packmaster-duplicate.js packmaster-exceptions.js packmaster-pilot-safety.js packmaster-archive.js packmaster-storage-health.js packmaster-diagnostics.js
+          grep -Fq 'for (let i = 0; i < MappedOrders.length; i++)' index.html
+          grep -Fq 'MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}' index.html
+          grep -Fq 'data-pm-active-batch-bar' index.html
+          grep -Fq 'data-pm-exception-mode' index.html
+          grep -Fq 'data-pm-review-action-bar' index.html
+          grep -Fq 'data-pm-quick-mapping' index.html
+          grep -Fq 'data-pm-primary-nav' index.html
+          git diff --check
+      - name: Commit generated Frontend UI
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'No generated UI diff to commit'
+            exit 0
+          fi
+          git commit -m "ui: streamline pre-pilot packing workflow"
+          git push origin HEAD:frontend-usability-pilot-pass
