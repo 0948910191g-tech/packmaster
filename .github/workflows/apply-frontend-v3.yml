@@ -23,6 +23,9 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Preserve existing Exception navigation semantics
+        run: python3 tools/prepare-frontend-v3-visible.py
+
       - name: Apply Frontend V3 patch
         run: python3 tools/apply-frontend-v3.py
 
