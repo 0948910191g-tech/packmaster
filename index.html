@@ -16,6 +16,7 @@
   <script src="./packmaster-batch.js"></script>
   <script src="./packmaster-workspace.js"></script>
   <script src="./packmaster-duplicate.js"></script>
+  <script src="./packmaster-exceptions.js"></script>
 
   <script>
     tailwind.config = { theme: { extend: { fontFamily: { sans: ['"Noto Sans Thai"', 'sans-serif'] } } } }
@@ -671,6 +672,7 @@
       const batchApi = window.PackMasterBatch;
       const workspaceApi = window.PackMasterWorkspace;
       const duplicateApi = window.PackMasterDuplicate;
+      const exceptionApi = window.PackMasterExceptions;
       const [activeTab, setActiveTab] = useState('upload');
       const [orders, setOrders] = useState([]);
       const [skuRules, setSkuRules] = useState(() => {
@@ -706,6 +708,9 @@
       const [reviewStatus, setReviewStatus] = useState('ALL');
       const [skuSearch, setSkuSearch] = useState('');
       const [skuFilter, setSkuFilter] = useState('ALL');
+      const [exceptionType, setExceptionType] = useState('ALL');
+      const [exceptionSearch, setExceptionSearch] = useState('');
+      const [exceptionCursor, setExceptionCursor] = useState(0);
 
       // Phase 2 — Local-first Batch System
       const [batches, setBatches] = useState([]);
@@ -1217,12 +1222,21 @@
 
       const reviewSummary = useMemo(() => {
         return MappedOrders.reduce((summary, order) => {
-          const flags = getReviewFlags(order);
           summary.total += 1;
+          if (exceptionApi) {
+            const primaryStatus = exceptionApi.getPrimaryStatus(exceptionApi.getExceptionFlags(order));
+            if (primaryStatus === 'READY') summary.ready += 1;
+            if (primaryStatus === 'REVIEW_SKU') summary.reviewSku += 1;
+            if (primaryStatus === 'REVIEW_QTY') summary.reviewQty += 1;
+            if (primaryStatus === 'UNMAPPED') summary.unmapped += 1;
+            return summary;
+          }
+
+          const flags = getReviewFlags(order);
           if (flags.ready) summary.ready += 1;
-          if (flags.hasSkuReview) summary.reviewSku += 1;
-          if (flags.hasQtyReview) summary.reviewQty += 1;
-          if (flags.hasUnmapped) summary.unmapped += 1;
+          else if (flags.hasQtyReview) summary.reviewQty += 1;
+          else if (flags.hasSkuReview) summary.reviewSku += 1;
+          else if (flags.hasUnmapped) summary.unmapped += 1;
           return summary;
         }, { total: 0, ready: 0, reviewSku: 0, reviewQty: 0, unmapped: 0 });
       }, [MappedOrders, getReviewFlags]);
@@ -1249,6 +1263,34 @@
           return searchArea.includes(query);
         });
       }, [MappedOrders, reviewSearch, reviewPlatform, reviewStatus, getReviewFlags]);
+
+      const exceptionRows = useMemo(() =>
+        exceptionApi ? exceptionApi.buildExceptionRows(MappedOrders) : [],
+      [MappedOrders]);
+
+      const filteredExceptionRows = useMemo(() =>
+        exceptionApi ? exceptionApi.filterExceptionRows(exceptionRows, exceptionType, exceptionSearch) : exceptionRows,
+      [exceptionRows, exceptionType, exceptionSearch]);
+
+      const safeExceptionCursor = filteredExceptionRows.length > 0
+        ? Math.min(exceptionCursor, filteredExceptionRows.length - 1)
+        : 0;
+      const currentException = filteredExceptionRows[safeExceptionCursor] || null;
+
+      useEffect(() => { setExceptionCursor(0); }, [exceptionType, exceptionSearch, activeBatchId]);
+
+      const moveExceptionCursor = (delta) => {
+        if (filteredExceptionRows.length === 0) return;
+        setExceptionCursor(prev => Math.max(0, Math.min(filteredExceptionRows.length - 1, prev + delta)));
+      };
+
+      const openExceptionInTable = (row) => {
+        if (!row || !row.order) return;
+        setPreviewMode('table');
+        setReviewPlatform('ALL');
+        setReviewStatus('ALL');
+        setReviewSearch(row.order.tracking || row.order.orderId || '');
+      };
 
       const sortBatchRows = (rows) => [...rows].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
 
@@ -2072,6 +2114,47 @@
                         <button onClick={() => setReviewStatus('UNMAPPED')} className={`text-left p-5 rounded-2xl border-2 transition-all col-span-2 xl:col-span-1 ${reviewStatus === 'UNMAPPED' ? 'bg-slate-600 text-white border-slate-600 shadow-lg shadow-slate-600/10' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
                           <div className={`text-xs font-black ${reviewStatus === 'UNMAPPED' ? 'text-slate-100' : 'text-slate-500'}`}>ยังไม่ตั้งชื่อ</div><div className="text-3xl font-black mt-1">{reviewSummary.unmapped}</div>
                         </button>
+                      </div>
+
+                      <div className="bg-white border-2 border-amber-100 rounded-[2rem] p-6 mb-5 shadow-sm">
+                        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-5">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1"><span className="text-xl">⚠️</span><h3 className="text-xl font-black text-blue-950">ต้องตรวจ</h3><span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100">{exceptionRows.length}</span></div>
+                            <p className="text-xs font-bold text-blue-950/45">รายการที่ต้องตรวจ • แสดงเฉพาะ Exception โดยไม่เปลี่ยนข้อมูลต้นฉบับ</p>
+                          </div>
+                          <div className="flex flex-col md:flex-row gap-2">
+                            <input type="search" value={exceptionSearch} onChange={(e) => setExceptionSearch(e.target.value)} placeholder="ค้นหา Exception..." className="border-2 border-amber-100 bg-amber-50/30 px-4 py-2.5 rounded-xl text-sm font-bold outline-none focus:border-amber-400" />
+                            <select value={exceptionType} onChange={(e) => setExceptionType(e.target.value)} className="border-2 border-amber-100 bg-white px-4 py-2.5 rounded-xl text-sm font-black outline-none focus:border-amber-400">
+                              <option value="ALL">ทุก Exception</option><option value="REVIEW_QTY">ตรวจ Qty</option><option value="REVIEW_SKU">ตรวจ SKU</option><option value="PARSER_WARNING">Parser Warning</option><option value="UNMAPPED">ยังไม่ตั้งชื่อ</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {currentException ? (
+                          <div className="rounded-2xl bg-slate-50 border border-slate-100 p-5">
+                            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2 mb-2">
+                                  <span className="font-mono text-sm font-black text-blue-950/70">{currentException.order.tracking || currentException.order.orderId || 'ไม่พบเลขอ้างอิง'}</span>
+                                  <span className={`text-[10px] font-black px-2 py-1 rounded-lg ${currentException.order.platform === 'TIKTOK' ? 'bg-slate-900 text-white' : 'bg-orange-50 text-orange-600'}`}>{currentException.order.platform === 'TIKTOK' ? 'TikTok' : 'Shopee'}</span>
+                                  {currentException.types.includes('REVIEW_QTY') && <span className="text-[10px] font-black px-2 py-1 rounded-lg bg-red-50 text-red-600">ตรวจ Qty</span>}
+                                  {currentException.types.includes('REVIEW_SKU') && <span className="text-[10px] font-black px-2 py-1 rounded-lg bg-amber-50 text-amber-700">ตรวจ SKU</span>}
+                                  {currentException.types.includes('PARSER_WARNING') && <span className="text-[10px] font-black px-2 py-1 rounded-lg bg-fuchsia-50 text-fuchsia-700">Parser Warning</span>}
+                                  {currentException.types.includes('UNMAPPED') && <span className="text-[10px] font-black px-2 py-1 rounded-lg bg-slate-200 text-slate-700">ยังไม่ตั้งชื่อ</span>}
+                                </div>
+                                <div className="flex flex-wrap gap-2">{(currentException.order.displayItems || []).map((item, idx) => <span key={idx} className="text-xs font-bold text-blue-950/65 bg-white px-2.5 py-1.5 rounded-lg border border-slate-100">{item}</span>)}</div>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                                <span className="text-[11px] font-black text-blue-950/35 mr-1">{safeExceptionCursor + 1} / {filteredExceptionRows.length}</span>
+                                <button onClick={() => moveExceptionCursor(-1)} disabled={safeExceptionCursor === 0} className="px-3 py-2 rounded-xl bg-white border border-slate-200 disabled:opacity-30 text-xs font-black">ก่อนหน้า</button>
+                                <button onClick={() => moveExceptionCursor(1)} disabled={safeExceptionCursor >= filteredExceptionRows.length - 1} className="px-3 py-2 rounded-xl bg-white border border-slate-200 disabled:opacity-30 text-xs font-black">ถัดไป</button>
+                                <button onClick={() => openExceptionInTable(currentException)} className="px-4 py-2 rounded-xl bg-blue-950 text-white text-xs font-black">เปิดในตาราง</button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="rounded-2xl bg-green-50 border border-green-100 p-5 text-green-700 text-sm font-black">{exceptionRows.length === 0 ? 'ไม่มีรายการที่ต้องตรวจ — Batch นี้พร้อมพิมพ์ทั้งหมด' : 'ไม่พบ Exception ที่ตรงกับตัวกรองนี้'}</div>
+                        )}
                       </div>
 
                       <div className="bg-white border-2 border-blue-50 rounded-2xl p-4 mb-8 shadow-sm">
