@@ -23,9 +23,9 @@ assert.equal(typeof batch.deleteBatch, 'function', 'deleteBatch must be exported
 
 const fixedNow = new Date('2026-08-08T11:00:00.000Z');
 const created = batch.createBatchMeta([
-  { id: 'a' },
-  { id: 'b' },
-  { id: 'c' }
+  { id: 'a', name: '8 Aug / Batch #001' },
+  { id: 'b', name: '8 Aug / Batch #002' },
+  { id: 'c', name: '8 Aug / Batch #003' }
 ], fixedNow);
 
 assert.equal(created.name, '8 Aug / Batch #004');
@@ -37,6 +37,12 @@ assert.equal(created.reviewQtyCount, 0);
 assert.equal(created.unmappedCount, 0);
 assert.equal(created.printedAt, null);
 assert.ok(created.id.startsWith('batch-'));
+
+const createdAfterDeletion = batch.createBatchMeta([
+  { id: 'a', name: '8 Aug / Batch #001' },
+  { id: 'c', name: '8 Aug / Batch #003' }
+], fixedNow);
+assert.equal(createdAfterDeletion.name, '8 Aug / Batch #004', 'deleting an older batch must not reuse an existing batch number');
 
 assert.equal(batch.deriveBatchStatus({ total: 0, ready: 0, reviewSku: 0, reviewQty: 0, unmapped: 0 }, null), 'WAITING');
 assert.equal(batch.deriveBatchStatus({ total: 10, ready: 10, reviewSku: 0, reviewQty: 0, unmapped: 0 }, null), 'READY');
