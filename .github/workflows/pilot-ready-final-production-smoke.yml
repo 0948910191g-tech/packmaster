@@ -9,189 +9,60 @@ permissions:
   contents: read
 
 jobs:
-  production-browser-smoke:
+  diagnose-create:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout smoke branch
+      - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-
-      - name: Verify live production assets and frozen Batch adapter
-        run: |
-          BASE='https://0948910191g-tech.github.io/packmaster'
-          curl --fail --silent --show-error --location --retry 5 --retry-delay 2 "$BASE/" -o /tmp/production.html
-          for asset in packmaster-batch.js packmaster-workspace.js packmaster-duplicate.js packmaster-exceptions.js packmaster-archive.js packmaster-storage-health.js packmaster-diagnostics.js; do
-            curl --fail --silent --show-error --location --retry 5 --retry-delay 2 "$BASE/$asset" -o "/tmp/$asset"
-          done
-          grep -F './packmaster-archive.js' /tmp/production.html
-          grep -F 'PackMaster Pilot' /tmp/production.html
-          grep -F 'ความปลอดภัย Workspace' /tmp/production.html
-          grep -F 'ต้องตรวจ' /tmp/production.html
-          grep -F 'Storage Health' /tmp/production.html
-          grep -F 'for (let i = 0; i < MappedOrders.length; i++)' /tmp/production.html
-          node <<'NODE'
-          const crypto = require('node:crypto');
-          const fs = require('node:fs');
-          const source = fs.readFileSync('/tmp/packmaster-batch.js');
-          const sha = crypto.createHash('sha1').update(`blob ${source.length}\0`).update(source).digest('hex');
-          if (sha !== '941bddd557803aa27e58bd23372b9f51d6ca1605') {
-            throw new Error(`Production Batch adapter is not frozen: ${sha}`);
-          }
-          console.log('Production Batch adapter matches frozen Phase 2 blob');
-          NODE
-
-      - name: Install Playwright Chromium
+      - name: Install Chromium
         run: |
           npm install --no-save --no-package-lock playwright
           npx playwright install --with-deps chromium
-
-      - name: Exercise live Pilot-ready local workflow
+      - name: Probe production create path
         run: |
           node <<'NODE'
-          const assert = require('node:assert/strict');
-          const fs = require('node:fs');
           const { chromium } = require('playwright');
-
-          const URL = 'https://0948910191g-tech.github.io/packmaster/';
           (async () => {
             const browser = await chromium.launch({ headless: true });
-            const context = await browser.newContext({ acceptDownloads: true });
+            const context = await browser.newContext();
             const page = await context.newPage();
-            const errors = [];
-
-            page.on('pageerror', error => errors.push(`pageerror: ${error.message}`));
-            page.on('console', message => {
-              if (message.type() !== 'error') return;
-              const text = message.text();
-              if (text.includes('Workspace restore file validation failed')) return;
-              errors.push(`console: ${text}`);
-            });
-
-            await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
-            await page.waitForFunction(() => Boolean(
-              window.PackMasterBatch && window.PackMasterWorkspace && window.PackMasterDuplicate &&
-              window.PackMasterExceptions && window.PackMasterArchive &&
-              window.PackMasterStorageHealth && window.PackMasterDiagnostics
-            ), null, { timeout: 60000 });
+            const pageErrors = [];
+            const consoleErrors = [];
+            page.on('pageerror', error => pageErrors.push({ message: error.message, stack: error.stack }));
+            page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()); });
+            await page.goto('https://0948910191g-tech.github.io/packmaster/', { waitUntil: 'domcontentloaded', timeout: 90000 });
+            await page.waitForFunction(() => Boolean(window.PackMasterBatch), null, { timeout: 60000 });
             await page.getByRole('heading', { name: 'งานแพ็ก' }).waitFor({ timeout: 60000 });
-            // Production React also initializes IndexedDB on mount. Give that existing init path
-            // one short turn before the smoke runner opens the same DB itself.
-            await page.waitForTimeout(1000);
+            await page.waitForTimeout(1200);
 
-            let rows = await page.evaluate(() => window.PackMasterBatch.listBatches());
-            assert.equal(rows.length, 0, 'isolated production browser must start without Batch data');
-            assert.equal(await page.evaluate(() => typeof window.PackMasterBatch.archiveBatch), 'undefined');
-            assert.equal(await page.evaluate(() => typeof window.PackMasterBatch.restoreArchivedBatch), 'undefined');
+            console.log('CHECKPOINT list');
+            console.log(JSON.stringify(await page.evaluate(async () => ({ rows: await window.PackMasterBatch.listBatches(), dateType: typeof Date }))));
 
-            await page.getByRole('button', { name: /สร้าง Batch/ }).first().click();
-            await page.getByRole('button', { name: /กลับรายการ Batch/ }).waitFor();
-            const batchId = await page.evaluate(async () => (await window.PackMasterBatch.listBatches())[0].id);
-            let loaded = await page.evaluate(id => window.PackMasterBatch.loadBatch(id), batchId);
-            assert.equal(Object.prototype.hasOwnProperty.call(loaded.meta, 'archivedAt'), false);
-            assert.equal(Object.prototype.hasOwnProperty.call(loaded.meta, 'sourceFiles'), false);
-
-            await page.evaluate(id => window.PackMasterDuplicate.appendBatchFingerprints(id, [{
-              hash: 'FINAL-SANITIZED-HASH', size: 456, addedAt: '2026-08-08T14:10:00.000Z', name: 'private-name-must-drop.pdf'
-            }]), batchId);
-            let fingerprints = await page.evaluate(id => window.PackMasterDuplicate.getBatchFingerprints(id), batchId);
-            assert.equal(fingerprints.length, 1);
-            assert.equal('name' in fingerprints[0], false);
-            loaded = await page.evaluate(id => window.PackMasterBatch.loadBatch(id), batchId);
-            assert.equal(Object.prototype.hasOwnProperty.call(loaded.meta, 'sourceFiles'), false);
-
-            await page.getByRole('button', { name: /กลับรายการ Batch/ }).click();
-
-            await page.getByRole('button', { name: 'เก็บเข้าคลัง' }).first().click();
-            assert.ok(await page.evaluate(id => window.PackMasterArchive.getArchivedAt(id, null), batchId));
-            loaded = await page.evaluate(id => window.PackMasterBatch.loadBatch(id), batchId);
-            assert.equal(Object.prototype.hasOwnProperty.call(loaded.meta, 'archivedAt'), false);
-            await page.getByRole('button', { name: /Archived/ }).click();
-            await page.getByRole('button', { name: 'นำกลับ' }).waitFor();
-
-            await page.evaluate(async id => {
-              const row = await window.PackMasterBatch.loadBatch(id);
-              await window.PackMasterBatch.saveBatch(row.meta, [{
-                id: 'final-sanitized-order', tracking: 'FINAL-SANITIZED-TRACK', orderId: 'FINAL-SANITIZED-ORDER', platform: 'TIKTOK',
-                parsedItems: [], displayItems: ['SANITIZED OUTPUT'], originalQty: 1, qtyWarning: false, parserWarning: false,
-                pdfImage: 'data:image/jpeg;base64,FINAL-SANITIZED-HEAVY'
-              }]);
-            }, batchId);
-            await page.locator('input[type="checkbox"]').first().check();
-            page.once('dialog', dialog => dialog.accept());
-            await page.getByRole('button', { name: /ล้างเฉพาะรูปสำหรับ Reprint/ }).click();
-            await page.waitForTimeout(500);
-            loaded = await page.evaluate(id => window.PackMasterBatch.loadBatch(id), batchId);
-            assert.equal(Object.prototype.hasOwnProperty.call(loaded.orders[0], 'pdfImage'), false);
-
-            const diagPromise = page.waitForEvent('download');
-            await page.getByRole('button', { name: 'ดาวน์โหลด Diagnostics' }).click();
-            const diagDownload = await diagPromise;
-            const diagText = fs.readFileSync(await diagDownload.path(), 'utf8');
-            const diag = JSON.parse(diagText);
-            assert.equal(diag.batches.filter(row => row.archived).length, 1);
-            assert.equal(diagText.includes('FINAL-SANITIZED-TRACK'), false);
-            assert.equal(diagText.includes('FINAL-SANITIZED-ORDER'), false);
-
-            await page.getByRole('button', { name: /คลังคำศัพท์/ }).click();
-            await page.getByRole('heading', { name: 'คลังคำศัพท์' }).waitFor();
-            const backupPromise = page.waitForEvent('download');
-            await page.getByRole('button', { name: /สำรอง Workspace/ }).click();
-            const backupDownload = await backupPromise;
-            const backupText = fs.readFileSync(await backupDownload.path(), 'utf8');
-            const backup = JSON.parse(backupText);
-            assert.equal(backup.schema, 'packmaster-workspace-backup');
-            assert.equal(backup.version, 1);
-            assert.equal(backup.settings.duplicateFingerprints[batchId][0].hash, 'FINAL-SANITIZED-HASH');
-            assert.equal('name' in backup.settings.duplicateFingerprints[batchId][0], false);
-            assert.ok(backup.settings.archiveState[batchId].archivedAt);
-
-            await page.evaluate(id => {
-              window.PackMasterDuplicate.replaceFingerprintStore({ [id]: [{ hash: 'MUTATED-HASH', size: 1, addedAt: '2026-08-08T14:11:00.000Z' }] });
-              window.PackMasterArchive.restoreBatch(id, new Date('2026-08-08T14:11:00.000Z'));
-            }, batchId);
-            const restoreInput = page.locator('input[type="file"][accept=".json,application/json"]');
-            await restoreInput.setInputFiles({ name: 'pilot-final-backup.json', mimeType: 'application/json', buffer: Buffer.from(backupText) });
-            await page.getByText(/พร้อมกู้คืนจาก pilot-final-backup.json/).waitFor();
-            page.once('dialog', dialog => dialog.accept());
-            await page.getByRole('button', { name: 'Replace Workspace' }).click();
-            await page.getByRole('heading', { name: 'งานแพ็ก' }).waitFor({ timeout: 30000 });
-            assert.equal(await page.evaluate(id => window.PackMasterDuplicate.getBatchFingerprints(id)[0].hash, batchId), 'FINAL-SANITIZED-HASH');
-            assert.ok(await page.evaluate(id => window.PackMasterArchive.getArchivedAt(id, null), batchId));
-
-            await page.getByRole('button', { name: /คลังคำศัพท์/ }).click();
-            const invalid = JSON.parse(backupText);
-            invalid.settings.archiveState = { [batchId]: { archivedAt: 'bad-date', touchedAt: 'bad-date' } };
-            await page.locator('input[type="file"][accept=".json,application/json"]').setInputFiles({
-              name: 'invalid-final-backup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(invalid))
+            console.log('CHECKPOINT createMeta');
+            const metaProbe = await page.evaluate(() => {
+              try {
+                return { ok: true, meta: window.PackMasterBatch.createBatchMeta([], new Date('2026-08-08T12:00:00.000Z')) };
+              } catch (error) {
+                return { ok: false, name: error.name, message: error.message, stack: error.stack, dateType: typeof Date };
+              }
             });
-            await page.getByText(/ไฟล์ Backup ใช้งานไม่ได้/).waitFor();
-            assert.ok(await page.evaluate(id => window.PackMasterArchive.getArchivedAt(id, null), batchId));
-            assert.equal(await page.evaluate(id => window.PackMasterDuplicate.getBatchFingerprints(id)[0].hash, batchId), 'FINAL-SANITIZED-HASH');
+            console.log('CREATE_META=' + JSON.stringify(metaProbe, null, 2));
+            if (!metaProbe.ok) throw new Error('createBatchMeta probe failed: ' + metaProbe.message);
 
-            await page.reload({ waitUntil: 'domcontentloaded' });
-            await page.waitForFunction(() => Boolean(window.PackMasterBatch && window.PackMasterArchive && window.PackMasterDuplicate));
-            await page.waitForTimeout(1000);
-            rows = await page.evaluate(() => window.PackMasterBatch.listBatches());
-            assert.equal(rows.length, 1);
-            assert.ok(await page.evaluate(id => window.PackMasterArchive.getArchivedAt(id, null), batchId));
-            assert.equal(await page.evaluate(id => window.PackMasterDuplicate.getBatchFingerprints(id)[0].hash, batchId), 'FINAL-SANITIZED-HASH');
-
-            await page.evaluate(async () => {
-              const rows = await window.PackMasterBatch.listBatches();
-              for (const row of rows) await window.PackMasterBatch.deleteBatch(row.id);
-              localStorage.removeItem(window.PackMasterArchive.STORAGE_KEY);
-              localStorage.removeItem(window.PackMasterDuplicate.STORAGE_KEY);
-              localStorage.removeItem('skuMappingRules');
-              localStorage.removeItem('thermalMode');
-            });
-            assert.equal((await page.evaluate(() => window.PackMasterBatch.listBatches())).length, 0);
-
-            if (errors.length) throw new Error(`Unexpected Production browser errors:\n${errors.join('\n')}`);
-            console.log('PackMaster final Pilot-ready Production Chromium smoke passed');
+            console.log('CHECKPOINT exact-button');
+            const button = page.getByRole('button', { name: 'สร้าง Batch ใหม่', exact: true });
+            console.log('BUTTON_COUNT=' + await button.count());
+            await button.click();
+            await page.getByRole('button', { name: /กลับรายการ Batch/ }).waitFor({ timeout: 30000 });
+            console.log('CHECKPOINT clicked');
+            console.log('BATCHES=' + JSON.stringify(await page.evaluate(() => window.PackMasterBatch.listBatches())));
+            console.log('PAGE_ERRORS=' + JSON.stringify(pageErrors, null, 2));
+            console.log('CONSOLE_ERRORS=' + JSON.stringify(consoleErrors, null, 2));
+            if (pageErrors.length || consoleErrors.length) throw new Error('Unexpected browser errors after create');
             await browser.close();
           })().catch(error => { console.error(error); process.exit(1); });
           NODE
