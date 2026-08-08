@@ -1,0 +1,108 @@
+name: Apply PackMaster Phase 2 Local Batch
+
+on:
+  push:
+    branches:
+      - phase2-local-batch
+    paths:
+      - scripts/apply_phase2_local_batch.py
+      - .github/workflows/apply-phase2-local-batch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: phase2-local-batch
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Baseline core regression tests
+        run: node tests/packmaster-smart-matcher.test.mjs
+
+      - name: Snapshot frozen core hash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          text = Path('index.html').read_text(encoding='utf-8')
+          start = text.index('    const normalizeRuleKeyword')
+          end = text.index('    const waitForLabelRender')
+          digest = hashlib.sha256(text[start:end].encode()).hexdigest()
+          Path('/tmp/core-before.sha').write_text(digest)
+          print('Frozen core hash:', digest)
+          PY
+
+      - name: Apply Local Batch UI patch
+        run: python3 scripts/apply_phase2_local_batch.py
+
+      - name: Verify frozen core unchanged
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          text = Path('index.html').read_text(encoding='utf-8')
+          start = text.index('    const normalizeRuleKeyword')
+          end = text.index('    const waitForLabelRender')
+          after = hashlib.sha256(text[start:end].encode()).hexdigest()
+          before = Path('/tmp/core-before.sha').read_text().strip()
+          print('Before:', before)
+          print('After :', after)
+          if before != after:
+              raise SystemExit('Frozen Parser/Matcher/Qty core changed')
+          PY
+
+      - name: Local Batch tests after implementation
+        run: node tests/packmaster-batch.test.mjs
+
+      - name: Existing regression tests after implementation
+        run: node tests/packmaster-smart-matcher.test.mjs
+
+      - name: Extract Babel application script
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          html = Path('index.html').read_text(encoding='utf-8')
+          match = re.search(r'<script type="text/babel">(.*?)</script>', html, re.S)
+          if not match:
+              raise SystemExit('text/babel application script not found')
+          Path('/tmp/packmaster-app.jsx').write_text(match.group(1), encoding='utf-8')
+          PY
+
+      - name: Install Babel syntax checker
+        run: npm install --no-save --no-package-lock @babel/core@7 @babel/cli@7 @babel/preset-react@7
+
+      - name: Compile JSX syntax
+        run: npx babel /tmp/packmaster-app.jsx --presets @babel/preset-react --out-file /tmp/packmaster-app.js
+
+      - name: Verify print and export invariants
+        run: |
+          grep -F 'for (let i = 0; i < MappedOrders.length; i++)' index.html
+          grep -F '{MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}' index.html
+          grep -F 'const handlePrint = async () => {' index.html
+          grep -F 'window.print();' index.html
+
+      - name: Check whitespace errors
+        run: git diff --check
+
+      - name: Commit verified Local Batch UI
+        run: |
+          if git diff --quiet -- index.html; then
+            echo 'No index.html changes to commit'
+            exit 0
+          fi
+          git config user.name 'packmaster-batch-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add index.html
+          git commit -m 'Add Phase 2 Local Batch workflow'
+          git push origin HEAD:phase2-local-batch
