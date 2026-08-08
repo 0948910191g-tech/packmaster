@@ -1,7 +1,7 @@
 {
   "schema": "packmaster-pilot-sample",
   "version": 1,
-  "note": "Synthetic sample only. No real customer, tracking, address, phone, order ID, or marketplace PDF data is included.",
+  "note": "Synthetic sample only. No real buyer identity, address, phone, order reference, or marketplace PDF data is included.",
   "batches": [
     {
       "name": "Sample Batch #001",
