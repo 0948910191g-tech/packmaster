@@ -1,0 +1,55 @@
+name: Apply Phase 3D Archive Lifecycle
+
+on:
+  push:
+    branches:
+      - phase3d-archive-lifecycle
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Archive core GREEN
+        run: node tests/packmaster-archive.test.mjs
+      - name: UI RED before patch when missing
+        run: |
+          if grep -Fq "const [batchViewFilter, setBatchViewFilter]" index.html; then
+            echo "Archive UI patch already present"
+          else
+            if node tests/packmaster-phase3d-ui.test.mjs; then exit 1; else echo "UI RED confirmed"; fi
+          fi
+      - name: Apply UI patch
+        run: node tools/patch-phase3d-archive.cjs
+      - name: Archive UI GREEN
+        run: node tests/packmaster-phase3d-ui.test.mjs
+      - name: Existing regressions
+        run: |
+          node tests/packmaster-smart-matcher.test.mjs
+          node tests/packmaster-batch.test.mjs
+          node tests/packmaster-workspace.test.mjs
+          node tests/packmaster-workspace-validation.test.mjs
+          node tests/packmaster-duplicate.test.mjs
+          node tests/packmaster-phase3b-ui.test.mjs
+          node tests/packmaster-exceptions.test.mjs
+          node tests/packmaster-phase3c-ui.test.mjs
+      - name: Safety invariants
+        run: |
+          grep -F "const DB_VERSION = 1" packmaster-batch.js
+          grep -F 'for (let i = 0; i < MappedOrders.length; i++)' index.html
+          grep -F '{MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}' index.html
+          git diff --check
+      - name: Commit generated UI
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Integrate Phase 3D Batch archive lifecycle"
+          git push
