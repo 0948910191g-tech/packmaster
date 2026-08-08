@@ -42,44 +42,55 @@ jobs:
 
       - name: Reached Production load
         if: always()
-        run: test "$(cut -d: -f1 /tmp/packmaster-pilot-checkpoint 2>/dev/null || echo 0)" -ge 1
+        run: |
+          test "$(cut -d: -f1 /tmp/packmaster-pilot-checkpoint 2>/dev/null || echo 0)" -ge 1
 
       - name: Reached Batch create
         if: always()
-        run: test "$(cut -d: -f1 /tmp/packmaster-pilot-checkpoint 2>/dev/null || echo 0)" -ge 3
+        run: |
+          test "$(cut -d: -f1 /tmp/packmaster-pilot-checkpoint 2>/dev/null || echo 0)" -ge 3
 
       - name: Reached Archive sidecar
         if: always()
-        run: test "$(cut -d: -f1 /tmp/packmaster-pilot-checkpoint 2>/dev/null || echo 0)" -ge 6
+        run: |
+          test "$(cut -d: -f1 /tmp/packmaster-pilot-checkpoint 2>/dev/null || echo 0)" -ge 6
 
       - name: Reached Storage cleanup
         if: always()
-        run: test "$(cut -d: -f1 /tmp/packmaster-pilot-checkpoint 2>/dev/null || echo 0)" -ge 7
+        run: |
+          test "$(cut -d: -f1 /tmp/packmaster-pilot-checkpoint 2>/dev/null || echo 0)" -ge 7
 
       - name: Reached Diagnostics
         if: always()
-        run: test "$(cut -d: -f1 /tmp/packmaster-pilot-checkpoint 2>/dev/null || echo 0)" -ge 8
+        run: |
+          test "$(cut -d: -f1 /tmp/packmaster-pilot-checkpoint 2>/dev/null || echo 0)" -ge 8
 
       - name: Reached Workspace Backup
         if: always()
-        run: test "$(cut -d: -f1 /tmp/packmaster-pilot-checkpoint 2>/dev/null || echo 0)" -ge 9
+        run: |
+          test "$(cut -d: -f1 /tmp/packmaster-pilot-checkpoint 2>/dev/null || echo 0)" -ge 9
 
       - name: Reached Workspace Restore
         if: always()
-        run: test "$(cut -d: -f1 /tmp/packmaster-pilot-checkpoint 2>/dev/null || echo 0)" -ge 10
+        run: |
+          test "$(cut -d: -f1 /tmp/packmaster-pilot-checkpoint 2>/dev/null || echo 0)" -ge 10
 
       - name: Reached Invalid Backup rejection
         if: always()
-        run: test "$(cut -d: -f1 /tmp/packmaster-pilot-checkpoint 2>/dev/null || echo 0)" -ge 11
+        run: |
+          test "$(cut -d: -f1 /tmp/packmaster-pilot-checkpoint 2>/dev/null || echo 0)" -ge 11
 
       - name: Reached Reload persistence
         if: always()
-        run: test "$(cut -d: -f1 /tmp/packmaster-pilot-checkpoint 2>/dev/null || echo 0)" -ge 12
+        run: |
+          test "$(cut -d: -f1 /tmp/packmaster-pilot-checkpoint 2>/dev/null || echo 0)" -ge 12
 
       - name: Completed full Production smoke
         if: always()
-        run: test "$(cut -d: -f1 /tmp/packmaster-pilot-checkpoint 2>/dev/null || echo 0)" -ge 13
+        run: |
+          test "$(cut -d: -f1 /tmp/packmaster-pilot-checkpoint 2>/dev/null || echo 0)" -ge 13
 
       - name: Assert no hidden workflow error
         if: always()
-        run: test ! -f /tmp/packmaster-pilot-error
+        run: |
+          test ! -f /tmp/packmaster-pilot-error
