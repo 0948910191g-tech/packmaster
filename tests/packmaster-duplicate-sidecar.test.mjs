@@ -88,7 +88,7 @@ const requiredMarkers = [
   'duplicateApi.appendBatchFingerprints(activeBatchId, acceptedSourceFiles)',
   'duplicateApi.clearBatchFingerprints(batch.id)',
   'duplicateApi.clearBatchFingerprints(activeBatchId)',
-  'duplicateFingerprints: duplicateApi.exportFingerprintStore()',
+  'duplicateFingerprints: duplicateApi ? duplicateApi.exportFingerprintStore() : {}',
   'duplicateApi.validateFingerprintStore(backup.settings.duplicateFingerprints || {})',
   'duplicateApi.replaceFingerprintStore(backup.settings.duplicateFingerprints || {})'
 ];
