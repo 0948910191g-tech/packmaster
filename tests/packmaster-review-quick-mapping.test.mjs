@@ -10,7 +10,7 @@ assert.match(html, /บันทึกและใช้/, 'Quick Mapping must e
 assert.match(html, /เปิดคลังคำศัพท์/, 'Quick Mapping must preserve advanced SKU Library fallback');
 assert.match(html, /shortName/, 'Quick Mapping must preserve existing keyword/shortName rule shape');
 assert.match(html, /!.*shortName.*trim\(\)/s, 'Quick Mapping must reject empty internal short names before save');
-assert.match(html, /SKU.*UNMAPPED|UNMAPPED.*SKU/s, 'Quick Mapping action must stay limited to SKU/Unmapped exception paths');
+assert.match(html, /REVIEW_SKU.*UNMAPPED|UNMAPPED.*REVIEW_SKU/s, 'Quick Mapping action must stay limited to the real SKU/Unmapped exception types');
 assert.equal(/quickMapState[^\n]*shortName:\s*['"][^'"]+['"]/.test(html), false, 'Quick Mapping must not auto-generate an internal short name');
 
 console.log('PackMaster inline Quick Mapping contract passed');
