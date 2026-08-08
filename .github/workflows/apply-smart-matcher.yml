@@ -27,6 +27,9 @@ jobs:
       - name: Smart matcher regression tests
         run: node tests/packmaster-smart-matcher.test.mjs
 
+      - name: Local batch regression tests
+        run: node tests/packmaster-batch.test.mjs
+
       - name: Existing guardrail tests when present
         run: |
           if [ -f tests/packmaster-guardrails.test.mjs ]; then
