@@ -1,0 +1,78 @@
+name: Apply PackMaster Frontend V3
+
+on:
+  push:
+    branches:
+      - frontend-v3-operational-ui
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: frontend-v3-operational-ui
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Apply Frontend V3 patch
+        run: python3 tools/apply-frontend-v3.py
+
+      - name: Frontend V3 contract
+        run: node tests/packmaster-frontend-v3-ui.test.mjs
+
+      - name: Run all repository node regression tests
+        run: |
+          set -euo pipefail
+          for test_file in tests/*.test.mjs; do
+            echo "==> $test_file"
+            node "$test_file"
+          done
+
+      - name: Compile JSX with Babel React preset
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          html = Path('index.html').read_text(encoding='utf-8')
+          match = re.search(r'<script type="text/babel">(.*?)</script>', html, re.S)
+          if not match:
+              raise SystemExit('text/babel script not found')
+          Path('/tmp/packmaster-app.jsx').write_text(match.group(1), encoding='utf-8')
+          PY
+          npx --yes -p @babel/core -p @babel/cli -p @babel/preset-react babel /tmp/packmaster-app.jsx --presets @babel/preset-react --out-file /tmp/packmaster-app.js
+
+      - name: Verify frozen Batch adapter and no paid/database drift
+        run: |
+          git fetch origin main
+          git diff --exit-code origin/main -- packmaster-batch.js
+          node tests/packmaster-guardrails.test.mjs
+
+      - name: Verify print and export scope
+        run: |
+          grep -F 'for (let i = 0; i < MappedOrders.length; i++)' index.html
+          grep -F 'MappedOrders.map((order) => (<LabelCard' index.html
+          ! grep -F 'visibleReviewOrders.map((order) => (<LabelCard key={`print-' index.html
+
+      - name: Check whitespace
+        run: git diff --check
+
+      - name: Commit verified Frontend V3 index
+        run: |
+          if git diff --quiet -- index.html; then
+            echo "No index.html changes to commit"
+            exit 0
+          fi
+          git config user.name "PackMaster Frontend V3 Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add index.html
+          git commit -m "feat: rebuild Frontend V3 operational UI"
+          git push origin HEAD:frontend-v3-operational-ui
