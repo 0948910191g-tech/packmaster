@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PackMaster V48.12 Ultimate (The Print Perfect)</title>
+  <title>PackMaster — Operational Packing Workspace</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -49,6 +49,133 @@
       }
     }
     body { font-family: 'Noto Sans Thai', sans-serif; }
+
+    :root {
+      --pm-navy: #071f3d;
+      --pm-navy-2: #0b315f;
+      --pm-blue: #0b63ce;
+      --pm-blue-soft: #eaf3ff;
+      --pm-canvas: #f4f7fb;
+      --pm-surface: #ffffff;
+      --pm-border: #dfe7f1;
+      --pm-text: #172033;
+      --pm-muted: #708096;
+    }
+    .pm-shell { min-height: 100vh; background: var(--pm-canvas); color: var(--pm-text); }
+    .pm-command-header { height: 82px; background: linear-gradient(135deg, #061a34 0%, #08274c 60%, #071f3d 100%); border-bottom: 1px solid rgba(255,255,255,.08); display: flex; align-items: center; gap: 18px; padding: 0 22px; position: sticky; top: 0; z-index: 50; box-shadow: 0 8px 28px rgba(7,31,61,.16); }
+    .pm-brand-wrap { display: flex; align-items: center; gap: 13px; min-width: 350px; }
+    .pm-logo-mark { width: 46px; height: 46px; border-radius: 13px; display: flex; align-items: center; justify-content: center; color: white; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16); }
+    .pm-command-btn { height: 44px; padding: 0 13px; border-radius: 11px; border: 1px solid rgba(191,219,254,.22); background: rgba(255,255,255,.055); color: #e8f2ff; display: inline-flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 800; white-space: nowrap; transition: .18s ease; }
+    .pm-command-btn:hover { background: rgba(255,255,255,.11); border-color: rgba(191,219,254,.36); transform: translateY(-1px); }
+    .pm-command-safe { margin-left: 8px; border-color: rgba(110,231,183,.22); color: #d1fae5; }
+    .pm-app-frame { min-height: calc(100vh - 82px); display: flex; }
+    .pm-sidebar { width: 205px; flex: 0 0 205px; background: #082548; border-right: 1px solid rgba(255,255,255,.06); display: flex; flex-direction: column; min-height: calc(100vh - 82px); position: sticky; top: 82px; align-self: flex-start; height: calc(100vh - 82px); }
+    .pm-nav-btn { width: 100%; min-height: 44px; border-radius: 10px; padding: 0 12px; color: rgba(219,234,254,.65); display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 800; text-align: left; transition: .18s ease; border: 1px solid transparent; }
+    .pm-nav-btn:hover { color: white; background: rgba(255,255,255,.06); }
+    .pm-nav-btn-active { color: white; background: #0b63ce; border-color: rgba(147,197,253,.28); box-shadow: 0 8px 18px rgba(0,0,0,.15); }
+    .pm-main { flex: 1; min-width: 0; background: var(--pm-canvas); overflow-x: hidden; }
+    .pm-page { max-width: 1240px; margin: 0 auto; padding: 24px 26px 44px; animation: pmFade .22s ease; }
+    .pm-page-wide { max-width: 1520px; }
+    @keyframes pmFade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    .pm-page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
+    .pm-eyebrow, .pm-section-kicker { color: var(--pm-blue); font-size: 9px; line-height: 1.2; text-transform: uppercase; letter-spacing: .16em; font-weight: 900; }
+    .pm-page-title { color: #14213a; font-size: clamp(24px, 2.2vw, 32px); line-height: 1.1; font-weight: 900; letter-spacing: -.025em; margin-top: 5px; }
+    .pm-page-subtitle { color: #718096; font-size: 12px; line-height: 1.65; font-weight: 600; margin-top: 6px; max-width: 760px; }
+    .pm-card { background: white; border: 1px solid var(--pm-border); border-radius: 16px; box-shadow: 0 5px 16px rgba(26,54,93,.045); }
+    .pm-primary-btn, .pm-secondary-btn, .pm-ghost-btn, .pm-danger-btn, .pm-success-btn, .pm-warning-btn { min-height: 38px; padding: 0 14px; border-radius: 10px; display: inline-flex; align-items: center; gap: 7px; justify-content: center; font-size: 11px; font-weight: 900; transition: .16s ease; white-space: nowrap; }
+    .pm-primary-btn { background: var(--pm-blue); color: white; border: 1px solid var(--pm-blue); box-shadow: 0 5px 12px rgba(11,99,206,.18); }
+    .pm-primary-btn:hover:not(:disabled) { background: #0958b7; transform: translateY(-1px); }
+    .pm-secondary-btn { background: white; color: #225487; border: 1px solid #cfdbea; }
+    .pm-secondary-btn:hover:not(:disabled) { border-color: #93b6dd; background: #f7fbff; }
+    .pm-ghost-btn { background: #f7f9fc; color: #607086; border: 1px solid #e1e7ef; }
+    .pm-ghost-btn:hover:not(:disabled) { color: #1f4f80; background: #eef5fd; }
+    .pm-danger-btn { background: #fff1f2; color: #c93444; border: 1px solid #fecdd3; }
+    .pm-success-btn { background: #ecfdf5; color: #087a55; border: 1px solid #a7f3d0; }
+    .pm-warning-btn { background: #fffbeb; color: #a35d00; border: 1px solid #fde68a; }
+    .pm-primary-btn:disabled, .pm-secondary-btn:disabled, .pm-ghost-btn:disabled, .pm-danger-btn:disabled, .pm-success-btn:disabled, .pm-warning-btn:disabled { opacity: .42; cursor: not-allowed; transform: none; box-shadow: none; }
+    .pm-info-banner { border: 1px solid #bed8f5; background: #edf6ff; color: #184b7d; border-radius: 13px; padding: 12px 14px; display: flex; align-items: center; gap: 10px; }
+    .pm-mini-stat { background: #f7f9fc; border: 1px solid #edf1f6; border-radius: 11px; padding: 9px 10px; min-width: 0; }
+    .pm-mini-stat span { display: block; color: #8b98a9; font-size: 8px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; }
+    .pm-mini-stat strong { display: block; color: #16233b; font-size: 18px; line-height: 1.15; font-weight: 900; margin-top: 3px; overflow-wrap: anywhere; }
+    .pm-mini-ready { background: #f0fdf7; border-color: #d1fae5; }
+    .pm-mini-ready strong { color: #07835b; }
+    .pm-mini-review { background: #fffaf0; border-color: #fde8bd; }
+    .pm-mini-review strong { color: #b36b08; }
+    .pm-step { border-radius: 11px; min-height: 52px; padding: 8px 10px; color: #98a5b5; background: #f7f9fc; border: 1px solid #edf1f6; display: flex; align-items: center; gap: 8px; font-size: 10px; font-weight: 900; }
+    .pm-step-icon { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: white; border: 1px solid #e5eaf1; }
+    .pm-step-active { color: #285e91; border-color: #cfe1f5; background: #f3f8fe; }
+    .pm-step-active .pm-step-icon { color: #0b63ce; border-color: #bdd7f5; background: white; }
+    .pm-step-current { color: white; background: #0b63ce; border-color: #0b63ce; }
+    .pm-step-current .pm-step-icon { color: #0b63ce; }
+    .pm-upload-zone { border: 1.5px dashed #b7cee7; background: #fbfdff; border-radius: 15px; padding: 8px; transition: .18s ease; }
+    .pm-upload-zone:hover { border-color: #6da8e7; background: #f7fbff; }
+    .pm-upload-zone-active { border-style: solid; border-color: #8ebaea; background: #f4f9ff; }
+    .pm-spinner { width: 38px; height: 38px; border: 4px solid #dbeafe; border-top-color: #0b63ce; border-radius: 999px; animation: pmSpin .8s linear infinite; }
+    @keyframes pmSpin { to { transform: rotate(360deg); } }
+    .pm-issue-row { width: 100%; min-height: 42px; padding: 0 10px; display: flex; align-items: center; gap: 8px; border-radius: 10px; border: 1px solid #e6ebf1; background: #fbfcfe; color: #56667c; font-size: 11px; font-weight: 800; transition: .15s ease; }
+    .pm-issue-row:hover { border-color: #c7d8eb; background: #f4f8fd; color: #244e78; }
+    .pm-issue-dot { width: 7px; height: 7px; border-radius: 999px; flex: 0 0 auto; }
+    .pm-label { display: block; color: #53657b; font-size: 10px; font-weight: 900; margin-bottom: 6px; }
+    .pm-help { color: #99a5b4; font-size: 9px; font-weight: 600; line-height: 1.5; margin-top: 5px; }
+    .pm-input, .pm-select { border: 1px solid #d9e2ec; background: white; color: #26364c; border-radius: 10px; outline: none; font-size: 11px; font-weight: 700; transition: .16s ease; }
+    .pm-input { width: 100%; padding: 10px 11px; }
+    .pm-select { padding: 10px 32px 10px 11px; }
+    .pm-input:focus, .pm-select:focus { border-color: #6fa8e4; box-shadow: 0 0 0 3px rgba(11,99,206,.10); }
+    .pm-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .pm-table thead th { padding: 10px 13px; color: #7d8b9c; background: #f7f9fc; border-bottom: 1px solid #e7ecf2; font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+    .pm-table tbody td { padding: 11px 13px; border-bottom: 1px solid #eef2f6; vertical-align: top; }
+    .pm-table tbody tr:hover { background: #fbfdff; }
+    .pm-icon-btn { width: 32px; height: 32px; border-radius: 9px; border: 1px solid #e1e8f0; background: white; color: #66809a; display: inline-flex; align-items: center; justify-content: center; }
+    .pm-icon-btn:hover { color: #0b63ce; background: #f1f7fe; border-color: #c7dcf2; }
+    .pm-icon-danger:hover { color: #d6384b; background: #fff1f2; border-color: #fecdd3; }
+    .pm-pagination { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid #e8edf3; padding: 10px 13px; background: #fbfcfe; }
+    .pm-page-btn { width: 32px; height: 32px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #d9e2ec; background: white; color: #31577f; font-size: 18px; font-weight: 900; }
+    .pm-page-btn:disabled { opacity: .35; cursor: not-allowed; }
+    .pm-summary-btn { min-width: 0; border-radius: 14px; transition: .15s ease; text-align: left; }
+    .pm-summary-selected { outline: 2px solid #80afe2; outline-offset: 1px; }
+    .pm-view-toggle { width: 34px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 7px; color: #8997a8; }
+    .pm-view-toggle-active { background: white; color: #0b63ce; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    .pm-order-card { background: white; border: 1px solid #dfe7f1; border-radius: 14px; padding: 12px; box-shadow: 0 4px 14px rgba(26,54,93,.04); min-width: 0; }
+    .pm-label-thumb { aspect-ratio: 2 / 2.65; max-height: 230px; width: 100%; overflow: hidden; border: 1px solid #e3e9f0; border-radius: 10px; background: #f7f9fc; }
+    .pm-label-thumb img { width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+    .pm-feature-icon { width: 38px; height: 38px; border-radius: 11px; display: flex; align-items: center; justify-content: center; color: #0b63ce; background: #edf6ff; border: 1px solid #d7e9fb; flex: 0 0 auto; }
+    .pm-status { display: inline-flex; align-items: center; min-height: 20px; padding: 2px 7px; border-radius: 999px; font-size: 8px; line-height: 1; font-weight: 900; border: 1px solid transparent; margin-top: 4px; }
+    .pm-status-green { color: #067553; background: #ecfdf5; border-color: #b7f0d8; }
+    .pm-status-amber { color: #a35d00; background: #fffbeb; border-color: #fde68a; }
+    .pm-status-red { color: #c93444; background: #fff1f2; border-color: #fecdd3; }
+    .pm-status-slate { color: #617083; background: #f1f5f9; border-color: #e2e8f0; }
+    .pm-status-blue { color: #1762aa; background: #eff6ff; border-color: #bfdbfe; }
+    .pm-status-dark { color: white; background: #1f2937; border-color: #1f2937; }
+    .pm-status-orange { color: #c44b14; background: #fff5ed; border-color: #fed7aa; }
+    .pm-metric { border: 1px solid #dfe7f1; border-radius: 14px; padding: 13px 14px; background: white; min-width: 0; box-shadow: 0 4px 12px rgba(26,54,93,.035); }
+    .pm-metric-compact { padding: 10px 11px; border-radius: 11px; box-shadow: none; }
+    .pm-metric-label { font-size: 9px; font-weight: 900; color: #8390a2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pm-metric-value { margin-top: 3px; font-size: 25px; line-height: 1.05; font-weight: 900; color: #1b2a42; }
+    .pm-metric-compact .pm-metric-value { font-size: 20px; }
+    .pm-metric-helper { margin-top: 3px; font-size: 8px; font-weight: 700; color: #a1aab7; }
+    .pm-metric-green { background: #f4fdf8; border-color: #d7f3e4; }
+    .pm-metric-green .pm-metric-value { color: #07835b; }
+    .pm-metric-amber { background: #fffaf0; border-color: #f9e6bd; }
+    .pm-metric-amber .pm-metric-value { color: #b36b08; }
+    .pm-metric-red { background: #fff6f6; border-color: #f8d8dc; }
+    .pm-metric-red .pm-metric-value { color: #cc3c4d; }
+    .pm-metric-blue { background: #f4f9ff; border-color: #d8e9fa; }
+    .pm-metric-blue .pm-metric-value { color: #0b63ce; }
+    .pm-metric-slate { background: #fff; }
+    @media (max-width: 1023px) {
+      .pm-command-header { height: 68px; padding: 0 14px; }
+      .pm-brand-wrap { min-width: 0; }
+      .pm-logo-mark { width: 40px; height: 40px; }
+      .pm-app-frame { min-height: calc(100vh - 68px); }
+      .pm-sidebar { display: none; }
+      .pm-page { padding: 18px 14px 36px; }
+      .pm-page-head { align-items: flex-start; flex-direction: column; }
+    }
+    @media (max-width: 639px) {
+      .pm-command-header { position: relative; }
+      .pm-page { padding-left: 10px; padding-right: 10px; }
+      .pm-metric-value { font-size: 20px; }
+    }
   </style>
 </head>
 <body class="bg-[#f8fafc] text-blue-950 selection:bg-blue-200">
@@ -672,6 +799,60 @@
       }
     };
 
+    // PackMaster Frontend V3 — presentation-only helpers.
+    const PMIcon = ({ name = 'box', className = 'w-5 h-5' }) => {
+      const common = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.9, strokeLinecap: 'round', strokeLinejoin: 'round' };
+      const paths = {
+        box: <><path {...common} d="M3 7.5 12 3l9 4.5-9 4.5-9-4.5Z"/><path {...common} d="M3 7.5V17l9 4 9-4V7.5M12 12v9"/></>,
+        file: <><path {...common} d="M6 2.8h8l4 4V21H6z"/><path {...common} d="M14 2.8V7h4M9 11h6M9 15h6"/></>,
+        barcode: <><path {...common} d="M4 5v14M7 5v14M11 5v14M14 5v14M19 5v14"/><path {...common} d="M2.5 3.5h4M17.5 3.5h4M2.5 20.5h4M17.5 20.5h4"/></>,
+        layers: <><path {...common} d="m12 3 9 5-9 5-9-5 9-5Z"/><path {...common} d="m3 12 9 5 9-5M3 16l9 5 9-5"/></>,
+        alert: <><path {...common} d="M12 3 2.8 20h18.4L12 3Z"/><path {...common} d="M12 9v5M12 17.2h.01"/></>,
+        printer: <><path {...common} d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path {...common} d="M6 14h12v7H6z"/></>,
+        shield: <><path {...common} d="M12 2.7 20 6v6c0 5-3.4 8.1-8 9.6C7.4 20.1 4 17 4 12V6l8-3.3Z"/><path {...common} d="m8.5 12 2.2 2.2 4.8-5"/></>,
+        upload: <><path {...common} d="M12 16V4M7.5 8.5 12 4l4.5 4.5"/><path {...common} d="M4 15v5h16v-5"/></>,
+        review: <><path {...common} d="M5 3h14v18H5z"/><path {...common} d="M8 8h8M8 12h5M8 16h4"/></>,
+        plus: <><path {...common} d="M12 5v14M5 12h14"/></>,
+        archive: <><path {...common} d="M4 7h16v14H4zM3 3h18v4H3zM9 11h6"/></>,
+        'arrow-left': <><path {...common} d="m14.5 5-7 7 7 7M8 12h11"/></>,
+        'arrow-right': <><path {...common} d="m9.5 5 7 7-7 7M5 12h11"/></>,
+        'chevron-right': <><path {...common} d="m9 5 7 7-7 7"/></>,
+        search: <><circle {...common} cx="11" cy="11" r="7"/><path {...common} d="m16.5 16.5 4 4"/></>,
+        download: <><path {...common} d="M12 4v12M7.5 11.5 12 16l4.5-4.5"/><path {...common} d="M4 20h16"/></>,
+        edit: <><path {...common} d="M4 20h4L19 9l-4-4L4 16v4Z"/><path {...common} d="m13.8 6.2 4 4"/></>,
+        trash: <><path {...common} d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"/></>,
+        grid: <><rect {...common} x="3" y="3" width="7" height="7"/><rect {...common} x="14" y="3" width="7" height="7"/><rect {...common} x="3" y="14" width="7" height="7"/><rect {...common} x="14" y="14" width="7" height="7"/></>,
+        list: <><path {...common} d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01"/></>,
+        refresh: <><path {...common} d="M20 7v5h-5M4 17v-5h5"/><path {...common} d="M6.1 8A7 7 0 0 1 18 6.8L20 12M4 12l2 5.2A7 7 0 0 0 17.9 16"/></>,
+        lock: <><rect {...common} x="5" y="10" width="14" height="11" rx="2"/><path {...common} d="M8 10V7a4 4 0 0 1 8 0v3"/></>,
+        check: <><circle {...common} cx="12" cy="12" r="9"/><path {...common} d="m8 12 2.5 2.5L16 9"/></>,
+        database: <><ellipse {...common} cx="12" cy="5" rx="8" ry="3"/><path {...common} d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></>,
+        storage: <><rect {...common} x="3" y="5" width="18" height="6" rx="2"/><rect {...common} x="3" y="13" width="18" height="6" rx="2"/><path {...common} d="M7 8h.01M7 16h.01M11 8h6M11 16h6"/></>,
+        activity: <><path {...common} d="M3 12h4l2.2-6 4 12 2-6H21"/></>,
+        loader: <><path {...common} d="M12 3a9 9 0 1 1-9 9"/></>
+      };
+      return <svg viewBox="0 0 24 24" className={className} aria-hidden="true">{paths[name] || paths.box}</svg>;
+    };
+
+    const PMStatusPill = ({ tone = 'slate', children }) => <span className={`pm-status pm-status-${tone}`}>{children}</span>;
+
+    const PMMetric = ({ label, value, helper = '', tone = 'slate', compact = false }) => (
+      <div className={`pm-metric pm-metric-${tone} ${compact ? 'pm-metric-compact' : ''}`}>
+        <div className="pm-metric-label">{label}</div>
+        <div className="pm-metric-value">{value}</div>
+        {helper && <div className="pm-metric-helper">{helper}</div>}
+      </div>
+    );
+
+    const PMEmptyState = ({ icon = 'box', title, body, action = null }) => (
+      <div className="pm-card px-5 py-14 text-center">
+        <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4"><PMIcon name={icon} className="w-6 h-6" /></div>
+        <h3 className="text-base font-black text-slate-800">{title}</h3>
+        <p className="text-xs font-semibold text-slate-400 mt-1 max-w-lg mx-auto leading-5">{body}</p>
+        {action && <div className="mt-5">{action}</div>}
+      </div>
+    );
+
     function App() {
       const batchApi = window.PackMasterBatch;
       const workspaceApi = window.PackMasterWorkspace;
@@ -683,6 +864,13 @@
       const diagnosticsApi = window.PackMasterDiagnostics;
       const PILOT_VERSION = 'PackMaster Pilot 2026.08.08';
       const [activeTab, setActiveTab] = useState('upload');
+      // PackMaster Frontend V3 — presentation-only navigation/pagination.
+      const [activeView, setActiveView] = useState('batches');
+      const [reviewPage, setReviewPage] = useState(1);
+      const [reviewPageSize, setReviewPageSize] = useState(12);
+      const [skuPage, setSkuPage] = useState(1);
+      const [skuPageSize, setSkuPageSize] = useState(20);
+      const [skuSort, setSkuSort] = useState('keyword');
       const [orders, setOrders] = useState([]);
       const [skuRules, setSkuRules] = useState(() => {
         try {
@@ -1188,6 +1376,7 @@
 
             setOrders(prev => [...prev, ...allNewOrders]); 
             setActiveTab('preview');
+            setActiveView('review');
             showToast(`เพิ่มข้อมูลสำเร็จ ${allNewOrders.length} ใบ`, 'success');
           }
         } catch (err) {
@@ -1350,6 +1539,7 @@
         setSkuFilter('ALL');
         setNewRule({ keyword: seed, shortName: '' });
         setActiveTab('settings');
+        setActiveView('sku');
         showToast('เปิดคลังคำศัพท์พร้อม Keyword จาก Exception แล้ว — ตรวจข้อความก่อนกดเพิ่ม', 'success');
       };
 
@@ -1422,6 +1612,7 @@
           setReviewStatus('ALL');
           setUploadError('');
           setActiveTab('upload');
+          setActiveView('upload');
         } catch (err) {
           console.error('Create batch failed', err);
           showToast('สร้าง Batch ไม่สำเร็จ กรุณาลองใหม่', 'error');
@@ -1449,6 +1640,7 @@
           setReviewStatus('ALL');
           setUploadError('');
           setActiveTab('upload');
+          setActiveView('upload');
         } catch (err) {
           console.error('Open batch failed', err);
           showToast('เปิด Batch ไม่สำเร็จ', 'error');
@@ -1474,6 +1666,7 @@
         setReviewStatus('ALL');
         setUploadError('');
         setActiveTab('upload');
+        setActiveView('batches');
       };
 
       const handleArchiveBatch = async (batch) => {
@@ -1856,6 +2049,7 @@
           setUploadError('');
           resetRestorePreview();
           setActiveTab('upload');
+          setActiveView('batches');
           showToast(`กู้คืน Workspace สำเร็จ • Batch ${summary.batches} • Orders ${summary.orders}`, 'success');
         } catch (err) {
           console.error('Workspace replace failed', err);
@@ -2046,6 +2240,35 @@
         });
       }, [skuRules, skuSearch, skuFilter]);
 
+      const sortedSkuRules = useMemo(() => {
+        const rows = [...filteredSkuRules];
+        return rows.sort((a, b) => {
+          if (skuSort === 'internal') return String(a.shortName || '').localeCompare(String(b.shortName || ''), 'th');
+          return String(a.keyword || '').localeCompare(String(b.keyword || ''), 'th');
+        });
+      }, [filteredSkuRules, skuSort]);
+      const skuPageCount = Math.max(1, Math.ceil(sortedSkuRules.length / skuPageSize));
+      const visibleSkuRules = sortedSkuRules.slice((skuPage - 1) * skuPageSize, skuPage * skuPageSize);
+
+      const reviewPageCount = Math.max(1, Math.ceil(FilteredOrders.length / reviewPageSize));
+      const visibleReviewOrders = FilteredOrders.slice((reviewPage - 1) * reviewPageSize, reviewPage * reviewPageSize);
+
+      useEffect(() => { setSkuPage(1); }, [skuSearch, skuFilter, skuSort]);
+      useEffect(() => { setReviewPage(1); }, [reviewSearch, reviewPlatform, reviewStatus, previewMode, activeBatchId]);
+      useEffect(() => { if (skuPage > skuPageCount) setSkuPage(skuPageCount); }, [skuPage, skuPageCount]);
+      useEffect(() => { if (reviewPage > reviewPageCount) setReviewPage(reviewPageCount); }, [reviewPage, reviewPageCount]);
+
+      const activeBatchRows = batches.filter(batch => !getBatchArchivedAt(batch));
+      const batchDashboard = activeBatchRows.reduce((acc, batch) => {
+        acc.orders += Number(batch.totalOrders) || 0;
+        acc.ready += Number(batch.readyCount) || 0;
+        acc.review += (Number(batch.reviewSkuCount) || 0) + (Number(batch.reviewQtyCount) || 0) + (Number(batch.unmappedCount) || 0);
+        return acc;
+      }, { batchCount: activeBatchRows.length, orders: 0, ready: 0, review: 0 });
+
+      const uploadStep = !activeBatchId ? 1 : loadingStatus.active ? 3 : orders.length === 0 ? 2 : exceptionRows.length > 0 ? 4 : 5;
+      const navigateView = (view) => setActiveView(view);
+
       return (
         <div className="min-h-screen bg-[#f8fafc] text-blue-950 font-sans relative">
           {toast.show && <Toast message={toast.message} type={toast.type} onClose={() => setToast({ ...toast, show: false })} />}
@@ -2061,441 +2284,367 @@
             </div>
           )}
 
-          <div className="no-print flex h-screen overflow-hidden">
-            <aside className="w-72 bg-white border-r border-blue-50 flex flex-col z-20 shadow-[4px_0_24px_rgba(23,37,84,0.02)]">
-              <div className="p-8 border-b border-blue-50 flex items-center gap-4">
-                <div className="bg-blue-950 p-2.5 rounded-[14px] text-white text-xl shadow-md shadow-blue-900/20">📦</div>
-                <div><h1 className="font-black text-2xl tracking-tight text-blue-950 leading-none">PackMaster</h1><div className="mt-1.5 flex flex-wrap gap-1"><span className="text-[9px] font-black text-blue-500 uppercase tracking-widest bg-blue-50 px-2 py-0.5 rounded-md">Local-first</span><span className="text-[9px] font-black text-green-700 uppercase tracking-widest bg-green-50 px-2 py-0.5 rounded-md">PackMaster Pilot</span></div></div>
-              </div>
-              <nav className="flex-1 p-5 space-y-2 mt-4">
-                <button onClick={() => setActiveTab('upload')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 border ${activeTab === 'upload' ? 'bg-blue-50/80 border-blue-100 text-blue-900 font-bold shadow-sm' : 'border-transparent text-blue-950/60 hover:bg-slate-50 hover:text-blue-900 font-semibold'}`}><span className="text-xl">☁️</span> <span className="text-[15px]">งานแพ็ก</span></button>
-                <button onClick={() => setActiveTab('settings')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 border ${activeTab === 'settings' ? 'bg-blue-50/80 border-blue-100 text-blue-900 font-bold shadow-sm' : 'border-transparent text-blue-950/60 hover:bg-slate-50 hover:text-blue-900 font-semibold'}`}><span className="text-xl">⚙️</span> <span className="text-[15px]">คลังคำศัพท์</span></button>
-                <button onClick={() => setActiveTab('preview')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 border ${activeTab === 'preview' ? 'bg-blue-50/80 border-blue-100 text-blue-900 font-bold shadow-sm' : 'border-transparent text-blue-950/60 hover:bg-slate-50 hover:text-blue-900 font-semibold'}`}><span className="text-xl">📄</span> <span className="text-[15px]">รีวิว & พิมพ์</span> {orders.length > 0 && <span className="ml-auto bg-blue-900 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full shadow-sm">{orders.length}</span>}</button>
-              </nav>
-            </aside>
-
-            <main className="flex-1 overflow-y-auto relative z-10">
-              {activeTab === 'upload' && (
-                <div className="p-12 max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-500">
-                  {!activeBatchId ? (
-                    <>
-                      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-10">
-                        <div>
-                          <div className="text-[11px] font-black text-blue-500 uppercase tracking-[0.18em] mb-3">Packing Jobs</div>
-                          <h2 className="text-4xl font-black text-blue-950 mb-3 tracking-tight">งานแพ็ก</h2>
-                          <p className="text-blue-950/55 text-base font-semibold">แยกงานเป็น Batch แล้วสลับรอบได้โดยไม่ต้องล้างข้อมูลชุดก่อนหน้า</p>
-                        </div>
-                        <button onClick={handleCreateBatch} disabled={batchLoading} className="bg-blue-950 hover:bg-blue-900 disabled:opacity-50 text-white px-7 py-4 rounded-2xl font-black text-sm shadow-lg shadow-blue-900/20 flex items-center gap-2 transition-all active:scale-95">
-                          <span className="text-lg">＋</span> สร้าง Batch ใหม่
-                        </button>
-                      </div>
-
-                      {showLocalDataNotice && (
-                        <div className="mb-5 rounded-2xl border border-blue-100 bg-blue-50/60 px-5 py-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                          <div className="flex items-start gap-3">
-                            <span className="text-lg">🔒</span>
-                            <div><div className="text-sm font-black text-blue-950">ข้อมูลอยู่ใน Browser เครื่องนี้</div><div className="text-xs font-bold text-blue-950/50 mt-1">PackMaster Pilot ทำงานแบบ Local-first • ไม่มี Cloud Sync / Login / Database ภายนอก ควร Backup Workspace ก่อนย้ายเครื่องหรือล้าง Browser</div></div>
-                          </div>
-                          <button onClick={dismissLocalDataNotice} className="shrink-0 px-4 py-2 rounded-xl bg-white border border-blue-100 text-blue-800 text-xs font-black">เข้าใจแล้ว</button>
-                        </div>
-                      )}
-
-                      <div className="mb-6 bg-white border-2 border-blue-50 rounded-[2rem] p-6 shadow-sm">
-                        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-5">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2 mb-1"><span className="text-lg">💾</span><h3 className="text-lg font-black text-blue-950">Storage Health</h3><span className="text-[9px] font-black text-green-700 bg-green-50 px-2 py-1 rounded-lg">${PILOT_VERSION}</span></div>
-                            {storageHealth.supported === true ? (
-                              <p className="text-xs font-bold text-blue-950/50">ใช้พื้นที่ประมาณ {storageHealthApi ? storageHealthApi.formatBytes(storageHealth.usage) : '-'} / {storageHealthApi ? storageHealthApi.formatBytes(storageHealth.quota) : '-'} ({storageHealth.percent == null ? '-' : storageHealth.percent}%)</p>
-                            ) : storageHealth.supported === false ? (
-                              <p className="text-xs font-bold text-blue-950/50">Browser นี้ไม่รายงาน Storage quota ผ่าน navigator.storage • PackMaster ยังใช้งานได้ตามปกติ</p>
-                            ) : (
-                              <p className="text-xs font-bold text-blue-950/40">กำลังอ่านพื้นที่ Local Storage...</p>
-                            )}
-                            <p className="text-[11px] font-semibold text-amber-700 mt-2">Safe Cleanup จะลบเฉพาะภาพสำหรับ Reprint ของ Archived Batch ที่เลือก — Parsed Orders และ Mapping ไม่ถูกลบ</p>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <button onClick={refreshStorageHealth} disabled={storageHealthBusy} className="px-3.5 py-2.5 rounded-xl border border-blue-100 bg-blue-50 text-blue-800 text-xs font-black disabled:opacity-40">รีเฟรชพื้นที่</button>
-                            <button onClick={handleCleanupReprintImages} disabled={storageHealthBusy || selectedArchivedBatchIds.length === 0} className="px-3.5 py-2.5 rounded-xl border border-amber-100 bg-amber-50 text-amber-700 text-xs font-black disabled:opacity-35">ล้างเฉพาะรูปสำหรับ Reprint ({selectedArchivedBatchIds.length})</button>
-                            <button onClick={() => handleDownloadDiagnostics('json')} className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 text-xs font-black">ดาวน์โหลด Diagnostics</button>
-                            <button onClick={() => handleDownloadDiagnostics('csv')} className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-black">CSV</button>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                        <div className="inline-flex bg-white border-2 border-blue-50 rounded-2xl p-1.5 shadow-sm">
-                          {[['ACTIVE','Active'],['ARCHIVED','Archived'],['ALL','All']].map(([id,label]) => (
-                            <button key={id} onClick={() => { setBatchViewFilter(id); setSelectedArchivedBatchIds([]); }} className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${batchViewFilter === id ? 'bg-blue-950 text-white' : 'text-blue-950/50 hover:bg-blue-50'}`}>{label}{id === 'ARCHIVED' ? ` (${archivedBatchCount})` : ''}</button>
-                          ))}
-                        </div>
-                        {batchViewFilter === 'ARCHIVED' && selectedArchivedBatchIds.length > 0 && (
-                          <button onClick={handleDeleteSelectedArchived} className="px-4 py-2.5 rounded-xl bg-red-50 border border-red-100 text-red-600 text-xs font-black">ลบที่เลือก ({selectedArchivedBatchIds.length})</button>
-                        )}
-                      </div>
-
-                      {!batchStorageReady && !batchLoading && (
-                        <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-800 text-sm font-bold flex items-start gap-3">
-                          <span>⚠️</span>
-                          <span>Local storage ยังไม่พร้อม — งานที่เปิดอยู่ยังทำต่อได้ใน Session นี้ แต่ยังไม่ควรสลับ Batch จนกว่าจะรีเฟรชแล้วระบบกลับมาปกติ</span>
-                        </div>
-                      )}
-
-                      {batchLoading ? (
-                        <div className="bg-white border-2 border-blue-50 rounded-[2.5rem] p-20 text-center shadow-sm">
-                          <span className="text-4xl animate-spin inline-block mb-4">⏳</span>
-                          <div className="font-black text-blue-950">กำลังโหลด Batch ในเครื่อง</div>
-                        </div>
-                      ) : batches.length === 0 ? (
-                        <div className="bg-white border-2 border-dashed border-blue-100 rounded-[2.5rem] p-20 text-center shadow-sm">
-                          <div className="w-20 h-20 rounded-3xl bg-blue-50 flex items-center justify-center mx-auto mb-6 text-3xl">📦</div>
-                          <h3 className="text-2xl font-black text-blue-950 mb-2">ยังไม่มี Batch</h3>
-                          <p className="text-blue-950/45 font-semibold text-sm mb-7">สร้างงานแพ็กรอบแรก แล้วอัปโหลด Shopee / TikTok ได้เลย</p>
-                          <button onClick={handleCreateBatch} className="bg-blue-950 text-white px-7 py-3.5 rounded-2xl font-black text-sm">＋ สร้าง Batch แรก</button>
-                        </div>
-                      ) : visibleBatches.length === 0 ? (
-                        <div className="bg-white border-2 border-dashed border-blue-100 rounded-[2rem] p-12 text-center text-blue-950/40 font-bold">ไม่มี Batch ในมุมมองนี้</div>
-                      ) : (
-                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                          {visibleBatches.map((batch) => {
-                            const statusUi = getBatchStatusUi(getEffectiveBatchStatus(batch));
-                            return (
-                              <div key={batch.id} className="bg-white border-2 border-blue-50 rounded-[2rem] p-7 shadow-lg shadow-blue-900/[0.03] hover:border-blue-100 transition-all">
-                                <div className="flex items-start justify-between gap-4 mb-6">
-                                  <div className="min-w-0">
-                                    <div className="flex flex-wrap items-center gap-2 mb-2">
-                                      <h3 className="text-xl font-black text-blue-950 truncate">{batch.name}</h3>
-                                      <span className={`px-3 py-1 rounded-full border text-[10px] font-black ${statusUi.className}`}>{statusUi.label}</span>
-                                    </div>
-                                    <p className="text-xs font-bold text-blue-950/35">อัปเดต {formatBatchUpdated(batch.updatedAt)}</p>
-                                  </div>
-                                  {getBatchArchivedAt(batch) ? (
-                                    <label className="shrink-0 flex items-center gap-2 text-[10px] font-black text-slate-500 cursor-pointer"><input type="checkbox" checked={selectedArchivedBatchIds.includes(batch.id)} onChange={() => toggleArchivedSelection(batch.id)} className="w-4 h-4" /> เลือก</label>
-                                  ) : (
-                                    <button onClick={() => handleArchiveBatch(batch)} className="shrink-0 px-3 py-2 rounded-xl border border-slate-100 text-slate-500 hover:text-blue-700 hover:bg-blue-50 hover:border-blue-100 transition-all text-xs font-black" title="เก็บเข้าคลัง">เก็บเข้าคลัง</button>
-                                  )}
-                                </div>
-
-                                <div className="grid grid-cols-4 gap-3 mb-6">
-                                  <div className="bg-slate-50 rounded-2xl p-3"><div className="text-[9px] uppercase tracking-wider font-black text-slate-400 mb-1">Orders</div><div className="text-2xl font-black text-blue-950">{batch.totalOrders || 0}</div></div>
-                                  <div className="bg-green-50/60 rounded-2xl p-3"><div className="text-[9px] uppercase tracking-wider font-black text-green-500 mb-1">Ready</div><div className="text-2xl font-black text-green-700">{batch.readyCount || 0}</div></div>
-                                  <div className="bg-amber-50/70 rounded-2xl p-3"><div className="text-[9px] uppercase tracking-wider font-black text-amber-500 mb-1">SKU / Qty</div><div className="text-lg font-black text-amber-700">{batch.reviewSkuCount || 0} / {batch.reviewQtyCount || 0}</div></div>
-                                  <div className="bg-slate-50 rounded-2xl p-3"><div className="text-[9px] uppercase tracking-wider font-black text-slate-400 mb-1">Unmapped</div><div className="text-2xl font-black text-slate-600">{batch.unmappedCount || 0}</div></div>
-                                </div>
-
-                                <div className="flex gap-2">
-                                  <button onClick={() => handleOpenBatch(batch)} className="flex-1 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-100 px-5 py-3.5 rounded-2xl font-black text-sm transition-all flex items-center justify-center gap-2">เปิดงาน <span>→</span></button>
-                                  {getBatchArchivedAt(batch) && <button onClick={() => handleRestoreArchivedBatch(batch)} className="px-5 py-3.5 rounded-2xl border border-green-100 bg-green-50 text-green-700 font-black text-sm">นำกลับ</button>}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <div className="mb-8">
-                        <button onClick={handleBackToBatchList} className="text-blue-700 hover:text-blue-950 text-sm font-black flex items-center gap-2 mb-5 transition-colors">← กลับรายการ Batch</button>
-                        <div className="bg-white border-2 border-blue-50 rounded-[2rem] p-7 shadow-lg shadow-blue-900/[0.03]">
-                          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-                            <div>
-                              <div className="flex flex-wrap items-center gap-3 mb-2">
-                                <h2 className="text-3xl font-black text-blue-950 tracking-tight">{activeBatch ? activeBatch.name : 'Active Batch'}</h2>
-                                {activeBatch && (() => { const ui = getBatchStatusUi(getEffectiveBatchStatus(activeBatch)); return <span className={`px-3 py-1 rounded-full border text-[10px] font-black ${ui.className}`}>{ui.label}</span>; })()}
-                              </div>
-                              <p className="text-sm font-semibold text-blue-950/45">ข้อมูล Batch นี้บันทึกใน Browser เครื่องนี้แบบ Local-first</p>
-                            </div>
-                            {orders.length > 0 && (
-                              <button onClick={() => setActiveTab('preview')} className="bg-blue-950 hover:bg-blue-900 text-white px-6 py-3.5 rounded-2xl font-black text-sm flex items-center gap-2 shadow-lg shadow-blue-900/15">รีวิว & พิมพ์ <span>→</span></button>
-                            )}
-                          </div>
-
-                          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-6 pt-6 border-t border-blue-50">
-                            <div><div className="text-[10px] font-black text-blue-950/35 uppercase tracking-wider">ทั้งหมด</div><div className="text-2xl font-black text-blue-950">{reviewSummary.total}</div></div>
-                            <div><div className="text-[10px] font-black text-green-500 uppercase tracking-wider">พร้อมพิมพ์</div><div className="text-2xl font-black text-green-700">{reviewSummary.ready}</div></div>
-                            <div><div className="text-[10px] font-black text-amber-500 uppercase tracking-wider">ตรวจ SKU</div><div className="text-2xl font-black text-amber-700">{reviewSummary.reviewSku}</div></div>
-                            <div><div className="text-[10px] font-black text-red-400 uppercase tracking-wider">ตรวจ Qty</div><div className="text-2xl font-black text-red-600">{reviewSummary.reviewQty}</div></div>
-                            <div><div className="text-[10px] font-black text-slate-400 uppercase tracking-wider">ยังไม่ตั้งชื่อ</div><div className="text-2xl font-black text-slate-600">{reviewSummary.unmapped}</div></div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mb-8 text-center">
-                        <h3 className="text-3xl font-black text-blue-950 mb-3 tracking-tight">เพิ่มใบปะหน้าเข้า Batch</h3>
-                        <p className="text-blue-950/50 text-base font-medium">Shopee และ TikTok • เพิ่มหลายไฟล์ได้ • สูงสุดรวม 150 ใบต่อ Batch</p>
-                      </div>
-
-                      <div className={`bg-white p-16 rounded-[3rem] border-2 transition-all duration-300 shadow-xl shadow-blue-900/5 ${loadingStatus.active ? 'border-blue-200 bg-blue-50/30' : 'border-blue-50 hover:border-blue-100'}`}>
-                        {loadingStatus.active ? (
-                          <div className="flex flex-col items-center py-4"><span className="text-6xl animate-spin inline-block mb-6">⏳</span><h3 className="text-xl font-black text-blue-950 mb-2">กำลังประมวลผล PDF</h3><p className="text-blue-900/60 font-bold text-sm">อ่านข้อมูลหน้าที่ {loadingStatus.current} (รวมหลายไฟล์)</p></div>
-                        ) : (
-                          <div className="text-center py-4">
-                            <div className="w-24 h-24 bg-blue-50/80 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-blue-100/50 text-4xl shadow-sm">☁️</div>
-                            <h3 className="text-2xl font-black mb-3 text-blue-950">เลือกไฟล์ PDF ของ Batch นี้</h3>
-                            <p className="text-blue-950/50 font-semibold text-sm mb-10">ไฟล์ใหม่จะถูกเพิ่มเฉพาะใน {activeBatch ? activeBatch.name : 'Batch ปัจจุบัน'}</p>
-                            <label className="bg-blue-950 hover:bg-blue-900 text-white px-10 py-4 rounded-2xl cursor-pointer font-bold text-sm transition-all inline-flex items-center gap-3 shadow-lg shadow-blue-900/20 active:scale-95"><span>📥</span> เลือกไฟล์ PDF <input type="file" accept=".pdf" multiple className="hidden" onChange={handleFileUpload} /></label>
-                            {uploadError && <div className="mt-8 p-4 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center gap-2 border border-red-100 font-bold text-sm"><span>⚠️</span> {uploadError}</div>}
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )}
+          <div className="no-print pm-shell" data-pm-shell="v3">
+            <header className="pm-command-header">
+              <div className="pm-brand-wrap">
+                <div className="pm-logo-mark"><PMIcon name="box" className="w-7 h-7" /></div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-3">
+                    <h1 className="text-[24px] lg:text-[28px] font-black tracking-tight text-white leading-none">PackMaster</h1>
+                    <span className="hidden sm:inline-flex px-2 py-1 rounded-md bg-white/10 border border-white/10 text-[9px] font-black tracking-[0.14em] text-blue-100 uppercase">Frontend V3</span>
+                  </div>
+                  <p className="hidden sm:block text-[11px] lg:text-xs font-semibold text-blue-100/70 mt-1">เครื่องมือจัดการเอกสารและพิมพ์ฉลากจัดส่ง • Marketplace → Packing-ready label</p>
                 </div>
-              )}
+              </div>
 
-              {activeTab === 'settings' && (
-                <div className="p-12 max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-500">
-                  <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
-                    <div><h2 className="text-4xl font-black text-blue-950 mb-3 tracking-tight">คลังคำศัพท์</h2><p className="text-blue-950/60 text-base font-semibold">ตั้งค่าการแปลงชื่อสินค้า ระบบจะบันทึกอัตโนมัติ</p></div>
-                    <div className="flex gap-3">
-                      <label className="bg-white border-2 border-blue-50 text-blue-950 hover:border-blue-100 hover:bg-blue-50/30 px-5 py-3 rounded-2xl text-sm font-bold cursor-pointer transition-all flex items-center gap-2 shadow-sm"><span>📤</span> นำเข้า <input type="file" accept=".json" className="hidden" onChange={handleImportRules} /></label>
-                      <button onClick={handleExportRules} className="bg-white border-2 border-blue-50 text-blue-950 hover:border-blue-100 hover:bg-blue-50/30 px-5 py-3 rounded-2xl text-sm font-bold transition-all flex items-center gap-2 shadow-sm"><span>💾</span> สำรองข้อมูล</button>
-                    </div>
+              <div className="hidden xl:flex items-center gap-2 ml-auto">
+                <button className="pm-command-btn" onClick={() => navigateView(activeBatchId ? 'upload' : 'batches')}><PMIcon name="file" /><span>อ่าน PDF</span></button>
+                <button className="pm-command-btn" onClick={() => navigateView('sku')}><PMIcon name="barcode" /><span>จับคู่ SKU</span></button>
+                <button className="pm-command-btn" onClick={() => navigateView('batches')}><PMIcon name="layers" /><span>จัดการ Batch</span></button>
+                <button className="pm-command-btn" onClick={() => { setExceptionType('ALL'); setExceptionSearch(''); setReviewStatus('ALL'); setPreviewMode('table'); navigateView('review'); }}><PMIcon name="alert" /><span>รีวิวเฉพาะ</span></button>
+                <button className="pm-command-btn" onClick={() => navigateView('review')}><PMIcon name="printer" /><span>พิมพ์</span></button>
+                <button className="pm-command-btn pm-command-safe" onClick={() => navigateView('safety')}><PMIcon name="shield" /><span>Local Safety</span></button>
+              </div>
+            </header>
+
+            <div className="pm-app-frame">
+              <aside className="pm-sidebar">
+                <div className="px-3 pt-4 pb-2">
+                  <div className="text-[9px] font-black tracking-[0.17em] uppercase text-blue-200/45 px-3 mb-2">Workspace</div>
+                  <nav className="space-y-1.5">
+                    {[
+                      ['batches','box','งานแพ็ก'],
+                      ['upload','upload','อัปโหลด'],
+                      ['sku','barcode','คลังคำศัพท์'],
+                      ['review','review','รีวิว & พิมพ์'],
+                      ['safety','shield','สำรองข้อมูล']
+                    ].map(([id, icon, label]) => (
+                      <button key={id} onClick={() => navigateView(id)} className={`pm-nav-btn ${activeView === id ? 'pm-nav-btn-active' : ''}`}>
+                        <PMIcon name={icon} className="w-[18px] h-[18px]" />
+                        <span>{label}</span>
+                        {id === 'review' && exceptionRows.length > 0 && <span className="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-amber-400 text-[#071f3d] text-[9px] font-black flex items-center justify-center">{exceptionRows.length}</span>}
+                      </button>
+                    ))}
+                  </nav>
+                </div>
+                <div className="mt-auto p-3 border-t border-white/10">
+                  <div className="rounded-xl bg-white/[0.06] border border-white/[0.08] p-3">
+                    <div className="flex items-center gap-2 text-blue-100"><span className="w-2 h-2 rounded-full bg-emerald-400"></span><span className="text-[11px] font-black">Local Workspace</span></div>
+                    <div className="text-[9px] leading-4 font-semibold text-blue-100/45 mt-1">ข้อมูลอยู่ใน Browser เครื่องนี้</div>
                   </div>
-                  
-                  <div className={`bg-white rounded-[2.5rem] shadow-xl border-2 overflow-hidden mb-10 transition-colors ${editingId ? 'shadow-blue-500/10 border-blue-200' : 'shadow-blue-900/5 border-blue-50'}`}>
-                    <div className={`p-10 border-b-2 transition-colors ${editingId ? 'bg-blue-100/50 border-blue-200' : 'bg-blue-50/20 border-blue-50'}`}>
-                      <form onSubmit={handleSubmitRule} className="flex flex-col md:flex-row gap-6 items-end">
-                        <div className="flex-1 w-full"><label className="block text-[11px] font-black text-blue-950/50 mb-3 uppercase tracking-widest pl-2">1. คำที่ต้องการค้นหา (Keyword)</label><input type="text" value={newRule.keyword} onChange={(e) => setNewRule({...newRule, keyword: e.target.value})} placeholder="เช่น baby Wipes 10" className="w-full border-2 border-blue-100 bg-white px-6 py-4 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-900 outline-none transition-all text-base font-bold text-blue-950" /></div>
-                        <div className="flex-1 w-full"><label className="block text-[11px] font-black text-blue-950/50 mb-3 uppercase tracking-widest pl-2">2. ชื่อย่อที่ต้องการ (1 ชิ้น)</label><input type="text" value={newRule.shortName} onChange={(e) => setNewRule({...newRule, shortName: e.target.value})} placeholder="เช่น เด้งม่วง 10" className="w-full border-2 border-blue-100 bg-white px-6 py-4 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-900 outline-none transition-all text-base font-bold text-blue-950" /></div>
-                        <div className="flex gap-2">
-                            <button type="submit" disabled={!newRule.keyword || !newRule.shortName} className={`${editingId ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20' : 'bg-blue-950 hover:bg-blue-900 shadow-blue-900/20'} disabled:opacity-50 text-white px-8 py-4 rounded-2xl font-bold transition-all shadow-lg h-[60px] flex items-center gap-2 active:scale-95`}><span>{editingId ? '💾' : '➕'}</span> {editingId ? 'บันทึก' : 'เพิ่ม'}</button>
-                            {editingId && <button type="button" onClick={cancelEdit} className="bg-white border-2 border-blue-100 text-blue-900 hover:bg-blue-50 px-5 py-4 rounded-2xl font-bold transition-all h-[60px] flex items-center gap-2 active:scale-95">ยกเลิก</button>}
-                        </div>
-                      </form>
-                    </div>
-                    <div className="px-8 py-5 border-b-2 border-blue-50 bg-slate-50/60">
-                      <div className="flex flex-col lg:flex-row gap-4 lg:items-center lg:justify-between">
-                        <div className="relative flex-1 max-w-xl">
-                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-950/30">🔎</span>
-                          <input type="search" value={skuSearch} onChange={(e) => setSkuSearch(e.target.value)} placeholder="ค้นหา Keyword หรือ Base SKU..." className="w-full border-2 border-blue-100 bg-white pl-11 pr-4 py-3 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-900 text-sm font-bold text-blue-950" />
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {skuFilterOptions.map(option => (
-                            <button key={option.id} type="button" onClick={() => setSkuFilter(option.id)} className={`px-4 py-2 rounded-xl text-xs font-black border transition-all ${skuFilter === option.id ? 'bg-blue-950 text-white border-blue-950 shadow-sm' : 'bg-white text-blue-950/60 border-blue-100 hover:border-blue-200 hover:text-blue-900'}`}>{option.label}</button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="mt-3 text-xs font-bold text-blue-950/40">แสดง {filteredSkuRules.length} จาก {skuRules.length} กฎ</div>
-                    </div>
-                    <div className="max-h-[460px] overflow-y-auto">
-                        <table className="w-full text-left">
-                        <thead><tr className="text-blue-950/40 text-[10px] font-black uppercase tracking-widest bg-blue-50/30 border-b-2 border-blue-50"><th className="px-10 py-5">No.</th><th className="px-10 py-5">Keyword</th><th className="px-10 py-5">Base SKU</th><th className="px-10 py-5 text-right"></th></tr></thead>
-                        <tbody className="divide-y-2 divide-blue-50/50">{filteredSkuRules.map((rule, idx) => (<tr key={rule.id} className={`bg-white hover:bg-blue-50/40 transition-colors group ${editingId === rule.id ? 'opacity-30' : ''}`}><td className="px-10 py-5 text-sm font-black text-blue-950/30">{idx + 1}</td><td className="px-10 py-5 font-mono text-[15px] font-bold text-blue-950/80">{rule.keyword}</td><td className="px-10 py-5"><span className="text-blue-900 font-black text-[15px] bg-blue-100/50 border border-blue-200/50 px-4 py-1.5 rounded-xl">{rule.shortName}</span></td><td className="px-10 py-5 text-right flex justify-end gap-2"><button onClick={() => handleEditClick(rule)} className="text-blue-950/30 hover:text-blue-600 hover:bg-blue-50 p-2.5 rounded-xl transition-all"><span>✏️</span></button><button onClick={() => setSkuRules(skuRules.filter(r => r.id !== rule.id))} className="text-blue-950/30 hover:text-red-500 hover:bg-red-50 p-2.5 rounded-xl transition-all"><span>🗑️</span></button></td></tr>))}
-                        {filteredSkuRules.length === 0 && <tr><td colSpan="4" className="p-20 text-center text-blue-950/30 text-sm font-bold">{skuRules.length === 0 ? 'ไม่มีข้อมูลคลังคำศัพท์' : 'ไม่พบกฎที่ตรงกับการค้นหา / ตัวกรอง'}</td></tr>}
-                        </tbody>
-                        </table>
-                    </div>
+                </div>
+              </aside>
+
+              <main className="pm-main">
+                <div className="lg:hidden sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200 px-3 py-2 overflow-x-auto">
+                  <div className="flex gap-2 min-w-max">
+                    {[
+                      ['batches','งานแพ็ก'],['upload','อัปโหลด'],['sku','คลังคำศัพท์'],['review','รีวิว & พิมพ์'],['safety','สำรองข้อมูล']
+                    ].map(([id,label]) => <button key={id} onClick={() => navigateView(id)} className={`px-3 py-2 rounded-lg text-xs font-black ${activeView === id ? 'bg-[#0b63ce] text-white' : 'bg-slate-100 text-slate-600'}`}>{label}</button>)}
                   </div>
+                </div>
 
-                  <div className="bg-white border-2 border-blue-50 p-8 rounded-[2.5rem] shadow-xl shadow-blue-900/5 mb-10">
-                    <div className="flex flex-col xl:flex-row xl:items-start justify-between gap-6">
-                      <div className="max-w-2xl">
-                        <div className="text-[10px] font-black text-blue-500 uppercase tracking-[0.18em] mb-2">Local Safety</div>
-                        <h3 className="text-2xl font-black text-blue-950 mb-2 flex items-center gap-3"><span>🛟</span> ความปลอดภัย Workspace</h3>
-                        <p className="text-sm font-semibold text-blue-950/50 leading-6">สำรองคลังคำศัพท์ การตั้งค่า และ Batch ทั้งหมดเป็นไฟล์ JSON ในเครื่องนี้ ไม่มีการส่งขึ้น Server</p>
+                {activeView === 'batches' && (
+                  <section data-pm-view="batches" className="pm-page">
+                    <div className="pm-page-head">
+                      <div>
+                        <div className="pm-eyebrow">Packing Jobs</div>
+                        <h2 className="pm-page-title">งานแพ็ก / Batch</h2>
+                        <p className="pm-page-subtitle">จัดรอบงานให้แยกจากกัน เปิดย้อนกลับได้ และไม่ต้องล้างงานเดิมก่อนเริ่มรอบใหม่</p>
                       </div>
-                      <div className="flex flex-wrap gap-3">
-                        <button type="button" onClick={handleWorkspaceBackup} disabled={workspaceBusy || !batchStorageReady} className="bg-blue-950 hover:bg-blue-900 disabled:opacity-50 text-white px-5 py-3 rounded-2xl text-sm font-black transition-all flex items-center gap-2 shadow-lg shadow-blue-900/15"><span>💾</span> สำรอง Workspace</button>
-                        <label className={`bg-white border-2 border-blue-100 text-blue-900 px-5 py-3 rounded-2xl text-sm font-black transition-all flex items-center gap-2 ${workspaceBusy || !batchStorageReady ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-50 cursor-pointer'}`}><span>♻️</span> กู้คืน Workspace<input type="file" accept=".json,application/json" disabled={workspaceBusy || !batchStorageReady} className="hidden" onChange={handleWorkspaceRestoreFile} /></label>
+                      <button data-pm-action="create-batch" onClick={handleCreateBatch} disabled={batchLoading} className="pm-primary-btn"><PMIcon name="plus" /> สร้าง Batch ใหม่</button>
+                    </div>
+
+                    <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
+                      <PMMetric label="Batch ที่ใช้งาน" value={batchDashboard.batchCount} helper="งาน Local" tone="blue" />
+                      <PMMetric label="Orders ทั้งหมด" value={batchDashboard.orders.toLocaleString()} helper="จาก Batch ที่ Active" tone="slate" />
+                      <PMMetric label="พร้อมพิมพ์" value={batchDashboard.ready.toLocaleString()} helper="Auto-ready" tone="green" />
+                      <PMMetric label="รอตรวจสอบ" value={batchDashboard.review.toLocaleString()} helper="SKU / Qty / Unmapped" tone="amber" />
+                    </div>
+
+                    {showLocalDataNotice && (
+                      <div className="pm-info-banner mb-5">
+                        <PMIcon name="shield" className="w-5 h-5 shrink-0" />
+                        <div className="flex-1"><div className="font-black text-sm">แต่ละ Batch ถูกแยกออกจากกันในเครื่องนี้</div><div className="text-xs font-semibold opacity-65 mt-0.5">สร้าง Batch ใหม่ได้โดยงานเดิมไม่หาย • ควรสำรอง Workspace ก่อนย้ายเครื่องหรือล้าง Browser</div></div>
+                        <button onClick={dismissLocalDataNotice} className="pm-ghost-btn text-xs">เข้าใจแล้ว</button>
+                      </div>
+                    )}
+
+                    <div className="pm-card p-4 mb-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      <div className="flex gap-1.5 p-1 rounded-xl bg-slate-100 w-fit">
+                        {[['ACTIVE','กำลังใช้งาน'],['ARCHIVED','เก็บแล้ว'],['ALL','ทั้งหมด']].map(([id,label]) => (
+                          <button key={id} onClick={() => { setBatchViewFilter(id); setSelectedArchivedBatchIds([]); }} className={`px-4 py-2 rounded-lg text-xs font-black transition ${batchViewFilter === id ? 'bg-white text-[#0b63ce] shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>{label}{id === 'ARCHIVED' ? ` (${archivedBatchCount})` : ''}</button>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {!batchStorageReady && !batchLoading && <span className="text-xs font-black text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Browser storage ยังไม่พร้อม</span>}
+                        {batchViewFilter === 'ARCHIVED' && selectedArchivedBatchIds.length > 0 && <button onClick={handleDeleteSelectedArchived} className="pm-danger-btn text-xs">ลบที่เลือก ({selectedArchivedBatchIds.length})</button>}
                       </div>
                     </div>
 
-                    <div className="mt-5 rounded-2xl border border-amber-100 bg-amber-50/70 px-5 py-4 text-xs font-bold text-amber-800 leading-5 flex gap-3">
-                      <span>⚠️</span>
-                      <span>ไฟล์ Backup อาจมีข้อมูลที่อ่านจากใบออเดอร์ ควรเก็บเป็นข้อมูลภายในร้านและไม่ควรอัปโหลดไฟล์จริงเข้า GitHub หรือพื้นที่สาธารณะ</span>
+                    {batchLoading ? (
+                      <PMEmptyState icon="loader" title="กำลังโหลด Batch ในเครื่อง" body="กำลังอ่านงาน Local จาก Browser" />
+                    ) : batches.length === 0 ? (
+                      <PMEmptyState icon="box" title="ยังไม่มี Batch" body="สร้างรอบงานแรก แล้วอัปโหลด Shopee / TikTok PDF ได้เลย" action={<button onClick={handleCreateBatch} className="pm-primary-btn">สร้าง Batch แรก</button>} />
+                    ) : visibleBatches.length === 0 ? (
+                      <PMEmptyState icon="archive" title="ไม่มี Batch ในมุมมองนี้" body="ลองเปลี่ยนตัวกรองด้านบน" />
+                    ) : (
+                      <div className="space-y-3">
+                        {visibleBatches.map((batch) => {
+                          const statusUi = getBatchStatusUi(getEffectiveBatchStatus(batch));
+                          const total = Number(batch.totalOrders) || 0;
+                          const ready = Number(batch.readyCount) || 0;
+                          const review = (Number(batch.reviewSkuCount) || 0) + (Number(batch.reviewQtyCount) || 0) + (Number(batch.unmappedCount) || 0);
+                          const progress = total > 0 ? Math.min(100, Math.round((ready / total) * 100)) : 0;
+                          const archived = Boolean(getBatchArchivedAt(batch));
+                          return (
+                            <article key={batch.id} className="pm-card p-4 lg:p-5 hover:border-blue-200 transition-colors">
+                              <div className="flex flex-col xl:flex-row xl:items-center gap-4">
+                                <div className="xl:w-[30%] min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <h3 className="text-[16px] font-black text-slate-900 truncate">{batch.name}</h3>
+                                    <span className={`px-2.5 py-1 rounded-full border text-[9px] font-black ${statusUi.className}`}>{statusUi.label}</span>
+                                  </div>
+                                  <p className="text-[11px] font-semibold text-slate-400 mt-1">อัปเดต {formatBatchUpdated(batch.updatedAt)}</p>
+                                </div>
+                                <div className="grid grid-cols-3 gap-2 flex-1">
+                                  <div className="pm-mini-stat"><span>Orders</span><strong>{total.toLocaleString()}</strong></div>
+                                  <div className="pm-mini-stat pm-mini-ready"><span>Ready</span><strong>{ready.toLocaleString()}</strong></div>
+                                  <div className="pm-mini-stat pm-mini-review"><span>Review</span><strong>{review.toLocaleString()}</strong></div>
+                                </div>
+                                <div className="xl:w-[18%]">
+                                  <div className="flex items-center justify-between text-[10px] font-black text-slate-400 mb-1"><span>ความพร้อม</span><span>{progress}%</span></div>
+                                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className={`h-full rounded-full ${review > 0 ? 'bg-amber-400' : ready > 0 ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{width:`${progress}%`}}></div></div>
+                                </div>
+                                <div className="flex items-center gap-2 xl:justify-end">
+                                  {archived && <label className="flex items-center gap-1.5 px-2 text-[10px] font-black text-slate-500"><input type="checkbox" checked={selectedArchivedBatchIds.includes(batch.id)} onChange={() => toggleArchivedSelection(batch.id)} /> เลือก</label>}
+                                  <button onClick={() => handleOpenBatch(batch)} className="pm-secondary-btn">เปิดงาน</button>
+                                  {archived ? <button onClick={() => handleRestoreArchivedBatch(batch)} className="pm-success-btn">นำกลับ</button> : <button onClick={() => handleArchiveBatch(batch)} className="pm-ghost-btn">เก็บเข้าคลัง</button>}
+                                </div>
+                              </div>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </section>
+                )}
+
+                {activeView === 'upload' && (
+                  <section data-pm-view="upload" className="pm-page">
+                    <div className="pm-page-head">
+                      <div>
+                        <div className="pm-eyebrow">Upload & Processing</div>
+                        <h2 className="pm-page-title">อัปโหลดคำสั่งซื้อ</h2>
+                        <p className="pm-page-subtitle">อัปโหลดไฟล์จาก Shopee และ TikTok แล้วระบบจะอ่าน PDF → จับคู่ SKU → ส่งเฉพาะ Exceptions ไปรีวิว</p>
+                      </div>
+                      {activeBatchId && <button onClick={handleBackToBatchList} className="pm-secondary-btn"><PMIcon name="arrow-left" /> กลับรายการ Batch</button>}
                     </div>
 
-                    {restorePreview && (
-                      <div className="mt-6 border-2 border-blue-100 bg-blue-50/40 rounded-2xl p-6">
-                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-                          <div>
-                            <div className="text-xs font-black text-blue-950/45 mb-1">พร้อมกู้คืนจาก {restoreFileName || 'Backup JSON'}</div>
-                            <div className="font-black text-blue-950">Backup {formatBatchUpdated(restorePreview.summary.createdAt)}</div>
+                    <div className="pm-card p-4 mb-4 overflow-x-auto">
+                      <div className="min-w-[650px] grid grid-cols-5 gap-2">
+                        {[
+                          [1,'เลือก Batch','box'],[2,'อัปโหลดไฟล์','upload'],[3,'อ่าน PDF','file'],[4,'จับคู่ SKU','barcode'],[5,'พร้อมรีวิว','review']
+                        ].map(([step,label,icon]) => (
+                          <div key={step} className={`pm-step ${uploadStep >= step ? 'pm-step-active' : ''} ${uploadStep === step ? 'pm-step-current' : ''}`}>
+                            <div className="pm-step-icon"><PMIcon name={icon} className="w-4 h-4" /></div><span>{step}. {label}</span>
                           </div>
-                          <div className="grid grid-cols-3 gap-3 min-w-[330px]">
-                            <div className="bg-white rounded-xl p-3 border border-blue-100"><div className="text-[9px] font-black uppercase tracking-wider text-blue-950/35">SKU Rules</div><div className="text-xl font-black text-blue-950">{restorePreview.summary.skuRules}</div></div>
-                            <div className="bg-white rounded-xl p-3 border border-blue-100"><div className="text-[9px] font-black uppercase tracking-wider text-blue-950/35">Batches</div><div className="text-xl font-black text-blue-950">{restorePreview.summary.batches}</div></div>
-                            <div className="bg-white rounded-xl p-3 border border-blue-100"><div className="text-[9px] font-black uppercase tracking-wider text-blue-950/35">Orders</div><div className="text-xl font-black text-blue-950">{restorePreview.summary.orders}</div></div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {!activeBatchId ? (
+                      <PMEmptyState icon="box" title="เลือก Batch ก่อนอัปโหลด" body="PackMaster จะไม่สร้างงานซ่อนให้เอง เพื่อให้ไฟล์ทุกชุดอยู่ในรอบงานที่ถูกต้อง" action={<div className="flex gap-2 justify-center"><button onClick={handleCreateBatch} className="pm-primary-btn">สร้าง Batch ใหม่</button><button onClick={() => navigateView('batches')} className="pm-secondary-btn">ดู Batch ทั้งหมด</button></div>} />
+                    ) : (
+                      <div className="grid xl:grid-cols-[1.35fr_0.65fr] gap-4">
+                        <div className="space-y-4">
+                          <div className="pm-card p-5">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+                              <div><div className="text-[10px] uppercase tracking-[0.15em] font-black text-blue-600">Active Batch</div><div className="flex items-center gap-2 mt-1"><div className="text-lg font-black text-slate-900">{activeBatch?.name || 'Active Batch'}</div>{activeBatch && (() => { const ui = getBatchStatusUi(getEffectiveBatchStatus(activeBatch)); return <span className={`px-2 py-1 rounded-full border text-[9px] font-black ${ui.className}`}>{ui.label}</span>; })()}</div><div className="text-xs font-semibold text-slate-400 mt-1">สูงสุดรวม 150 ใบต่อ Batch • Duplicate Guard ทำงานอัตโนมัติ</div></div>
+                              {orders.length > 0 && <button onClick={() => navigateView('review')} className="pm-primary-btn">รีวิว & พิมพ์ <PMIcon name="arrow-right" /></button>}
+                            </div>
+
+                            <div className={`pm-upload-zone ${loadingStatus.active ? 'pm-upload-zone-active' : ''}`}>
+                              {loadingStatus.active ? (
+                                <div className="text-center py-8"><div className="pm-spinner mx-auto mb-4"></div><h3 className="text-lg font-black text-slate-900">กำลังประมวลผล PDF</h3><p className="text-xs font-bold text-slate-500 mt-2">อ่านหน้าที่ {loadingStatus.current} จาก {loadingStatus.total || '...'}</p>{loadingStatus.total > 0 && <div className="max-w-sm mx-auto mt-4 h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-blue-600 rounded-full transition-all" style={{width:`${Math.min(100,(loadingStatus.current/loadingStatus.total)*100)}%`}}></div></div>}</div>
+                              ) : (
+                                <div className="text-center py-8">
+                                  <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4"><PMIcon name="upload" className="w-7 h-7" /></div>
+                                  <h3 className="text-lg font-black text-slate-900">ลากและวางไฟล์ PDF ที่นี่</h3>
+                                  <p className="text-xs font-semibold text-slate-400 mt-2 mb-5">หรือเลือกไฟล์ Shopee / TikTok จากเครื่อง • เพิ่มหลายไฟล์ได้</p>
+                                  <label data-pm-action="upload-pdf" className="pm-primary-btn inline-flex cursor-pointer"><PMIcon name="file" /> เลือกไฟล์ PDF<input type="file" accept=".pdf" multiple className="hidden" onChange={handleFileUpload} /></label>
+                                  {uploadError && <div className="mt-4 inline-flex px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-black">{uploadError}</div>}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="pm-card p-5">
+                            <div className="flex items-center justify-between gap-3 mb-4"><div><h3 className="text-sm font-black text-slate-900">สรุปการประมวลผล</h3><p className="text-[11px] font-semibold text-slate-400 mt-1">ข้อมูลจริงของ Batch ปัจจุบัน</p></div><span className="text-[10px] font-black text-slate-400">{reviewSummary.total} Orders</span></div>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                              <PMMetric label="ทั้งหมด" value={reviewSummary.total} tone="blue" compact />
+                              <PMMetric label="พร้อมพิมพ์" value={reviewSummary.ready} tone="green" compact />
+                              <PMMetric label="ตรวจ SKU" value={reviewSummary.reviewSku} tone="amber" compact />
+                              <PMMetric label="ตรวจ Qty" value={reviewSummary.reviewQty} tone="red" compact />
+                            </div>
                           </div>
                         </div>
-                        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-blue-100 pt-5">
-                          <p className="text-xs font-bold text-red-600">Replace Workspace จะใช้ข้อมูลจาก Backup แทนข้อมูล Local ปัจจุบันทั้งหมด</p>
-                          <div className="flex gap-2">
-                            <button type="button" onClick={resetRestorePreview} disabled={workspaceBusy} className="px-4 py-2.5 rounded-xl border border-blue-100 bg-white text-blue-900 text-xs font-black">ยกเลิก</button>
-                            <button type="button" onClick={handleConfirmWorkspaceRestore} disabled={workspaceBusy} className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-black shadow-sm">Replace Workspace</button>
+
+                        <div className="space-y-4">
+                          <div className="pm-card p-5">
+                            <h3 className="text-sm font-black text-slate-900 mb-1">สิ่งที่ต้องตรวจ</h3><p className="text-[11px] font-semibold text-slate-400 mb-4">กดเพื่อไปยังรายการปัญหาโดยตรง</p>
+                            <div className="space-y-2">
+                              <button onClick={() => {setReviewStatus('REVIEW_SKU'); navigateView('review');}} className="pm-issue-row"><span className="pm-issue-dot bg-amber-400"></span><span className="flex-1">ตรวจสอบ SKU</span><strong>{reviewSummary.reviewSku}</strong><PMIcon name="chevron-right" className="w-4 h-4" /></button>
+                              <button onClick={() => {setReviewStatus('REVIEW_QTY'); navigateView('review');}} className="pm-issue-row"><span className="pm-issue-dot bg-red-500"></span><span className="flex-1">ตรวจสอบ Qty</span><strong>{reviewSummary.reviewQty}</strong><PMIcon name="chevron-right" className="w-4 h-4" /></button>
+                              <button onClick={() => {setReviewStatus('UNMAPPED'); navigateView('review');}} className="pm-issue-row"><span className="pm-issue-dot bg-slate-400"></span><span className="flex-1">ยังไม่ตั้งชื่อ</span><strong>{reviewSummary.unmapped}</strong><PMIcon name="chevron-right" className="w-4 h-4" /></button>
+                            </div>
+                            <button onClick={() => {setReviewStatus('ALL'); navigateView('review');}} className="pm-secondary-btn w-full justify-center mt-4">ดู Review ทั้งหมด</button>
+                          </div>
+
+                          <div className={`pm-card p-5 border-l-4 ${exceptionRows.length > 0 ? 'border-l-amber-400' : 'border-l-emerald-500'}`}>
+                            <div className="flex items-start gap-3"><PMIcon name={exceptionRows.length > 0 ? 'alert' : 'check'} className={`w-5 h-5 shrink-0 ${exceptionRows.length > 0 ? 'text-amber-600' : 'text-emerald-600'}`} /><div><div className="text-sm font-black text-slate-900">{exceptionRows.length > 0 ? `ยังมี ${exceptionRows.length} Exception` : 'Batch พร้อมพิมพ์'}</div><p className="text-xs font-semibold text-slate-400 mt-1">{exceptionRows.length > 0 ? 'แก้ Exception ให้ครบก่อนพิมพ์ • Print / Save PDF จะถูกล็อกจนกว่าจะแก้รายการที่ต้องตรวจครบ' : 'ไม่มีรายการที่ระบบต้องให้คนตรวจเพิ่มเติม'}</p></div></div>
                           </div>
                         </div>
                       </div>
                     )}
-                  </div>
+                  </section>
+                )}
 
-                  <div className="bg-white border-2 border-blue-50 p-10 rounded-[2.5rem] shadow-xl shadow-blue-900/5 relative overflow-hidden">
-                    <div className="relative z-10">
-                      <h3 className="text-xl font-black mb-6 flex items-center gap-3 text-blue-950"><span>🧮</span> ทดสอบระบบคำนวณยอด</h3>
-                      <div className="flex flex-col md:flex-row gap-5 mb-8">
-                          <input type="text" value={testInput} onChange={(e) => setTestInput(e.target.value)} placeholder="วางชื่อสินค้าเต็มๆ เพื่อทดสอบ..." className="flex-1 border-2 border-blue-100 px-6 py-4 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-900 text-base font-bold text-blue-950 placeholder:text-blue-950/30 transition-all" />
-                          <div className="flex items-center gap-4 border-2 border-blue-100 px-5 py-3 rounded-2xl bg-blue-50/30"><span className="text-[11px] font-black text-blue-500 uppercase tracking-widest">QTY</span><input type="number" min="1" value={testQty} onChange={(e) => setTestQty(e.target.value)} className="w-16 bg-transparent outline-none text-blue-950 text-center text-xl font-black" /></div>
-                      </div>
-                      <div className="bg-blue-50/50 border-2 border-blue-100 p-8 rounded-3xl flex items-center justify-between">
-                        <span className="text-blue-950/40 font-black text-[11px] uppercase tracking-widest">Result</span>
-                        {testInput ? (testResult !== 'ยังไม่ตั้งชื่อ (เพิ่มกฎ SKU)' && testResult !== 'ไม่พบคีย์เวิร์ด' && testResult !== '⚠️ ตรวจสอบ SKU' ? (<div className="flex items-center gap-4"><span className="text-4xl font-black text-blue-950 tracking-tight">{testResult}</span></div>) : (<div className="flex items-center gap-2"><span className="text-sm font-bold text-red-500 bg-red-50 px-4 py-2 rounded-xl">{testResult}</span></div>)) : <span className="text-4xl font-black text-blue-950/10">-</span>}
+                {activeView === 'sku' && (
+                  <section data-pm-view="sku" className="pm-page">
+                    <div className="pm-page-head">
+                      <div><div className="pm-eyebrow">SKU Dictionary</div><h2 className="pm-page-title">คลังคำศัพท์</h2><p className="pm-page-subtitle">จัดการ Keyword → ชื่อภายในที่ทีมแพ็กเข้าใจ โดยไม่เปลี่ยน Data Shape เดิม</p></div>
+                      <div className="flex flex-wrap gap-2">
+                        <label className="pm-secondary-btn cursor-pointer"><PMIcon name="upload" /> นำเข้า<input type="file" accept=".json" className="hidden" onChange={handleImportRules} /></label>
+                        <button onClick={handleExportRules} className="pm-secondary-btn"><PMIcon name="download" /> ส่งออก</button>
                       </div>
                     </div>
-                  </div>
-                </div>
-              )}
 
-              {activeTab === 'preview' && (
-                <div className="p-12 max-w-[1400px] mx-auto animate-in fade-in slide-in-from-bottom-8 duration-500">
-                  <div className="flex flex-col xl:flex-row justify-between items-center mb-12 gap-8">
-                    <div className="text-center xl:text-left"><h2 className="text-4xl font-black text-blue-950 mb-2 tracking-tight">รีวิวและพิมพ์</h2><p className="text-blue-950/60 text-base font-semibold">{activeBatch ? `${activeBatch.name} • ` : ''}โฟกัสเฉพาะรายการที่ต้องตรวจ • ทั้งหมด {orders.length} รายการ</p></div>
-                    <div className="flex flex-wrap justify-center items-center gap-4">
-                        
-                       <div onClick={() => setThermalMode(!thermalMode)} className="cursor-pointer bg-white border-2 border-blue-50 hover:border-blue-100 p-1.5 rounded-2xl flex items-center gap-3 shadow-sm transition-all mr-2 select-none active:scale-95">
-                           <div className={`p-2 rounded-xl transition-colors ${thermalMode ? 'bg-blue-100/50' : 'bg-gray-50'}`}>
-                               <span className="text-lg">{thermalMode ? '🖨️' : '🎨'}</span>
-                           </div>
-                           <div className="flex flex-col pr-3">
-                               <span className="text-[11px] font-black text-blue-950 uppercase tracking-tight leading-none mb-1">โหมดเครื่องปริ้น</span>
-                               <span className={`text-[10px] font-bold leading-none ${thermalMode ? 'text-green-600' : 'text-blue-950/40'}`}>{thermalMode ? 'ON (แก้โลโก้หาย)' : 'OFF (สีต้นฉบับ)'}</span>
-                           </div>
-                       </div>
-
-                       <div className="bg-white border-2 border-blue-50 p-1.5 rounded-2xl flex gap-1 mr-2 shadow-sm">
-                         <button onClick={() => setPreviewMode('table')} className={`px-6 py-2.5 rounded-[12px] font-bold text-sm transition-all ${previewMode === 'table' ? 'bg-blue-50 text-blue-900 shadow-sm border border-blue-100' : 'text-blue-950/50 hover:text-blue-900 border border-transparent'}`}>ตารางสรุป</button>
-                         <button onClick={() => setPreviewMode('labels')} className={`px-6 py-2.5 rounded-[12px] font-bold text-sm transition-all ${previewMode === 'labels' ? 'bg-blue-50 text-blue-900 shadow-sm border border-blue-100' : 'text-blue-950/50 hover:text-blue-900 border border-transparent'}`}>ใบปะหน้า</button>
-                       </div>
-                       <button onClick={handleClearActiveBatch} disabled={orders.length === 0} className="bg-white border-2 border-blue-50 hover:bg-red-50 hover:border-red-100 hover:text-red-600 text-blue-950/60 disabled:opacity-50 px-5 py-3 rounded-2xl font-bold text-sm shadow-sm flex items-center gap-2 transition-all"><span>🔄</span> ล้างออเดอร์</button>
-                       <button onClick={handleExportPDF} disabled={exportStatus.active || orders.length === 0 || printBlocked} title={printBlocked ? `ยังมี Exception ${exceptionRows.length} รายการ` : 'Save PDF'} className="bg-white border-2 border-blue-50 hover:border-blue-100 disabled:opacity-50 text-blue-900 px-6 py-3 rounded-2xl font-bold text-sm shadow-sm flex items-center gap-2 transition-all active:scale-95"><span>📥</span> Save PDF</button>
-                       <button onClick={handlePrint} disabled={orders.length === 0 || printBlocked} title={printBlocked ? `ยังมี Exception ${exceptionRows.length} รายการ` : 'พิมพ์'} className="bg-blue-950 hover:bg-blue-900 disabled:opacity-50 text-white px-8 py-3 rounded-2xl font-bold text-sm shadow-lg shadow-blue-900/20 flex items-center gap-2 transition-all active:scale-95"><span>{printBlocked ? '🔒' : '🖨️'}</span> {printBlocked ? 'ยังพิมพ์ไม่ได้' : 'พิมพ์'}</button>
-                    </div>
-                  </div>
-
-                  {orders.length > 0 && printBlocked && (
-                    <div className="mb-5 rounded-2xl border-2 border-red-100 bg-red-50 px-5 py-4 flex items-start gap-3 text-red-700">
-                      <span className="text-xl">🔒</span>
-                      <div><div className="font-black text-sm">แก้ Exception ให้ครบก่อนพิมพ์</div><div className="text-xs font-bold text-red-600/70 mt-1">เหลือ {exceptionRows.length} รายการ • Print / Save PDF ถูกล็อกเพื่อป้องกันแพ็กผิด</div></div>
-                    </div>
-                  )}
-
-                  {orders.length > 0 && (
-                    <>
-                      <div className="grid grid-cols-2 xl:grid-cols-5 gap-4 mb-5">
-                        <button onClick={() => setReviewStatus('ALL')} className={`text-left p-5 rounded-2xl border-2 transition-all ${reviewStatus === 'ALL' ? 'bg-blue-950 text-white border-blue-950 shadow-lg shadow-blue-900/10' : 'bg-white border-blue-50 hover:border-blue-100'}`}>
-                          <div className={`text-xs font-black ${reviewStatus === 'ALL' ? 'text-blue-100' : 'text-blue-950/40'}`}>ทั้งหมด</div><div className="text-3xl font-black mt-1">{reviewSummary.total}</div>
-                        </button>
-                        <button onClick={() => setReviewStatus('READY')} className={`text-left p-5 rounded-2xl border-2 transition-all ${reviewStatus === 'READY' ? 'bg-green-600 text-white border-green-600 shadow-lg shadow-green-600/10' : 'bg-white border-green-100 hover:border-green-200'}`}>
-                          <div className={`text-xs font-black ${reviewStatus === 'READY' ? 'text-green-50' : 'text-green-700/60'}`}>พร้อมพิมพ์</div><div className="text-3xl font-black mt-1">{reviewSummary.ready}</div>
-                        </button>
-                        <button onClick={() => setReviewStatus('REVIEW_SKU')} className={`text-left p-5 rounded-2xl border-2 transition-all ${reviewStatus === 'REVIEW_SKU' ? 'bg-amber-500 text-white border-amber-500 shadow-lg shadow-amber-500/10' : 'bg-white border-amber-100 hover:border-amber-200'}`}>
-                          <div className={`text-xs font-black ${reviewStatus === 'REVIEW_SKU' ? 'text-amber-50' : 'text-amber-700/60'}`}>ตรวจสอบ SKU</div><div className="text-3xl font-black mt-1">{reviewSummary.reviewSku}</div>
-                        </button>
-                        <button onClick={() => setReviewStatus('REVIEW_QTY')} className={`text-left p-5 rounded-2xl border-2 transition-all ${reviewStatus === 'REVIEW_QTY' ? 'bg-red-500 text-white border-red-500 shadow-lg shadow-red-500/10' : 'bg-white border-red-100 hover:border-red-200'}`}>
-                          <div className={`text-xs font-black ${reviewStatus === 'REVIEW_QTY' ? 'text-red-50' : 'text-red-700/60'}`}>ตรวจสอบ Qty</div><div className="text-3xl font-black mt-1">{reviewSummary.reviewQty}</div>
-                        </button>
-                        <button onClick={() => setReviewStatus('UNMAPPED')} className={`text-left p-5 rounded-2xl border-2 transition-all col-span-2 xl:col-span-1 ${reviewStatus === 'UNMAPPED' ? 'bg-slate-600 text-white border-slate-600 shadow-lg shadow-slate-600/10' : 'bg-white border-slate-200 hover:border-slate-300'}`}>
-                          <div className={`text-xs font-black ${reviewStatus === 'UNMAPPED' ? 'text-slate-100' : 'text-slate-500'}`}>ยังไม่ตั้งชื่อ</div><div className="text-3xl font-black mt-1">{reviewSummary.unmapped}</div>
-                        </button>
-                      </div>
-
-                      <div className="bg-white border-2 border-amber-100 rounded-[2rem] p-6 mb-5 shadow-sm">
-                        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-5">
-                          <div>
-                            <div className="flex items-center gap-2 mb-1"><span className="text-xl">⚠️</span><h3 className="text-xl font-black text-blue-950">ต้องตรวจ</h3><span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100">{exceptionRows.length}</span></div>
-                            <p className="text-xs font-bold text-blue-950/45">รายการที่ต้องตรวจ • แสดงเฉพาะ Exception โดยไม่เปลี่ยนข้อมูลต้นฉบับ</p>
-                          </div>
-                          <div className="flex flex-col md:flex-row gap-2">
-                            <input type="search" value={exceptionSearch} onChange={(e) => setExceptionSearch(e.target.value)} placeholder="ค้นหา Exception..." className="border-2 border-amber-100 bg-amber-50/30 px-4 py-2.5 rounded-xl text-sm font-bold outline-none focus:border-amber-400" />
-                            <select value={exceptionType} onChange={(e) => setExceptionType(e.target.value)} className="border-2 border-amber-100 bg-white px-4 py-2.5 rounded-xl text-sm font-black outline-none focus:border-amber-400">
-                              <option value="ALL">ทุก Exception</option><option value="REVIEW_QTY">ตรวจ Qty</option><option value="REVIEW_SKU">ตรวจ SKU</option><option value="PARSER_WARNING">Parser Warning</option><option value="UNMAPPED">ยังไม่ตั้งชื่อ</option>
-                            </select>
-                          </div>
+                    <div className="grid xl:grid-cols-[340px_minmax(0,1fr)] gap-4 items-start">
+                      <div className="space-y-4 xl:sticky xl:top-4">
+                        <div className="pm-card p-5">
+                          <div className="pm-section-kicker">เพิ่ม / แก้ไขกฎ</div>
+                          <h3 className="text-base font-black text-slate-900 mb-4">{editingId ? 'แก้ไข Mapping' : 'เพิ่ม Mapping ใหม่'}</h3>
+                          <form onSubmit={handleSubmitRule} className="space-y-4">
+                            <div><label className="pm-label">Keyword *</label><textarea rows="3" value={newRule.keyword} onChange={(e) => setNewRule({...newRule, keyword:e.target.value})} placeholder="เช่น HOYA Cooling 5 ห่อ" className="pm-input resize-none"></textarea><p className="pm-help">ใช้คำที่ช่วยยืนยันตัวสินค้าให้ชัดเจน ไม่ควรใช้คำทั่วไปอย่าง HOYA เพียงคำเดียว</p></div>
+                            <div><label className="pm-label">ชื่อภายใน (Internal Short Name) *</label><input value={newRule.shortName} onChange={(e) => setNewRule({...newRule, shortName:e.target.value})} placeholder="เช่น เย็นฟ้า5" className="pm-input" /></div>
+                            <div className="flex gap-2 pt-1"><button type="submit" disabled={!newRule.keyword.trim() || !newRule.shortName.trim()} className="pm-primary-btn flex-1 justify-center">{editingId ? 'บันทึก' : 'เพิ่มกฎ'}</button>{editingId && <button type="button" onClick={cancelEdit} className="pm-secondary-btn">ยกเลิก</button>}</div>
+                          </form>
                         </div>
 
-                        {currentException ? (
-                          <div className="rounded-2xl bg-slate-50 border border-slate-100 p-5">
-                            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2 mb-2">
-                                  <span className="font-mono text-sm font-black text-blue-950/70">{currentException.order.tracking || currentException.order.orderId || 'ไม่พบเลขอ้างอิง'}</span>
-                                  <span className={`text-[10px] font-black px-2 py-1 rounded-lg ${currentException.order.platform === 'TIKTOK' ? 'bg-slate-900 text-white' : 'bg-orange-50 text-orange-600'}`}>{currentException.order.platform === 'TIKTOK' ? 'TikTok' : 'Shopee'}</span>
-                                  {currentException.types.includes('REVIEW_QTY') && <span className="text-[10px] font-black px-2 py-1 rounded-lg bg-red-50 text-red-600">ตรวจ Qty</span>}
-                                  {currentException.types.includes('REVIEW_SKU') && <span className="text-[10px] font-black px-2 py-1 rounded-lg bg-amber-50 text-amber-700">ตรวจ SKU</span>}
-                                  {currentException.types.includes('PARSER_WARNING') && <span className="text-[10px] font-black px-2 py-1 rounded-lg bg-fuchsia-50 text-fuchsia-700">Parser Warning</span>}
-                                  {currentException.types.includes('UNMAPPED') && <span className="text-[10px] font-black px-2 py-1 rounded-lg bg-slate-200 text-slate-700">ยังไม่ตั้งชื่อ</span>}
-                                </div>
-                                <div className="flex flex-wrap gap-2">{(currentException.order.displayItems || []).map((item, idx) => <span key={idx} className="text-xs font-bold text-blue-950/65 bg-white px-2.5 py-1.5 rounded-lg border border-slate-100">{item}</span>)}</div>
-                              </div>
-                              <div className="flex flex-wrap items-center gap-2 shrink-0">
-                                <span className="text-[11px] font-black text-blue-950/35 mr-1">{safeExceptionCursor + 1} / {filteredExceptionRows.length}</span>
-                                <button onClick={() => moveExceptionCursor(-1)} disabled={safeExceptionCursor === 0} className="px-3 py-2 rounded-xl bg-white border border-slate-200 disabled:opacity-30 text-xs font-black">ก่อนหน้า</button>
-                                <button onClick={() => moveExceptionCursor(1)} disabled={safeExceptionCursor >= filteredExceptionRows.length - 1} className="px-3 py-2 rounded-xl bg-white border border-slate-200 disabled:opacity-30 text-xs font-black">ถัดไป</button>
-                                {(currentException.types.includes('UNMAPPED') || currentException.types.includes('REVIEW_SKU') || currentException.types.includes('PARSER_WARNING')) && <button onClick={() => handleFixSkuException(currentException)} className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black">ตั้งชื่อ SKU</button>}
-                                <button onClick={() => openExceptionInTable(currentException)} className="px-4 py-2 rounded-xl bg-blue-950 text-white text-xs font-black">เปิดในตาราง</button>
-                              </div>
+                        <div className="pm-card p-5">
+                          <div className="pm-section-kicker">Quick Test</div><h3 className="text-sm font-black text-slate-900 mb-3">ทดสอบ Mapping ก่อนใช้จริง</h3>
+                          <textarea rows="3" value={testInput} onChange={(e) => setTestInput(e.target.value)} placeholder="วางชื่อสินค้าเต็ม..." className="pm-input resize-none"></textarea>
+                          <div className="flex items-center gap-2 mt-2"><label className="pm-label !mb-0">Qty</label><input type="number" min="1" value={testQty} onChange={(e) => setTestQty(e.target.value)} className="pm-input !py-2 w-24 text-center" /></div>
+                          <div className="mt-3 p-3 rounded-xl bg-slate-50 border border-slate-200"><div className="text-[9px] font-black uppercase tracking-wider text-slate-400">Result</div><div className={`mt-1 text-sm font-black ${testInput && (testResult === 'ไม่พบคีย์เวิร์ด' || testResult === '⚠️ ตรวจสอบ SKU') ? 'text-red-600' : 'text-slate-900'}`}>{testInput ? testResult : '-'}</div></div>
+                        </div>
+                      </div>
+
+                      <div className="pm-card overflow-hidden">
+                        <div className="p-4 border-b border-slate-200">
+                          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                            <div><div className="pm-section-kicker">ค้นหา / กรองกฎ</div><div className="text-xs font-bold text-slate-500 mt-1">{filteredSkuRules.length} จาก {skuRules.length} กฎ</div></div>
+                            <div className="flex flex-wrap gap-2">
+                              <div className="relative min-w-[230px] flex-1"><PMIcon name="search" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="search" value={skuSearch} onChange={(e)=>setSkuSearch(e.target.value)} placeholder="ค้นหา Keyword / ชื่อภายใน" className="pm-input !py-2.5 !pl-9"/></div>
+                              <select value={skuSort} onChange={(e)=>setSkuSort(e.target.value)} className="pm-select"><option value="keyword">เรียง Keyword</option><option value="internal">เรียงชื่อภายใน</option></select>
                             </div>
                           </div>
-                        ) : (
-                          <div className="rounded-2xl bg-green-50 border border-green-100 p-5 text-green-700 text-sm font-black">{exceptionRows.length === 0 ? 'ไม่มีรายการที่ต้องตรวจ — Batch นี้พร้อมพิมพ์ทั้งหมด' : 'ไม่พบ Exception ที่ตรงกับตัวกรองนี้'}</div>
-                        )}
-                      </div>
-
-                      <div className="bg-white border-2 border-blue-50 rounded-2xl p-4 mb-8 shadow-sm">
-                        <div className="flex flex-col xl:flex-row gap-3 xl:items-center">
-                          <div className="relative flex-1">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-950/30">🔎</span>
-                            <input type="search" value={reviewSearch} onChange={(e) => setReviewSearch(e.target.value)} placeholder="ค้นหา Tracking, Order, SKU หรือชื่อภายใน..." className="w-full border-2 border-blue-100 bg-slate-50/50 pl-11 pr-4 py-3 rounded-xl outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-900 text-sm font-bold text-blue-950" />
-                          </div>
-                          <select value={reviewPlatform} onChange={(e) => setReviewPlatform(e.target.value)} className="border-2 border-blue-100 bg-white px-4 py-3 rounded-xl text-sm font-black text-blue-950 outline-none focus:border-blue-900">
-                            <option value="ALL">ทุกแพลตฟอร์ม</option><option value="SHOPEE">Shopee</option><option value="TIKTOK">TikTok</option>
-                          </select>
-                          <select value={reviewStatus} onChange={(e) => setReviewStatus(e.target.value)} className="border-2 border-blue-100 bg-white px-4 py-3 rounded-xl text-sm font-black text-blue-950 outline-none focus:border-blue-900">
-                            <option value="ALL">ทุกสถานะ</option><option value="READY">พร้อมพิมพ์</option><option value="REVIEW_SKU">ตรวจสอบ SKU</option><option value="REVIEW_QTY">ตรวจสอบ Qty</option><option value="UNMAPPED">ยังไม่ตั้งชื่อ</option>
-                          </select>
-                          {(reviewSearch || reviewPlatform !== 'ALL' || reviewStatus !== 'ALL') && <button onClick={() => { setReviewSearch(''); setReviewPlatform('ALL'); setReviewStatus('ALL'); }} className="px-4 py-3 rounded-xl text-sm font-black text-blue-700 bg-blue-50 hover:bg-blue-100">ล้างตัวกรอง</button>}
+                          <div className="flex flex-wrap gap-1.5 mt-3">{skuFilterOptions.map(option=><button key={option.id} onClick={()=>setSkuFilter(option.id)} className={`px-3 py-1.5 rounded-lg border text-[10px] font-black ${skuFilter===option.id?'bg-[#0b63ce] border-[#0b63ce] text-white':'bg-white border-slate-200 text-slate-500 hover:border-blue-300'}`}>{option.label}</button>)}</div>
                         </div>
-                        <div className="mt-3 flex items-center justify-between text-xs font-bold text-blue-950/40"><span>แสดง {FilteredOrders.length} จาก {MappedOrders.length} รายการ</span><span>Filter ใช้สำหรับรีวิวเท่านั้น • Print / Save PDF ยังใช้ข้อมูลเต็มชุด</span></div>
+                        <div className="overflow-x-auto">
+                          <table className="pm-table min-w-[720px]"><thead><tr><th>#</th><th>Keyword</th><th>ชื่อภายใน</th><th className="text-right">จัดการ</th></tr></thead><tbody>
+                            {visibleSkuRules.map((rule,idx)=><tr key={rule.id} className={editingId===rule.id?'opacity-40':''}><td className="text-slate-400 font-black">{(skuPage-1)*skuPageSize+idx+1}</td><td><div className="font-bold text-slate-700 max-w-[380px] break-words">{rule.keyword}</div></td><td><span className="inline-flex px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 font-black">{rule.shortName}</span></td><td><div className="flex justify-end gap-1"><button onClick={()=>handleEditClick(rule)} className="pm-icon-btn" title="แก้ไข"><PMIcon name="edit" className="w-4 h-4"/></button><button onClick={()=>{if(window.confirm(`ลบกฎ ${rule.keyword} หรือไม่?`)) setSkuRules(prev=>prev.filter(r=>r.id!==rule.id));}} className="pm-icon-btn pm-icon-danger" title="ลบ"><PMIcon name="trash" className="w-4 h-4"/></button></div></td></tr>)}
+                            {visibleSkuRules.length===0&&<tr><td colSpan="4"><div className="py-12 text-center text-sm font-bold text-slate-400">{skuRules.length===0?'ยังไม่มีข้อมูลคลังคำศัพท์':'ไม่พบกฎที่ตรงกับการค้นหา / ตัวกรอง'}</div></td></tr>}
+                          </tbody></table>
+                        </div>
+                        <div className="pm-pagination"><div className="text-[11px] font-bold text-slate-400">หน้า {skuPage} / {skuPageCount}</div><div className="flex items-center gap-2"><select value={skuPageSize} onChange={(e)=>{setSkuPageSize(Number(e.target.value));setSkuPage(1);}} className="pm-select !py-1.5"><option value="10">10/หน้า</option><option value="20">20/หน้า</option><option value="50">50/หน้า</option></select><button disabled={skuPage<=1} onClick={()=>setSkuPage(p=>Math.max(1,p-1))} className="pm-page-btn">‹</button><button disabled={skuPage>=skuPageCount} onClick={()=>setSkuPage(p=>Math.min(skuPageCount,p+1))} className="pm-page-btn">›</button></div></div>
                       </div>
-                    </>
-                  )}
+                    </div>
+                  </section>
+                )}
 
-                  {orders.length === 0 ? (
-                    <div className="bg-white p-32 rounded-[3rem] text-center border-2 border-blue-50 flex flex-col items-center justify-center shadow-sm">
-                      <span className="text-6xl mb-6 opacity-30">📄</span><h3 className="font-black text-2xl text-blue-950/30">ยังไม่มีข้อมูลสำหรับพิมพ์</h3><p className="text-blue-950/30 text-sm mt-2 font-medium">โปรดอัปโหลดไฟล์ในเมนูแรก</p>
+                {activeView === 'review' && (
+                  <section data-pm-view="review" className="pm-page pm-page-wide">
+                    <div className="pm-page-head">
+                      <div><div className="pm-eyebrow">Exceptions-first QC</div><h2 className="pm-page-title">รีวิว & พิมพ์</h2><p className="pm-page-subtitle">{activeBatch ? `${activeBatch.name} • ` : ''}ตรวจเฉพาะรายการที่ระบบไม่มั่นใจ แล้วพิมพ์เมื่อ Batch พร้อม</p></div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button onClick={()=>setThermalMode(!thermalMode)} className={`pm-secondary-btn ${thermalMode?'!border-emerald-200 !text-emerald-700':''}`}><PMIcon name="printer"/> Thermal {thermalMode?'ON':'OFF'}</button>
+                        <button onClick={handleClearActiveBatch} disabled={orders.length===0} className="pm-ghost-btn"><PMIcon name="refresh"/> ล้างออเดอร์</button>
+                        <button data-pm-action="save-pdf" onClick={handleExportPDF} disabled={exportStatus.active || orders.length === 0 || printBlocked} title={printBlocked?`ยังมี Exception ${exceptionRows.length} รายการ`:'Save PDF'} className="pm-secondary-btn"><PMIcon name="download"/> Save PDF</button>
+                        <button data-pm-action="print" onClick={handlePrint} disabled={orders.length === 0 || printBlocked} title={printBlocked?`ยังมี Exception ${exceptionRows.length} รายการ`:'พิมพ์'} className="pm-primary-btn"><PMIcon name={printBlocked?'lock':'printer'}/>{printBlocked?'ยังพิมพ์ไม่ได้':'พิมพ์'}</button>
+                      </div>
                     </div>
-                  ) : FilteredOrders.length === 0 ? (
-                    <div className="bg-white p-20 rounded-[2.5rem] text-center border-2 border-blue-50 shadow-sm">
-                      <div className="text-4xl mb-4">🔎</div><h3 className="font-black text-xl text-blue-950/50">ไม่พบรายการที่ตรงกับตัวกรอง</h3><p className="text-blue-950/30 text-sm mt-2 font-bold">ลองล้างคำค้นหา หรือเลือกสถานะ / แพลตฟอร์มอื่น</p>
+
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
+                      {[
+                        ['ALL','ทั้งหมด',reviewSummary.total,'blue'],['READY','พร้อมพิมพ์',reviewSummary.ready,'green'],['REVIEW_SKU','ตรวจสอบ SKU',reviewSummary.reviewSku,'amber'],['REVIEW_QTY','ตรวจสอบ Qty',reviewSummary.reviewQty,'red'],['UNMAPPED','ยังไม่ตั้งชื่อ',reviewSummary.unmapped,'slate']
+                      ].map(([status,label,value,tone])=><button key={status} onClick={()=>setReviewStatus(status)} className={`pm-summary-btn ${reviewStatus===status?'pm-summary-selected':''}`}><PMMetric label={label} value={value} tone={tone} compact /></button>)}
                     </div>
-                  ) : previewMode === 'table' ? (
-                    <div className="bg-white rounded-[2.5rem] shadow-xl shadow-blue-900/5 overflow-hidden no-print border-2 border-blue-50">
-                      <table className="w-full text-left">
-                        <thead><tr className="bg-blue-50/50 text-blue-950/50 uppercase tracking-widest text-[10px] font-black border-b-2 border-blue-50"><th className="px-7 py-5">Tracking / Platform</th><th className="px-7 py-5">Status</th><th className="px-7 py-5 text-center">Qty</th><th className="px-7 py-5">Output Label</th></tr></thead>
-                        <tbody className="divide-y-2 divide-blue-50/50">
-                          {FilteredOrders.map((order) => {
-                            const flags = getReviewFlags(order);
-                            return (
-                              <tr key={order.id} className="hover:bg-blue-50/30 transition-colors align-top">
-                                <td className="px-7 py-5"><div className="font-mono text-sm font-bold text-blue-950/70">{order.tracking}</div><div className="mt-2"><span className={`text-[10px] font-black px-2.5 py-1 rounded-lg ${order.platform === 'TIKTOK' ? 'bg-slate-900 text-white' : 'bg-orange-50 text-orange-600'}`}>{order.platform === 'TIKTOK' ? 'TikTok' : 'Shopee'}</span></div></td>
-                                <td className="px-7 py-5"><div className="flex flex-wrap gap-1.5 max-w-[180px]">{flags.ready && <span className="text-[10px] font-black px-2.5 py-1.5 rounded-lg bg-green-50 text-green-700 border border-green-100">พร้อมพิมพ์</span>}{flags.hasSkuReview && <span className="text-[10px] font-black px-2.5 py-1.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-100">ตรวจสอบ SKU</span>}{flags.hasQtyReview && <span className="text-[10px] font-black px-2.5 py-1.5 rounded-lg bg-red-50 text-red-600 border border-red-100">ตรวจสอบ Qty</span>}{flags.hasUnmapped && <span className="text-[10px] font-black px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-600 border border-slate-200">ยังไม่ตั้งชื่อ</span>}</div></td>
-                                <td className="px-7 py-5 text-center font-black text-xl text-blue-950/50">{order.originalQty > 0 ? order.originalQty : '-'}</td>
-                                <td className="px-7 py-5"><div className="flex flex-col gap-2 items-start">{order.displayItems && order.displayItems.length > 0 ? order.displayItems.map((labelText, idx) => (<span key={idx} className={`font-black text-base px-3 py-1.5 rounded-lg inline-block ${labelText.includes('ยังไม่ตั้งชื่อ') || labelText.includes('ตรวจสอบ') ? 'text-red-500 bg-red-50' : 'text-blue-900 bg-blue-100/50'}`}>{labelText}</span>)) : <span className="text-blue-950/30 font-bold text-sm">(หน้าต่อท้ายบิล)</span>}</div></td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+
+                    {printBlocked && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3 text-amber-800"><PMIcon name="lock" className="w-5 h-5 shrink-0"/><div className="flex-1"><div className="text-sm font-black">Print Safety ทำงานอยู่</div><div className="text-xs font-semibold opacity-70">ยังมี {exceptionRows.length} Exception — แก้ให้ครบก่อน Print / Save PDF เพื่อป้องกันแพ็กผิด</div></div></div>}
+
+                    <div className="pm-card p-3 mb-4">
+                      <div className="flex flex-col xl:flex-row xl:items-center gap-2">
+                        <div className="relative flex-1 min-w-[220px]"><PMIcon name="search" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="search" value={reviewSearch} onChange={(e)=>setReviewSearch(e.target.value)} placeholder="ค้นหา Order / SKU / ชื่อภายใน" className="pm-input !py-2.5 !pl-9"/></div>
+                        <select value={reviewPlatform} onChange={(e)=>setReviewPlatform(e.target.value)} className="pm-select"><option value="ALL">ทุกแพลตฟอร์ม</option><option value="SHOPEE">Shopee</option><option value="TIKTOK">TikTok</option></select>
+                        <select value={reviewStatus} onChange={(e)=>setReviewStatus(e.target.value)} className="pm-select"><option value="ALL">ทุกสถานะ</option><option value="READY">พร้อมพิมพ์</option><option value="REVIEW_SKU">ตรวจสอบ SKU</option><option value="REVIEW_QTY">ตรวจสอบ Qty</option><option value="UNMAPPED">ยังไม่ตั้งชื่อ</option></select>
+                        <div className="flex p-1 bg-slate-100 rounded-lg"><button onClick={()=>setPreviewMode('labels')} className={`pm-view-toggle ${previewMode==='labels'?'pm-view-toggle-active':''}`} title="Grid"><PMIcon name="grid" className="w-4 h-4"/></button><button onClick={()=>setPreviewMode('table')} className={`pm-view-toggle ${previewMode==='table'?'pm-view-toggle-active':''}`} title="Compact list"><PMIcon name="list" className="w-4 h-4"/></button></div>
+                        {(reviewSearch||reviewPlatform!=='ALL'||reviewStatus!=='ALL')&&<button onClick={()=>{setReviewSearch('');setReviewPlatform('ALL');setReviewStatus('ALL');}} className="pm-ghost-btn">ล้างตัวกรอง</button>}
+                      </div>
+                      <div className="flex items-center justify-between gap-2 mt-2 px-1"><span className="text-[10px] font-bold text-slate-400">แสดง {FilteredOrders.length} จาก {MappedOrders.length} รายการ</span><span className="hidden md:inline text-[10px] font-bold text-blue-600">Filter / Pagination ใช้เฉพาะหน้าจอ • Print ยังใช้ข้อมูลเต็ม Batch</span></div>
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-10 justify-items-center pb-20 no-print">
-                      {FilteredOrders.map((order) => (<div key={`prev-${order.id}`} className="transform hover:scale-[1.01] transition-transform duration-200"><LabelCard order={order} thermalMode={thermalMode} /></div>))}
+
+                    {exceptionRows.length>0&&(
+                      <div className="pm-card p-4 mb-4">
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-3"><div><div className="pm-section-kicker">Exception Inbox</div><div className="text-sm font-black text-slate-900">{filteredExceptionRows.length} รายการที่ต้องตัดสินใจ</div></div><div className="flex flex-wrap gap-2"><select value={exceptionType} onChange={(e)=>setExceptionType(e.target.value)} className="pm-select !py-2"><option value="ALL">ทุก Exception</option><option value="SKU">SKU</option><option value="QTY">Qty</option><option value="UNMAPPED">Unmapped</option></select><input value={exceptionSearch} onChange={(e)=>setExceptionSearch(e.target.value)} placeholder="ค้นหา Exception" className="pm-input !py-2 w-[190px]"/></div></div>
+                        {currentException?<div className="rounded-xl border border-amber-200 bg-amber-50/55 p-3 flex flex-col xl:flex-row xl:items-center gap-3"><div className="flex-1 min-w-0"><div className="text-[10px] font-black text-amber-700">{safeExceptionCursor+1} / {filteredExceptionRows.length} • {(currentException.types||[]).join(' + ')}</div><div className="text-xs font-bold text-slate-700 mt-1 truncate">{currentException.order?.tracking||currentException.order?.orderId||'Order'}</div></div><div className="flex gap-2"><button onClick={()=>moveExceptionCursor(-1)} disabled={safeExceptionCursor<=0} className="pm-page-btn" title="ก่อนหน้า" aria-label="ก่อนหน้า">‹</button><button onClick={()=>moveExceptionCursor(1)} disabled={safeExceptionCursor>=filteredExceptionRows.length-1} className="pm-page-btn" title="ถัดไป" aria-label="ถัดไป">›</button><button onClick={()=>openExceptionInTable(currentException)} className="pm-secondary-btn">เปิดในรายการ</button>{(currentException.types||[]).some(type=>type==='SKU'||type==='UNMAPPED')&&<button onClick={()=>handleFixSkuException(currentException)} className="pm-primary-btn">ตั้งชื่อ SKU</button>}</div></div>:<div className="text-xs font-bold text-slate-400 py-3">ไม่มี Exception ที่ตรงกับตัวกรอง</div>}
+                      </div>
+                    )}
+
+                    {orders.length===0?(
+                      <PMEmptyState icon="review" title="ยังไม่มีข้อมูลสำหรับรีวิว" body="เลือก Batch และอัปโหลด PDF ก่อน" action={<button onClick={()=>navigateView(activeBatchId?'upload':'batches')} className="pm-primary-btn">ไปที่อัปโหลด</button>} />
+                    ):FilteredOrders.length===0?(
+                      <PMEmptyState icon="search" title="ไม่พบรายการที่ตรงกับตัวกรอง" body="ลองล้างคำค้นหา หรือเลือกสถานะ / แพลตฟอร์มอื่น" />
+                    ):previewMode==='table'?(
+                      <div className="pm-card overflow-x-auto"><table className="pm-table min-w-[820px]"><thead><tr><th>Order / Platform</th><th>สถานะ</th><th className="text-center">Qty</th><th>ชื่อภายใน</th><th className="text-right">Action</th></tr></thead><tbody>{visibleReviewOrders.map(order=>{const flags=getReviewFlags(order);const row=exceptionRows.find(item=>item.order?.id===order.id);return <tr key={order.id}><td><div className="font-mono text-xs font-bold text-slate-700">{order.tracking||order.orderId||order.id}</div><PMStatusPill tone={order.platform==='TIKTOK'?'dark':'orange'}>{order.platform==='TIKTOK'?'TikTok':'Shopee'}</PMStatusPill></td><td><div className="flex flex-wrap gap-1">{flags.ready&&<PMStatusPill tone="green">พร้อมพิมพ์</PMStatusPill>}{flags.hasSkuReview&&<PMStatusPill tone="amber">ตรวจสอบ SKU</PMStatusPill>}{flags.hasQtyReview&&<PMStatusPill tone="red">ตรวจสอบ Qty</PMStatusPill>}{flags.hasUnmapped&&<PMStatusPill tone="slate">ยังไม่ตั้งชื่อ</PMStatusPill>}</div></td><td className="text-center font-black text-slate-700">{(order.parsedItems||[]).reduce((sum,item)=>sum+(Number(item.qty)||0),0)||order.originalQty||'-'}</td><td><div className="space-y-1">{(order.displayItems||[]).map((text,idx)=><div key={idx} className={`text-xs font-black ${text.includes('ตรวจสอบ')||text.includes('ยังไม่ตั้งชื่อ')?'text-red-600':'text-blue-700'}`}>{text}</div>)}</div></td><td><div className="flex justify-end gap-1">{row&&(flags.hasSkuReview||flags.hasUnmapped)&&<button onClick={()=>handleFixSkuException(row)} className="pm-secondary-btn !py-2 !px-3">ตั้งชื่อ SKU</button>}</div></td></tr>})}</tbody></table></div>
+                    ):(
+                      <div className="grid sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">{visibleReviewOrders.map(order=>{const flags=getReviewFlags(order);const row=exceptionRows.find(item=>item.order?.id===order.id);return <article key={order.id} className="pm-order-card"><div className="flex items-center justify-between gap-2 mb-2"><PMStatusPill tone={order.platform==='TIKTOK'?'dark':'orange'}>{order.platform==='TIKTOK'?'TikTok':'Shopee'}</PMStatusPill><div className="flex gap-1">{flags.ready&&<PMStatusPill tone="green">พร้อมพิมพ์</PMStatusPill>}{flags.hasSkuReview&&<PMStatusPill tone="amber">SKU</PMStatusPill>}{flags.hasQtyReview&&<PMStatusPill tone="red">Qty</PMStatusPill>}{flags.hasUnmapped&&<PMStatusPill tone="slate">Unmapped</PMStatusPill>}</div></div><div className="text-[10px] font-mono font-bold text-slate-500 truncate mb-2">{order.tracking||order.orderId||order.id}</div>{order.pdfImage?<div className="pm-label-thumb"><img src={order.pdfImage} alt="Order label preview"/></div>:<div className="pm-label-thumb flex items-center justify-center text-xs font-bold text-slate-400">ไม่มีภาพ Reprint</div>}<div className="mt-3 space-y-1 min-h-[42px]">{(order.displayItems||[]).map((text,idx)=><div key={idx} className={`text-xs font-black leading-5 ${text.includes('ตรวจสอบ')||text.includes('ยังไม่ตั้งชื่อ')?'text-red-600':'text-blue-700'}`}>{text}</div>)}</div>{row&&(flags.hasSkuReview||flags.hasUnmapped)&&<button onClick={()=>handleFixSkuException(row)} className="pm-secondary-btn w-full justify-center mt-3">ตั้งชื่อ SKU</button>}</article>})}</div>
+                    )}
+
+                    {FilteredOrders.length>0&&<div className="pm-pagination mt-4"><div className="text-[11px] font-bold text-slate-400">หน้า {reviewPage} / {reviewPageCount} • แสดง {visibleReviewOrders.length} รายการ</div><div className="flex items-center gap-2"><select value={reviewPageSize} onChange={(e)=>{setReviewPageSize(Number(e.target.value));setReviewPage(1);}} className="pm-select !py-1.5"><option value="12">12/หน้า</option><option value="24">24/หน้า</option><option value="48">48/หน้า</option></select><button disabled={reviewPage<=1} onClick={()=>setReviewPage(p=>Math.max(1,p-1))} className="pm-page-btn">‹</button><button disabled={reviewPage>=reviewPageCount} onClick={()=>setReviewPage(p=>Math.min(reviewPageCount,p+1))} className="pm-page-btn">›</button></div></div>}
+                  </section>
+                )}
+
+                {activeView === 'safety' && (
+                  <section data-pm-view="safety" className="pm-page">
+                    <div className="pm-page-head"><div><div className="pm-eyebrow">Local Safety</div><h2 className="pm-page-title">สำรองข้อมูล & ความปลอดภัย</h2><p className="pm-page-subtitle">สำรอง Workspace, ตรวจพื้นที่ และสร้าง Diagnostics โดยข้อมูลไม่ถูกส่งขึ้น Server</p></div><div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-black"><PMIcon name="shield"/> Local-only</div></div>
+
+                    <div className="grid xl:grid-cols-2 gap-4">
+                      <div className="pm-card p-5">
+                        <div className="flex items-start gap-3"><div className="pm-feature-icon"><PMIcon name="database"/></div><div className="flex-1"><div className="pm-section-kicker">Workspace Backup</div><h3 className="text-base font-black text-slate-900">ความปลอดภัย Workspace</h3><p className="text-xs font-semibold text-slate-400 mt-1 leading-5">สำรองคลังคำศัพท์, Settings และ Batch เป็น JSON ในเครื่อง ก่อนย้ายเครื่องหรือล้าง Browser</p></div></div>
+                        <div className="flex flex-wrap gap-2 mt-5"><button data-pm-action="workspace-backup" onClick={handleWorkspaceBackup} disabled={workspaceBusy||!batchStorageReady} className="pm-primary-btn"><PMIcon name="download"/> สำรอง Workspace</button><label className={`pm-secondary-btn cursor-pointer ${workspaceBusy||!batchStorageReady?'opacity-50 pointer-events-none':''}`}><PMIcon name="upload"/> กู้คืน Workspace<input type="file" accept=".json,application/json" disabled={workspaceBusy||!batchStorageReady} className="hidden" onChange={handleWorkspaceRestoreFile}/></label></div>
+                        <div className="mt-4 rounded-xl bg-amber-50 border border-amber-200 px-3 py-3 text-[11px] font-semibold leading-5 text-amber-800">Backup อาจมีข้อมูลที่อ่านจากใบออเดอร์ ควรเก็บเป็นข้อมูลภายในร้านและไม่อัปโหลดไฟล์จริงขึ้น Public GitHub</div>
+
+                        {restorePreview&&<div className="mt-4 rounded-xl border-2 border-blue-200 bg-blue-50/50 p-4"><div className="text-[10px] font-black text-blue-600">ตรวจไฟล์ผ่านแล้ว • {restoreFileName||'Backup JSON'}</div><div className="grid grid-cols-3 gap-2 mt-3"><div className="pm-mini-stat"><span>SKU Rules</span><strong>{restorePreview.summary.skuRules}</strong></div><div className="pm-mini-stat"><span>Batches</span><strong>{restorePreview.summary.batches}</strong></div><div className="pm-mini-stat"><span>Orders</span><strong>{restorePreview.summary.orders}</strong></div></div><div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-blue-200"><span className="text-[10px] font-bold text-red-600">Replace Workspace จะแทนข้อมูล Local ปัจจุบัน</span><div className="flex gap-2"><button onClick={resetRestorePreview} className="pm-ghost-btn">ยกเลิก</button><button onClick={handleConfirmWorkspaceRestore} disabled={workspaceBusy} className="pm-danger-btn">Replace Workspace</button></div></div></div>}
+                      </div>
+
+                      <div className="pm-card p-5">
+                        <div className="flex items-start gap-3"><div className="pm-feature-icon"><PMIcon name="storage"/></div><div className="flex-1"><div className="pm-section-kicker">Browser Storage</div><h3 className="text-base font-black text-slate-900">Storage Health</h3><p className="text-xs font-semibold text-slate-400 mt-1">ตรวจการใช้พื้นที่แบบ Local และล้างเฉพาะภาพ Reprint ของ Archived Batch ที่เลือก</p></div></div>
+                        <div className="mt-5 p-4 rounded-xl bg-slate-50 border border-slate-200">{storageHealth.supported===true?<><div className="flex items-end justify-between gap-3"><div><div className="text-[10px] font-black text-slate-400 uppercase">Used</div><div className="text-2xl font-black text-slate-900">{storageHealthApi?storageHealthApi.formatBytes(storageHealth.usage):'-'}</div></div><div className="text-xs font-black text-slate-500">{storageHealth.percent==null?'-':storageHealth.percent}% / {storageHealthApi?storageHealthApi.formatBytes(storageHealth.quota):'-'}</div></div><div className="h-2 bg-white rounded-full overflow-hidden mt-3"><div className={`h-full ${Number(storageHealth.percent)>80?'bg-red-500':Number(storageHealth.percent)>60?'bg-amber-400':'bg-blue-500'}`} style={{width:`${Math.min(100,Number(storageHealth.percent)||0)}%`}}></div></div></>:storageHealth.supported===false?<div className="text-xs font-bold text-slate-500">Browser นี้ไม่รายงาน Storage quota แต่ PackMaster ยังใช้งาน Local ได้</div>:<div className="text-xs font-bold text-slate-400">กำลังอ่านพื้นที่...</div>}</div>
+                        <div className="flex flex-wrap gap-2 mt-4"><button onClick={refreshStorageHealth} disabled={storageHealthBusy} className="pm-secondary-btn"><PMIcon name="refresh"/> รีเฟรชพื้นที่</button>{selectedArchivedBatchIds.length>0?<button onClick={handleCleanupReprintImages} disabled={storageHealthBusy} className="pm-warning-btn">ล้างรูป Reprint ({selectedArchivedBatchIds.length})</button>:<button onClick={()=>{setBatchViewFilter('ARCHIVED');navigateView('batches');}} className="pm-ghost-btn">เลือก Archived Batch ก่อน Cleanup</button>}</div>
+                      </div>
+
+                      <div className="pm-card p-5 xl:col-span-2">
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"><div className="flex items-start gap-3"><div className="pm-feature-icon"><PMIcon name="activity"/></div><div><div className="pm-section-kicker">Pilot Diagnostics</div><h3 className="text-base font-black text-slate-900">Diagnostics แบบไม่รวมข้อมูลลูกค้า</h3><p className="text-xs font-semibold text-slate-400 mt-1">Export เฉพาะข้อมูล aggregate / capabilities สำหรับตรวจ Pilot และ Browser health</p></div></div><div className="flex gap-2"><button onClick={()=>handleDownloadDiagnostics('json')} className="pm-secondary-btn"><PMIcon name="download"/> JSON</button><button onClick={()=>handleDownloadDiagnostics('csv')} className="pm-secondary-btn"><PMIcon name="download"/> CSV</button></div></div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-5"><div className="pm-mini-stat"><span>Version</span><strong className="!text-sm">{PILOT_VERSION}</strong></div><div className="pm-mini-stat"><span>IndexedDB</span><strong className="!text-sm">{window.indexedDB?'พร้อม':'ไม่พร้อม'}</strong></div><div className="pm-mini-stat"><span>WebCrypto</span><strong className="!text-sm">{window.crypto&&window.crypto.subtle?'พร้อม':'ไม่พร้อม'}</strong></div><div className="pm-mini-stat"><span>Archived</span><strong>{archivedBatchCount}</strong></div></div>
+                      </div>
                     </div>
-                  )}
-                </div>
-              )}
-            </main>
+                  </section>
+                )}
+              </main>
+            </div>
           </div>
+
 
           <div className="fixed pointer-events-none opacity-0" style={{ top: 0, left: 0, width: '100mm', height: 0, overflow: 'hidden', zIndex: -100 }}>
             {MappedOrders.map((order) => (
