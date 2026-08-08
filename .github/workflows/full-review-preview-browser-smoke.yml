@@ -122,3 +122,5 @@ jobs:
         if: always()
         run: |
           if [ -f /tmp/packmaster-full-preview-server.pid ]; then kill "$(cat /tmp/packmaster-full-preview-server.pid)" || true; fi
+
+# rerun after declaration-order repair
