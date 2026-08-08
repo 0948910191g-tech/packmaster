@@ -1,3 +1,4 @@
+# Retry after confirming legacy hash casing is intentionally preserved.
 name: Apply PackMaster Phase 3B Sidecar Guardrail
 
 on:
