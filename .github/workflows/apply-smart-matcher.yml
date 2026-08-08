@@ -72,6 +72,12 @@ jobs:
       - name: Pilot readiness package guard
         run: node tests/packmaster-pilot-ready.test.mjs
 
+      - name: Pilot print safety behavior tests
+        run: node tests/packmaster-pilot-safety.test.mjs
+
+      - name: Pilot print safety UI guard
+        run: node tests/packmaster-pilot-safety-ui.test.mjs
+
       - name: Production smoke workflow regression guard
         run: node tests/packmaster-production-smoke-workflow.test.mjs
 
