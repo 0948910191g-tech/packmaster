@@ -4,4 +4,4 @@ This hotfix is driven by production regressions reproduced from the real SKU map
 
 Safety rule: parser must determine row quantity before SKU matching; matching must prefer product identity over pack-size coincidence. If confidence is insufficient, require review instead of guessing.
 
-TDD progress: production matcher regressions are green; grouped TikTok header parsing is the next verification gate before implementing the Shopee positioned-row parser.
+TDD progress: production matcher regressions and grouped TikTok header parsing are green. The Shopee positioned-row parser is now implemented and under regression verification for three rows with Qty `[1,1,1]` and footer total `3`.
