@@ -78,6 +78,9 @@ jobs:
       - name: Pilot print safety UI guard
         run: node tests/packmaster-pilot-safety-ui.test.mjs
 
+      - name: Frontend V3 operational UI guard
+        run: node tests/packmaster-frontend-v3-ui.test.mjs
+
       - name: Production smoke workflow regression guard
         run: node tests/packmaster-production-smoke-workflow.test.mjs
 
