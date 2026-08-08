@@ -11,6 +11,7 @@ assert.match(html, /เปิดคลังคำศัพท์/, 'Quick Mappi
 assert.match(html, /shortName/, 'Quick Mapping must preserve existing keyword/shortName rule shape');
 assert.match(html, /!.*shortName.*trim\(\)/s, 'Quick Mapping must reject empty internal short names before save');
 assert.match(html, /REVIEW_SKU.*UNMAPPED|UNMAPPED.*REVIEW_SKU/s, 'Quick Mapping action must stay limited to the real SKU/Unmapped exception types');
+assert.match(html, /currentException\.types\|\|\[\]\)\.some\(type=>type==='REVIEW_SKU'\|\|type==='UNMAPPED'\)/, 'Exception Inbox must show the SKU naming action for the real REVIEW_SKU type');
 assert.equal(/quickMapState[^\n]*shortName:\s*['"][^'"]+['"]/.test(html), false, 'Quick Mapping must not auto-generate an internal short name');
 
 console.log('PackMaster inline Quick Mapping contract passed');
