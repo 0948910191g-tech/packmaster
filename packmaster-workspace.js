@@ -36,6 +36,14 @@
     requireArray(candidate.batches, 'batches');
     requireArray(candidate.batchOrders, 'batchOrders');
 
+    candidate.skuRules.forEach((rule, index) => {
+      if (!isPlainObject(rule) ||
+          typeof rule.keyword !== 'string' || !rule.keyword.trim() ||
+          typeof rule.shortName !== 'string' || !rule.shortName.trim()) {
+        throw new Error(`skuRules[${index}] must contain non-empty string keyword and shortName`);
+      }
+    });
+
     const batchIds = new Set();
     for (const batch of candidate.batches) {
       if (!isPlainObject(batch) || typeof batch.id !== 'string' || !batch.id.trim()) {
