@@ -17,6 +17,8 @@
   <script src="./packmaster-workspace.js"></script>
   <script src="./packmaster-duplicate.js"></script>
   <script src="./packmaster-exceptions.js"></script>
+  <script src="./packmaster-storage-health.js"></script>
+  <script src="./packmaster-diagnostics.js"></script>
 
   <script>
     tailwind.config = { theme: { extend: { fontFamily: { sans: ['"Noto Sans Thai"', 'sans-serif'] } } } }
@@ -673,6 +675,9 @@
       const workspaceApi = window.PackMasterWorkspace;
       const duplicateApi = window.PackMasterDuplicate;
       const exceptionApi = window.PackMasterExceptions;
+      const storageHealthApi = window.PackMasterStorageHealth;
+      const diagnosticsApi = window.PackMasterDiagnostics;
+      const PILOT_VERSION = 'PackMaster Pilot 2026.08.08';
       const [activeTab, setActiveTab] = useState('upload');
       const [orders, setOrders] = useState([]);
       const [skuRules, setSkuRules] = useState(() => {
@@ -725,6 +730,13 @@
       const [restoreFileName, setRestoreFileName] = useState('');
       const [workspaceBusy, setWorkspaceBusy] = useState(false);
 
+      // Phase 3E-H — local-only hardening / pilot readiness
+      const [storageHealth, setStorageHealth] = useState({ supported: null, usage: null, quota: null, percent: null });
+      const [storageHealthBusy, setStorageHealthBusy] = useState(false);
+      const [showLocalDataNotice, setShowLocalDataNotice] = useState(() => {
+        try { return localStorage.getItem('packmasterPilotNoticeSeen') !== '1'; } catch (err) { return true; }
+      });
+
       const [thermalMode, setThermalMode] = useState(() => {
         try { const saved = localStorage.getItem('thermalMode'); if (saved !== null) return JSON.parse(saved); } catch (e) {} return true;
       });
@@ -774,6 +786,30 @@
       }, []);
 
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
+
+      const refreshStorageHealth = useCallback(async () => {
+        if (!storageHealthApi) {
+          setStorageHealth({ supported: false, usage: null, quota: null, percent: null });
+          return;
+        }
+        setStorageHealthBusy(true);
+        try {
+          const estimate = await storageHealthApi.estimateStorage(navigator);
+          setStorageHealth(estimate);
+        } catch (err) {
+          console.error('Storage estimate failed', err);
+          setStorageHealth({ supported: false, usage: null, quota: null, percent: null });
+        } finally {
+          setStorageHealthBusy(false);
+        }
+      }, [storageHealthApi]);
+
+      useEffect(() => { refreshStorageHealth(); }, [refreshStorageHealth]);
+
+      const dismissLocalDataNotice = () => {
+        try { localStorage.setItem('packmasterPilotNoticeSeen', '1'); } catch (err) {}
+        setShowLocalDataNotice(false);
+      };
 
       const getMatchResult = useCallback((textToSearch) => {
         return matchSkuRule(textToSearch, skuRules);
@@ -1447,6 +1483,76 @@
         setSelectedArchivedBatchIds(prev => prev.includes(batchId) ? prev.filter(id => id !== batchId) : [...prev, batchId]);
       };
 
+      const downloadLocalText = (filename, mimeType, text) => {
+        const blob = new Blob([text], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+      };
+
+      const buildLocalDiagnostics = () => {
+        if (!diagnosticsApi) throw new Error('Diagnostics module is not available');
+        const processedOrders = batches.reduce((sum, batch) => sum + (Number(batch.totalOrders) || 0), 0);
+        const exceptionOrders = batches.reduce((sum, batch) => sum + (Number(batch.reviewSkuCount) || 0) + (Number(batch.reviewQtyCount) || 0) + (Number(batch.unmappedCount) || 0), 0);
+        return diagnosticsApi.buildDiagnosticReport({
+          appVersion: PILOT_VERSION,
+          batches,
+          storage: storageHealth.supported === null ? null : storageHealth,
+          counters: {
+            processedOrders,
+            exceptionOrders,
+            completedBatches: batches.filter(batch => batch.status === 'COMPLETED').length,
+            archivedBatches: archivedBatchCount
+          },
+          capabilities: {
+            indexedDB: Boolean(window.indexedDB),
+            storageEstimate: Boolean(navigator.storage && typeof navigator.storage.estimate === 'function'),
+            webCrypto: Boolean(window.crypto && window.crypto.subtle)
+          },
+          errors: [],
+          now: new Date()
+        });
+      };
+
+      const handleDownloadDiagnostics = (format = 'json') => {
+        try {
+          const report = buildLocalDiagnostics();
+          const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16);
+          if (format === 'csv') {
+            downloadLocalText(`PackMaster_Diagnostics_${stamp}.csv`, 'text/csv;charset=utf-8', diagnosticsApi.toDiagnosticCsv(report));
+          } else {
+            downloadLocalText(`PackMaster_Diagnostics_${stamp}.json`, 'application/json', JSON.stringify(report, null, 2));
+          }
+          showToast('ดาวน์โหลด Diagnostics แบบไม่รวมข้อมูลลูกค้าแล้ว', 'success');
+        } catch (err) {
+          console.error('Diagnostics export failed', err);
+          showToast('สร้าง Diagnostics ไม่สำเร็จ — ข้อมูลใน Browser ไม่ถูกลบ', 'error');
+        }
+      };
+
+      const handleCleanupReprintImages = async () => {
+        if (!storageHealthApi || !batchApi || !batchStorageReady || selectedArchivedBatchIds.length === 0) return;
+        const confirmed = window.confirm(`ล้างเฉพาะรูปสำหรับ Reprint ของ Archived Batch ที่เลือก ${selectedArchivedBatchIds.length} รายการหรือไม่?\n\nParsed Orders / SKU / Qty / สถานะ Batch จะยังอยู่ แต่ Batch ที่ล้างแล้วจะไม่มีภาพใบปะหน้าเดิมสำหรับ Reprint`);
+        if (!confirmed) return;
+
+        setStorageHealthBusy(true);
+        try {
+          const result = await storageHealthApi.cleanupArchivedReprintImages(batchApi, selectedArchivedBatchIds);
+          await refreshStorageHealth();
+          showToast(`ล้างรูป Reprint แล้ว ${result.cleanedOrders} Orders จาก ${result.cleanedBatches} Batch • ข้อมูล Parsed ยังอยู่`, 'success');
+        } catch (err) {
+          console.error('Archived reprint cleanup failed', err);
+          showToast('ล้างรูป Reprint ไม่สำเร็จ — ระบบไม่ลบ Parsed Data หรือ Batch อัตโนมัติ', 'error');
+        } finally {
+          setStorageHealthBusy(false);
+        }
+      };
+
       const handleDeleteSelectedArchived = async () => {
         if (!batchApi || !batchStorageReady || selectedArchivedBatchIds.length === 0) return;
         if (!window.confirm(`ลบ Batch ที่เก็บเข้าคลังแล้ว ${selectedArchivedBatchIds.length} รายการถาวรจาก Browser นี้หรือไม่?\n\nการลบนี้ย้อนกลับไม่ได้ เว้นแต่มี Workspace Backup`)) return;
@@ -1885,7 +1991,7 @@
             <aside className="w-72 bg-white border-r border-blue-50 flex flex-col z-20 shadow-[4px_0_24px_rgba(23,37,84,0.02)]">
               <div className="p-8 border-b border-blue-50 flex items-center gap-4">
                 <div className="bg-blue-950 p-2.5 rounded-[14px] text-white text-xl shadow-md shadow-blue-900/20">📦</div>
-                <div><h1 className="font-black text-2xl tracking-tight text-blue-950 leading-none">PackMaster</h1><div className="mt-1.5"><span className="text-[9px] font-black text-blue-500 uppercase tracking-widest bg-blue-50 px-2 py-0.5 rounded-md">Local-first</span></div></div>
+                <div><h1 className="font-black text-2xl tracking-tight text-blue-950 leading-none">PackMaster</h1><div className="mt-1.5 flex flex-wrap gap-1"><span className="text-[9px] font-black text-blue-500 uppercase tracking-widest bg-blue-50 px-2 py-0.5 rounded-md">Local-first</span><span className="text-[9px] font-black text-green-700 uppercase tracking-widest bg-green-50 px-2 py-0.5 rounded-md">PackMaster Pilot</span></div></div>
               </div>
               <nav className="flex-1 p-5 space-y-2 mt-4">
                 <button onClick={() => setActiveTab('upload')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 border ${activeTab === 'upload' ? 'bg-blue-50/80 border-blue-100 text-blue-900 font-bold shadow-sm' : 'border-transparent text-blue-950/60 hover:bg-slate-50 hover:text-blue-900 font-semibold'}`}><span className="text-xl">☁️</span> <span className="text-[15px]">งานแพ็ก</span></button>
@@ -1908,6 +2014,38 @@
                         <button onClick={handleCreateBatch} disabled={batchLoading} className="bg-blue-950 hover:bg-blue-900 disabled:opacity-50 text-white px-7 py-4 rounded-2xl font-black text-sm shadow-lg shadow-blue-900/20 flex items-center gap-2 transition-all active:scale-95">
                           <span className="text-lg">＋</span> สร้าง Batch ใหม่
                         </button>
+                      </div>
+
+                      {showLocalDataNotice && (
+                        <div className="mb-5 rounded-2xl border border-blue-100 bg-blue-50/60 px-5 py-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                          <div className="flex items-start gap-3">
+                            <span className="text-lg">🔒</span>
+                            <div><div className="text-sm font-black text-blue-950">ข้อมูลอยู่ใน Browser เครื่องนี้</div><div className="text-xs font-bold text-blue-950/50 mt-1">PackMaster Pilot ทำงานแบบ Local-first • ไม่มี Cloud Sync / Login / Database ภายนอก ควร Backup Workspace ก่อนย้ายเครื่องหรือล้าง Browser</div></div>
+                          </div>
+                          <button onClick={dismissLocalDataNotice} className="shrink-0 px-4 py-2 rounded-xl bg-white border border-blue-100 text-blue-800 text-xs font-black">เข้าใจแล้ว</button>
+                        </div>
+                      )}
+
+                      <div className="mb-6 bg-white border-2 border-blue-50 rounded-[2rem] p-6 shadow-sm">
+                        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-5">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2 mb-1"><span className="text-lg">💾</span><h3 className="text-lg font-black text-blue-950">Storage Health</h3><span className="text-[9px] font-black text-green-700 bg-green-50 px-2 py-1 rounded-lg">${PILOT_VERSION}</span></div>
+                            {storageHealth.supported === true ? (
+                              <p className="text-xs font-bold text-blue-950/50">ใช้พื้นที่ประมาณ {storageHealthApi ? storageHealthApi.formatBytes(storageHealth.usage) : '-'} / {storageHealthApi ? storageHealthApi.formatBytes(storageHealth.quota) : '-'} ({storageHealth.percent == null ? '-' : storageHealth.percent}%)</p>
+                            ) : storageHealth.supported === false ? (
+                              <p className="text-xs font-bold text-blue-950/50">Browser นี้ไม่รายงาน Storage quota ผ่าน navigator.storage • PackMaster ยังใช้งานได้ตามปกติ</p>
+                            ) : (
+                              <p className="text-xs font-bold text-blue-950/40">กำลังอ่านพื้นที่ Local Storage...</p>
+                            )}
+                            <p className="text-[11px] font-semibold text-amber-700 mt-2">Safe Cleanup จะลบเฉพาะภาพสำหรับ Reprint ของ Archived Batch ที่เลือก — Parsed Orders และ Mapping ไม่ถูกลบ</p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button onClick={refreshStorageHealth} disabled={storageHealthBusy} className="px-3.5 py-2.5 rounded-xl border border-blue-100 bg-blue-50 text-blue-800 text-xs font-black disabled:opacity-40">รีเฟรชพื้นที่</button>
+                            <button onClick={handleCleanupReprintImages} disabled={storageHealthBusy || selectedArchivedBatchIds.length === 0} className="px-3.5 py-2.5 rounded-xl border border-amber-100 bg-amber-50 text-amber-700 text-xs font-black disabled:opacity-35">ล้างเฉพาะรูปสำหรับ Reprint ({selectedArchivedBatchIds.length})</button>
+                            <button onClick={() => handleDownloadDiagnostics('json')} className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 text-xs font-black">ดาวน์โหลด Diagnostics</button>
+                            <button onClick={() => handleDownloadDiagnostics('csv')} className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-black">CSV</button>
+                          </div>
+                        </div>
                       </div>
 
                       <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-3">
