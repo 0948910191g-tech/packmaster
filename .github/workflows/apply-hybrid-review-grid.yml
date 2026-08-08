@@ -1,0 +1,62 @@
+name: Apply Hybrid Review Grid
+
+on:
+  push:
+    branches:
+      - frontend-v3-hybrid-review-grid
+    paths:
+      - tools/apply-hybrid-review-grid.py
+      - .github/workflows/apply-hybrid-review-grid.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: frontend-v3-hybrid-review-grid
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply targeted Review UI patch
+        run: python tools/apply-hybrid-review-grid.py
+      - name: Run repository regression tests
+        run: |
+          set -euo pipefail
+          for test_file in tests/*.test.mjs; do
+            echo "Running ${test_file}"
+            node "${test_file}"
+          done
+      - name: Compile JSX
+        run: |
+          npm install --no-save --no-package-lock @babel/core @babel/cli @babel/preset-react
+          python3 - <<'PY'
+          from pathlib import Path
+          html = Path('index.html').read_text(encoding='utf-8')
+          start = html.index('<script type="text/babel">') + len('<script type="text/babel">')
+          end = html.index('</script>', start)
+          Path('/tmp/packmaster-hybrid-review.jsx').write_text(html[start:end], encoding='utf-8')
+          PY
+          npx babel /tmp/packmaster-hybrid-review.jsx --presets @babel/preset-react --out-file /tmp/packmaster-hybrid-review.js
+      - name: Verify frozen safety scope
+        run: |
+          set -euo pipefail
+          grep -Fq 'for (let i = 0; i < MappedOrders.length; i++)' index.html
+          grep -Fq 'MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}' index.html
+          grep -Fq 'data-pm-review-layout="hybrid-grid"' index.html
+          grep -Fq 'data-pm-review-card-details' index.html
+          grep -Fq 'พรีวิวหลายใบ' index.html
+          git diff --check
+          git diff --exit-code origin/main...HEAD -- packmaster-batch.js packmaster-workspace.js packmaster-duplicate.js packmaster-exceptions.js packmaster-pilot-safety.js packmaster-archive.js packmaster-storage-health.js packmaster-diagnostics.js
+      - name: Commit generated Review UI
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git diff --cached --check
+          git commit -m "ui: restore multi-card review layout with enhanced details"
+          git push origin HEAD:frontend-v3-hybrid-review-grid
