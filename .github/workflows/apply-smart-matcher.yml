@@ -96,6 +96,9 @@ jobs:
       - name: Simplified navigation usability guard
         run: node tests/packmaster-navigation-usability.test.mjs
 
+      - name: Collapsible sidebar UI guard
+        run: node tests/packmaster-collapsible-sidebar.test.mjs
+
       - name: Production smoke workflow regression guard
         run: node tests/packmaster-production-smoke-workflow.test.mjs
 
