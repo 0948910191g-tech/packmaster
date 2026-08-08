@@ -23,11 +23,13 @@ jobs:
             if grep -Fq 'PackMaster Pilot' <<< "$html" \
               && grep -Fq './packmaster-storage-health.js' <<< "$html" \
               && grep -Fq './packmaster-diagnostics.js' <<< "$html" \
+              && grep -Fq './packmaster-pilot-safety.js' <<< "$html" \
+              && grep -Fq 'แก้ Exception ให้ครบก่อนพิมพ์' <<< "$html" \
               && grep -Fq 'รีวิวและพิมพ์' <<< "$html"; then
               echo "Production smoke passed"
               exit 0
             fi
             sleep 10
           done
-          echo "Production did not expose the expected PackMaster Pilot build within the retry window" >&2
+          echo "Production did not expose the expected PackMaster Pilot safety build within the retry window" >&2
           exit 1

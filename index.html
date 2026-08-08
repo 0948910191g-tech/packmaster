@@ -17,6 +17,7 @@
   <script src="./packmaster-workspace.js"></script>
   <script src="./packmaster-duplicate.js"></script>
   <script src="./packmaster-exceptions.js"></script>
+  <script src="./packmaster-pilot-safety.js"></script>
   <script src="./packmaster-archive.js"></script>
   <script src="./packmaster-storage-health.js"></script>
   <script src="./packmaster-diagnostics.js"></script>
@@ -676,6 +677,7 @@
       const workspaceApi = window.PackMasterWorkspace;
       const duplicateApi = window.PackMasterDuplicate;
       const exceptionApi = window.PackMasterExceptions;
+      const pilotSafetyApi = window.PackMasterPilotSafety;
       const archiveApi = window.PackMasterArchive;
       const storageHealthApi = window.PackMasterStorageHealth;
       const diagnosticsApi = window.PackMasterDiagnostics;
@@ -1309,6 +1311,7 @@
       const exceptionRows = useMemo(() =>
         exceptionApi ? exceptionApi.buildExceptionRows(MappedOrders) : [],
       [MappedOrders]);
+      const printBlocked = pilotSafetyApi ? pilotSafetyApi.hasBlockingExceptions(exceptionRows) : exceptionRows.length > 0;
 
       const filteredExceptionRows = useMemo(() =>
         exceptionApi ? exceptionApi.filterExceptionRows(exceptionRows, exceptionType, exceptionSearch) : exceptionRows,
@@ -1334,6 +1337,22 @@
         setReviewSearch(row.order.tracking || row.order.orderId || '');
       };
 
+      const handleFixSkuException = (row) => {
+        if (!row || !row.order || !pilotSafetyApi) return;
+        const seed = pilotSafetyApi.getSkuFixSeed(row, getMatchResult);
+        if (!seed) {
+          openExceptionInTable(row);
+          showToast('Exception นี้ไม่มีข้อความ SKU ที่ปลอดภัยสำหรับเติมอัตโนมัติ — เปิดในตารางแทน', 'error');
+          return;
+        }
+        setEditingId(null);
+        setSkuSearch(seed);
+        setSkuFilter('ALL');
+        setNewRule({ keyword: seed, shortName: '' });
+        setActiveTab('settings');
+        showToast('เปิดคลังคำศัพท์พร้อม Keyword จาก Exception แล้ว — ตรวจข้อความก่อนกดเพิ่ม', 'success');
+      };
+
       const sortBatchRows = (rows) => [...rows].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
 
       const upsertBatchMeta = (meta) => {
@@ -1350,6 +1369,8 @@
         };
         return map[status] || map.WAITING;
       };
+
+      const getEffectiveBatchStatus = (batch) => pilotSafetyApi ? pilotSafetyApi.getEffectiveBatchStatus(batch) : batch.status;
 
       const formatBatchUpdated = (value) => {
         if (!value) return '-';
@@ -1659,6 +1680,10 @@
       };
 
       const handlePrint = async () => {
+        if (printBlocked) {
+          showToast(`ยังพิมพ์ไม่ได้ — แก้ Exception ให้ครบก่อน (${exceptionRows.length} รายการ)`, 'error');
+          return;
+        }
         await markActiveBatchPrinted();
         window.print();
       };
@@ -1668,7 +1693,7 @@
 
         const timer = setTimeout(async () => {
           try {
-            const updated = batchApi.buildBatchMeta(activeBatch, reviewSummary, { now: new Date() });
+            const updated = batchApi.buildBatchMeta(activeBatch, reviewSummary, { printedAt: printBlocked ? null : activeBatch.printedAt, now: new Date() });
             await batchApi.saveBatch(updated, orders);
             upsertBatchMeta(updated);
           } catch (err) {
@@ -1863,6 +1888,10 @@
 
       const handleExportPDF = async () => {
         if (MappedOrders.length === 0) return;
+        if (printBlocked) {
+          showToast(`ยังพิมพ์ไม่ได้ — แก้ Exception ให้ครบก่อน (${exceptionRows.length} รายการ)`, 'error');
+          return;
+        }
         setExportStatus({ active: true, current: 0, total: MappedOrders.length });
         
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -2128,7 +2157,7 @@
                       ) : (
                         <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
                           {visibleBatches.map((batch) => {
-                            const statusUi = getBatchStatusUi(batch.status);
+                            const statusUi = getBatchStatusUi(getEffectiveBatchStatus(batch));
                             return (
                               <div key={batch.id} className="bg-white border-2 border-blue-50 rounded-[2rem] p-7 shadow-lg shadow-blue-900/[0.03] hover:border-blue-100 transition-all">
                                 <div className="flex items-start justify-between gap-4 mb-6">
@@ -2172,7 +2201,7 @@
                             <div>
                               <div className="flex flex-wrap items-center gap-3 mb-2">
                                 <h2 className="text-3xl font-black text-blue-950 tracking-tight">{activeBatch ? activeBatch.name : 'Active Batch'}</h2>
-                                {activeBatch && (() => { const ui = getBatchStatusUi(activeBatch.status); return <span className={`px-3 py-1 rounded-full border text-[10px] font-black ${ui.className}`}>{ui.label}</span>; })()}
+                                {activeBatch && (() => { const ui = getBatchStatusUi(getEffectiveBatchStatus(activeBatch)); return <span className={`px-3 py-1 rounded-full border text-[10px] font-black ${ui.className}`}>{ui.label}</span>; })()}
                               </div>
                               <p className="text-sm font-semibold text-blue-950/45">ข้อมูล Batch นี้บันทึกใน Browser เครื่องนี้แบบ Local-first</p>
                             </div>
@@ -2338,10 +2367,17 @@
                          <button onClick={() => setPreviewMode('labels')} className={`px-6 py-2.5 rounded-[12px] font-bold text-sm transition-all ${previewMode === 'labels' ? 'bg-blue-50 text-blue-900 shadow-sm border border-blue-100' : 'text-blue-950/50 hover:text-blue-900 border border-transparent'}`}>ใบปะหน้า</button>
                        </div>
                        <button onClick={handleClearActiveBatch} disabled={orders.length === 0} className="bg-white border-2 border-blue-50 hover:bg-red-50 hover:border-red-100 hover:text-red-600 text-blue-950/60 disabled:opacity-50 px-5 py-3 rounded-2xl font-bold text-sm shadow-sm flex items-center gap-2 transition-all"><span>🔄</span> ล้างออเดอร์</button>
-                       <button onClick={handleExportPDF} disabled={exportStatus.active || orders.length === 0} className="bg-white border-2 border-blue-50 hover:border-blue-100 disabled:opacity-50 text-blue-900 px-6 py-3 rounded-2xl font-bold text-sm shadow-sm flex items-center gap-2 transition-all active:scale-95"><span>📥</span> Save PDF</button>
-                       <button onClick={handlePrint} disabled={orders.length === 0} className="bg-blue-950 hover:bg-blue-900 disabled:opacity-50 text-white px-8 py-3 rounded-2xl font-bold text-sm shadow-lg shadow-blue-900/20 flex items-center gap-2 transition-all active:scale-95"><span>🖨️</span> พิมพ์</button>
+                       <button onClick={handleExportPDF} disabled={exportStatus.active || orders.length === 0 || printBlocked} title={printBlocked ? `ยังมี Exception ${exceptionRows.length} รายการ` : 'Save PDF'} className="bg-white border-2 border-blue-50 hover:border-blue-100 disabled:opacity-50 text-blue-900 px-6 py-3 rounded-2xl font-bold text-sm shadow-sm flex items-center gap-2 transition-all active:scale-95"><span>📥</span> Save PDF</button>
+                       <button onClick={handlePrint} disabled={orders.length === 0 || printBlocked} title={printBlocked ? `ยังมี Exception ${exceptionRows.length} รายการ` : 'พิมพ์'} className="bg-blue-950 hover:bg-blue-900 disabled:opacity-50 text-white px-8 py-3 rounded-2xl font-bold text-sm shadow-lg shadow-blue-900/20 flex items-center gap-2 transition-all active:scale-95"><span>{printBlocked ? '🔒' : '🖨️'}</span> {printBlocked ? 'ยังพิมพ์ไม่ได้' : 'พิมพ์'}</button>
                     </div>
                   </div>
+
+                  {orders.length > 0 && printBlocked && (
+                    <div className="mb-5 rounded-2xl border-2 border-red-100 bg-red-50 px-5 py-4 flex items-start gap-3 text-red-700">
+                      <span className="text-xl">🔒</span>
+                      <div><div className="font-black text-sm">แก้ Exception ให้ครบก่อนพิมพ์</div><div className="text-xs font-bold text-red-600/70 mt-1">เหลือ {exceptionRows.length} รายการ • Print / Save PDF ถูกล็อกเพื่อป้องกันแพ็กผิด</div></div>
+                    </div>
+                  )}
 
                   {orders.length > 0 && (
                     <>
@@ -2395,6 +2431,7 @@
                                 <span className="text-[11px] font-black text-blue-950/35 mr-1">{safeExceptionCursor + 1} / {filteredExceptionRows.length}</span>
                                 <button onClick={() => moveExceptionCursor(-1)} disabled={safeExceptionCursor === 0} className="px-3 py-2 rounded-xl bg-white border border-slate-200 disabled:opacity-30 text-xs font-black">ก่อนหน้า</button>
                                 <button onClick={() => moveExceptionCursor(1)} disabled={safeExceptionCursor >= filteredExceptionRows.length - 1} className="px-3 py-2 rounded-xl bg-white border border-slate-200 disabled:opacity-30 text-xs font-black">ถัดไป</button>
+                                {(currentException.types.includes('UNMAPPED') || currentException.types.includes('REVIEW_SKU') || currentException.types.includes('PARSER_WARNING')) && <button onClick={() => handleFixSkuException(currentException)} className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black">ตั้งชื่อ SKU</button>}
                                 <button onClick={() => openExceptionInTable(currentException)} className="px-4 py-2 rounded-xl bg-blue-950 text-white text-xs font-black">เปิดในตาราง</button>
                               </div>
                             </div>
