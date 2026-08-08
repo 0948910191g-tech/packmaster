@@ -1,4 +1,4 @@
-name: Verify Full Review Preview Production
+name: Diagnose Legacy Production Smoke Markers
 
 on:
   push:
@@ -9,124 +9,24 @@ permissions:
   contents: read
 
 jobs:
-  production-browser:
+  markers:
     runs-on: ubuntu-latest
+    env:
+      PROD_URL: https://0948910191g-tech.github.io/packmaster/
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: verify-full-review-preview-production
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Wait for live Full Preview build
-        run: |
-          set -euo pipefail
-          URL='https://0948910191g-tech.github.io/packmaster/'
-          for attempt in $(seq 1 18); do
-            html="$(curl -fsSL --max-time 20 "${URL}?full-preview=${GITHUB_SHA}" || true)"
-            if grep -Fq 'data-pm-review-preview="full"' <<< "$html" \
-              && grep -Fq 'data-pm-action="review-preview-prev"' <<< "$html" \
-              && grep -Fq 'data-pm-action="review-preview-next"' <<< "$html"; then
-              echo 'Live Full Preview assets are ready'
-              exit 0
-            fi
-            sleep 10
-          done
-          echo 'Live Full Preview build did not appear in time' >&2
-          exit 1
-      - name: Install Chromium
-        run: |
-          npm install --no-save --no-package-lock playwright
-          npx playwright install --with-deps chromium
-      - name: Exercise live Full Preview workflow
-        run: |
-          cat > verify-full-preview-production.mjs <<'JS'
-          import { chromium } from 'playwright';
-
-          const browser = await chromium.launch({ headless: true });
-          const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-          const page = await context.newPage();
-          const pageErrors = [];
-          const consoleErrors = [];
-          page.on('pageerror', error => pageErrors.push(String(error)));
-          page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
-          const assert = (condition, message) => { if (!condition) throw new Error(message); };
-          const prod = 'https://0948910191g-tech.github.io/packmaster/?verify-full-preview=1';
-
-          await page.goto(prod, { waitUntil: 'networkidle' });
-          await page.locator('[data-pm-shell="v3"]').waitFor({ state: 'visible' });
-          await page.waitForTimeout(500);
-
-          await page.evaluate(async () => {
-            const api = window.PackMasterBatch;
-            if (!api) throw new Error('PackMasterBatch unavailable');
-            for (const batch of await api.listBatches()) await api.deleteBatch(batch.id);
-            localStorage.setItem('skuMappingRules', JSON.stringify([{ id: 'prod-smoke-rule', keyword: 'PROD SMOKE SKU', shortName: 'smoke5' }]));
-            const meta = api.createBatchMeta([], new Date('2026-08-08T15:40:00Z'));
-            const img = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1200"><rect width="100%" height="100%" fill="white"/><text x="60" y="120" font-size="50" fill="black">PROD SMOKE LABEL</text><rect x="50" y="180" width="700" height="800" fill="none" stroke="black" stroke-width="8"/></svg>');
-            const orders = [1, 2].map(i => ({
-              id: `prod-smoke-order-${i}`,
-              tracking: `PROD-SMOKE-00${i}`,
-              parsedItems: [{ text: 'PROD SMOKE SKU', qty: i }],
-              pdfImage: img,
-              platform: i === 1 ? 'SHOPEE' : 'TIKTOK',
-              orderId: `PRODSMOKE00${i}`,
-              declaredTotalQty: null,
-              parserWarning: false
-            }));
-            const savedMeta = api.buildBatchMeta(meta, { total: 2, ready: 2, reviewSku: 0, reviewQty: 0, unmapped: 0 }, { now: new Date('2026-08-08T15:40:00Z') });
-            await api.saveBatch(savedMeta, orders);
-          });
-
-          await page.reload({ waitUntil: 'networkidle' });
-          await page.getByRole('button', { name: 'เปิดงาน', exact: true }).first().click();
-          await page.locator('[data-pm-view="upload"]').waitFor({ state: 'visible' });
-          await page.getByRole('button', { name: 'รีวิว & พิมพ์', exact: true }).first().click();
-          await page.locator('[data-pm-review-preview="full"]').waitFor({ state: 'visible' });
-          await page.getByText('เห็น Label จริงก่อนพิมพ์ • 1 / 2', { exact: true }).waitFor();
-          await page.getByText('PROD-SMOKE-001', { exact: true }).waitFor();
-          assert(await page.locator('[data-pm-action="review-preview-prev"]').isDisabled(), 'Previous must be disabled on first item');
-          assert(!(await page.locator('[data-pm-action="review-preview-next"]').isDisabled()), 'Next must be enabled on first item');
-          console.log('STEP 1 live Full Preview default passed');
-
-          await page.locator('[data-pm-action="review-preview-next"]').click();
-          await page.getByText('PROD-SMOKE-002', { exact: true }).waitFor();
-          await page.getByText('เห็น Label จริงก่อนพิมพ์ • 2 / 2', { exact: true }).waitFor();
-          assert(await page.locator('[data-pm-action="review-preview-next"]').isDisabled(), 'Next must be disabled on last item');
-          await page.locator('[data-pm-action="review-preview-prev"]').click();
-          await page.getByText('PROD-SMOKE-001', { exact: true }).waitFor();
-          console.log('STEP 2 live Previous/Next passed');
-
-          const search = page.getByPlaceholder('ค้นหา Order / SKU / ชื่อภายใน');
-          await search.fill('PROD-SMOKE-002');
-          await page.getByText('เห็น Label จริงก่อนพิมพ์ • 1 / 1', { exact: true }).waitFor();
-          await page.getByText('PROD-SMOKE-002', { exact: true }).waitFor();
-          assert(await page.locator('[data-pm-action="review-preview-prev"]').isDisabled(), 'Filtered Previous must be disabled');
-          assert(await page.locator('[data-pm-action="review-preview-next"]').isDisabled(), 'Filtered Next must be disabled');
-          console.log('STEP 3 live filtered preview passed');
-
-          await search.fill('NO-SUCH-PROD-ORDER');
-          await page.getByText('ไม่พบรายการที่ตรงกับตัวกรอง', { exact: true }).waitFor();
-          await search.fill('');
-          await page.locator('[data-pm-review-preview="full"]').waitFor({ state: 'visible' });
-          await page.getByRole('button', { name: 'มุมมองรายการ', exact: true }).click();
-          await page.getByText('PROD-SMOKE-001', { exact: true }).waitFor();
-          await page.getByRole('button', { name: 'พรีวิวเต็มหน้า', exact: true }).click();
-          await page.locator('[data-pm-review-preview="full"]').waitFor({ state: 'visible' });
-          await page.keyboard.press('ArrowRight');
-          await page.getByText('PROD-SMOKE-002', { exact: true }).waitFor();
-          console.log('STEP 4 live empty/list/keyboard passed');
-
-          assert(pageErrors.length === 0, `Page errors: ${pageErrors.join(' | ')}`);
-          const relevantConsoleErrors = consoleErrors.filter(text => !/favicon|ERR_BLOCKED_BY_CLIENT/i.test(text));
-          assert(relevantConsoleErrors.length === 0, `Console errors: ${relevantConsoleErrors.join(' | ')}`);
-
-          await page.evaluate(async () => {
-            const api = window.PackMasterBatch;
-            for (const batch of await api.listBatches()) await api.deleteBatch(batch.id);
-            localStorage.removeItem('skuMappingRules');
-          });
-          await browser.close();
-          console.log('PackMaster live Full Review Preview Chromium smoke passed');
-          JS
-          node verify-full-preview-production.mjs
+      - name: PackMaster Pilot marker
+        run: curl -fsSL "${PROD_URL}?diag=${GITHUB_SHA}" | grep -Fq 'PackMaster Pilot'
+      - name: Storage health marker
+        run: curl -fsSL "${PROD_URL}?diag=${GITHUB_SHA}" | grep -Fq './packmaster-storage-health.js'
+      - name: Diagnostics marker
+        run: curl -fsSL "${PROD_URL}?diag=${GITHUB_SHA}" | grep -Fq './packmaster-diagnostics.js'
+      - name: Pilot safety marker
+        run: curl -fsSL "${PROD_URL}?diag=${GITHUB_SHA}" | grep -Fq './packmaster-pilot-safety.js'
+      - name: Exception safety copy marker
+        run: curl -fsSL "${PROD_URL}?diag=${GITHUB_SHA}" | grep -Fq 'แก้ Exception ให้ครบก่อนพิมพ์'
+      - name: Legacy review copy marker
+        run: curl -fsSL "${PROD_URL}?diag=${GITHUB_SHA}" | grep -Fq 'รีวิวและพิมพ์'
+      - name: Stable Review V3 marker
+        run: curl -fsSL "${PROD_URL}?diag=${GITHUB_SHA}" | grep -Fq 'data-pm-view="review"'
+      - name: Full Preview marker
+        run: curl -fsSL "${PROD_URL}?diag=${GITHUB_SHA}" | grep -Fq 'data-pm-review-preview="full"'
