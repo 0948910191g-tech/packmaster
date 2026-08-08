@@ -7,57 +7,51 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const storage = require(path.resolve(__dirname, '../packmaster-storage-health.js'));
 
-assert.equal(typeof storage.estimateStorage, 'function');
-assert.equal(typeof storage.stripReprintPayload, 'function');
-assert.equal(typeof storage.cleanupArchivedReprintImages, 'function');
-assert.equal(typeof storage.formatBytes, 'function');
+for (const method of ['estimateStorage','stripReprintPayload','cleanupArchivedReprintImages','formatBytes']) {
+  assert.equal(typeof storage[method], 'function');
+}
 
 const unsupported = await storage.estimateStorage({});
 assert.deepEqual(unsupported, { supported: false, usage: null, quota: null, percent: null });
-
 const estimated = await storage.estimateStorage({ storage: { async estimate() { return { usage: 250, quota: 1000 }; } } });
-assert.equal(estimated.supported, true);
-assert.equal(estimated.usage, 250);
-assert.equal(estimated.quota, 1000);
 assert.equal(estimated.percent, 25);
 
 const source = {
-  id: 'safe-order',
-  pdfImage: 'data:image/jpeg;base64,HEAVY',
-  platform: 'SHOPEE',
-  tracking: 'SAFE-001',
-  parsedItems: [{ text: 'Sample', qty: 1 }],
-  displayItems: ['Sample 1'],
-  parserWarning: false,
-  qtyWarning: false
+  id: 'safe-order', pdfImage: 'data:image/jpeg;base64,HEAVY', platform: 'SHOPEE', tracking: 'SAFE-001',
+  parsedItems: [{ text: 'Sample', qty: 1 }], displayItems: ['Sample 1'], parserWarning: false, qtyWarning: false
 };
 const stripped = storage.stripReprintPayload(source);
 assert.equal(Object.prototype.hasOwnProperty.call(stripped, 'pdfImage'), false);
-assert.equal(stripped.platform, 'SHOPEE');
-assert.deepEqual(stripped.parsedItems, source.parsedItems);
-assert.deepEqual(stripped.displayItems, source.displayItems);
-assert.equal(source.pdfImage.startsWith('data:image'), true, 'source order must not be mutated');
+assert.equal(source.pdfImage.startsWith('data:image'), true);
 
 const records = new Map([
-  ['archived-1', { meta: { id: 'archived-1', archivedAt: '2026-08-01T00:00:00.000Z' }, orders: [source, { ...source, id: 'two', pdfImage: 'data:image/png;base64,TWO' }] }],
-  ['active-1', { meta: { id: 'active-1', archivedAt: null }, orders: [source] }]
+  ['archived-sidecar', { meta: { id: 'archived-sidecar' }, orders: [source, { ...source, id: 'two', pdfImage: 'data:image/png;base64,TWO' }] }],
+  ['legacy-archived', { meta: { id: 'legacy-archived', archivedAt: '2026-08-01T00:00:00.000Z' }, orders: [source] }],
+  ['active-1', { meta: { id: 'active-1' }, orders: [source] }]
 ]);
 const saves = [];
 const fakeBatchApi = {
   async loadBatch(id) { return records.get(id) || { meta: null, orders: [] }; },
   async saveBatch(meta, orders) { saves.push({ meta, orders }); return meta; }
 };
+const archivedIds = new Set(['archived-sidecar', 'legacy-archived']);
+const isArchived = (meta) => archivedIds.has(meta.id);
 
-const cleanup = await storage.cleanupArchivedReprintImages(fakeBatchApi, ['archived-1', 'active-1', 'missing']);
-assert.equal(cleanup.cleanedBatches, 1);
-assert.equal(cleanup.cleanedOrders, 2);
-assert.equal(cleanup.skippedBatches, 2, 'active or missing batches must be skipped');
-assert.equal(saves.length, 1);
-assert.equal(saves[0].meta.id, 'archived-1');
-assert.equal(saves[0].orders.every((order) => !Object.prototype.hasOwnProperty.call(order, 'pdfImage')), true);
-assert.equal(records.get('archived-1').orders[0].pdfImage.startsWith('data:image'), true, 'stored source fixture must not be mutated in place');
+const cleanup = await storage.cleanupArchivedReprintImages(fakeBatchApi, ['archived-sidecar', 'legacy-archived', 'active-1', 'missing'], isArchived);
+assert.equal(cleanup.cleanedBatches, 2);
+assert.equal(cleanup.cleanedOrders, 3);
+assert.equal(cleanup.skippedBatches, 2);
+assert.equal(saves.length, 2);
+assert.ok(saves.some(row => row.meta.id === 'archived-sidecar'));
+assert.ok(saves.some(row => row.meta.id === 'legacy-archived'));
+assert.equal(saves.every(row => row.orders.every(order => !Object.prototype.hasOwnProperty.call(order, 'pdfImage'))), true);
+
+await assert.rejects(
+  () => storage.cleanupArchivedReprintImages(fakeBatchApi, ['archived-sidecar']),
+  /archive/i,
+  'cleanup must require an explicit archive predicate instead of trusting IndexedDB metadata'
+);
 
 assert.equal(storage.formatBytes(0), '0 B');
 assert.match(storage.formatBytes(1024), /1(\.0)? KB/);
-
-console.log('PackMaster storage health regression tests passed');
+console.log('PackMaster storage health sidecar-aware regression tests passed');

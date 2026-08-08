@@ -16,13 +16,13 @@ const requiredMarkers = [
   'ข้อมูลอยู่ใน Browser เครื่องนี้',
   'ล้างเฉพาะรูปสำหรับ Reprint',
   'ดาวน์โหลด Diagnostics',
-  'storageHealthApi.cleanupArchivedReprintImages(batchApi, selectedArchivedBatchIds)',
+  'storageHealthApi.cleanupArchivedReprintImages(batchApi, selectedArchivedBatchIds, (meta) => archiveApi ? archiveApi.isArchived(meta.id, meta.archivedAt || null) : Boolean(meta.archivedAt))',
   'diagnosticsApi.buildDiagnosticReport',
+  'batches: batches.map(batch => ({ ...batch, archivedAt: getBatchArchivedAt(batch) }))',
   'navigator.storage'
 ];
 requiredMarkers.forEach((marker) => assert.ok(html.includes(marker), `missing Phase 3E-H UI marker: ${marker}`));
 
-assert.ok(html.includes('for (let i = 0; i < MappedOrders.length; i++)'), 'Save PDF must keep full MappedOrders');
-assert.ok(html.includes('{MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}'), 'Print area must keep full MappedOrders');
-
-console.log('PackMaster Phase 3E-H UI guard passed');
+assert.ok(html.includes('for (let i = 0; i < MappedOrders.length; i++)'));
+assert.ok(html.includes('{MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}'));
+console.log('PackMaster Phase 3E-H sidecar-aware UI guard passed');

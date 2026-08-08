@@ -27,9 +27,12 @@
     return rest;
   };
 
-  const cleanupArchivedReprintImages = async (batchApi, batchIds) => {
+  const cleanupArchivedReprintImages = async (batchApi, batchIds, isArchived) => {
     if (!batchApi || typeof batchApi.loadBatch !== 'function' || typeof batchApi.saveBatch !== 'function') {
       throw new Error('Local Batch API is required');
+    }
+    if (typeof isArchived !== 'function') {
+      throw new Error('Archive state predicate is required for safe cleanup');
     }
 
     const ids = [...new Set((Array.isArray(batchIds) ? batchIds : []).filter(Boolean))];
@@ -39,7 +42,7 @@
 
     for (const batchId of ids) {
       const loaded = await batchApi.loadBatch(batchId);
-      if (!loaded || !loaded.meta || !loaded.meta.archivedAt) {
+      if (!loaded || !loaded.meta || !isArchived(loaded.meta)) {
         skippedBatches += 1;
         continue;
       }
