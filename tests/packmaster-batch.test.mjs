@@ -78,7 +78,7 @@ const requiredUiMarkers = [
   'const handleDeleteBatch = async (batch) => {',
   'const markActiveBatchPrinted = async () => {',
   'const handlePrint = async () => {',
-  'สร้าง Batch ใหม่',
+  'เริ่มงานแพ็กใหม่',
   'กลับรายการ Batch'
 ];
 
