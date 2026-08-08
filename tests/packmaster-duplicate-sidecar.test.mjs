@@ -14,6 +14,7 @@ assert.equal(typeof duplicate.getKnownFingerprints, 'function');
 assert.equal(typeof duplicate.appendBatchFingerprints, 'function');
 assert.equal(typeof duplicate.clearBatchFingerprints, 'function');
 assert.equal(typeof duplicate.exportFingerprintStore, 'function');
+assert.equal(typeof duplicate.validateFingerprintStore, 'function');
 assert.equal(typeof duplicate.replaceFingerprintStore, 'function');
 
 const makeStorage = () => {
@@ -45,14 +46,20 @@ const known = duplicate.getKnownFingerprints('batch-1', [
   { name: 'legacy-copy.pdf', hash: 'abc123', size: 9 }
 ], storage);
 assert.equal(known.length, 3, 'known fingerprints should combine legacy metadata + sidecar without duplicate hashes');
-assert.ok(known.some(row => row.hash === 'LEGACY999'));
-assert.ok(known.some(row => row.hash === 'ABC123'));
+assert.ok(known.some(row => String(row.hash).toUpperCase() === 'LEGACY999'));
+assert.ok(known.some(row => String(row.hash).toUpperCase() === 'ABC123'));
 
 const exported = duplicate.exportFingerprintStore(storage);
 assert.deepEqual(Object.keys(exported), ['batch-1']);
 assert.equal(exported['batch-1'].length, 2);
 exported['batch-1'][0].hash = 'MUTATED';
 assert.equal(duplicate.getBatchFingerprints('batch-1', storage)[0].hash, 'ABC123', 'export must be detached from persisted sidecar');
+
+const validated = duplicate.validateFingerprintStore({
+  'validated-batch': [{ hash: 'VALID1', size: 1, name: 'drop-me.pdf' }]
+});
+assert.equal(validated['validated-batch'][0].hash, 'VALID1');
+assert.equal('name' in validated['validated-batch'][0], false);
 
 const restoreStorage = makeStorage();
 duplicate.replaceFingerprintStore({
@@ -82,6 +89,7 @@ const requiredMarkers = [
   'duplicateApi.clearBatchFingerprints(batch.id)',
   'duplicateApi.clearBatchFingerprints(activeBatchId)',
   'duplicateFingerprints: duplicateApi.exportFingerprintStore()',
+  'duplicateApi.validateFingerprintStore(backup.settings.duplicateFingerprints || {})',
   'duplicateApi.replaceFingerprintStore(backup.settings.duplicateFingerprints || {})'
 ];
 for (const marker of requiredMarkers) {
