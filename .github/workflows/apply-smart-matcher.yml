@@ -1,0 +1,39 @@
+name: PackMaster Regression Tests
+
+on:
+  push:
+    branches:
+      - main
+      - agent/smart-matcher
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Smart matcher regression tests
+        run: node tests/packmaster-smart-matcher.test.mjs
+
+      - name: Existing guardrail tests when present
+        run: |
+          if [ -f tests/packmaster-guardrails.test.mjs ]; then
+            node tests/packmaster-guardrails.test.mjs
+          else
+            echo "Guardrail test file is not on this branch yet"
+          fi
+
+      - name: Check whitespace errors
+        run: git diff --check
