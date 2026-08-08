@@ -11,6 +11,7 @@ import {
   tikTokFivePackQtyThree,
   tikTokGroupedHeader,
   shopeeThreeSkuPositioned,
+  shopeeFivePlusFiveQtyTwo,
   shopeeQtyCases
 } from './fixtures/smart-matcher-cases.mjs';
 
@@ -104,6 +105,27 @@ const shopee3 = parseShopeePositionedItems(shopeeThreeSkuPositioned, 3);
 assert.deepEqual([...shopee3.items].map(item => item.qty), [1, 1, 1], 'Shopee row Qty must come from the Qty column, never row numbers/footer total');
 assert.equal(shopee3.items.length, 3);
 assert.equal(hasQtyWarning(shopee3.items, 3, shopee3.parserWarning), false);
+assert.match(shopee3.items[0].text, /HAKU Cooling/i, 'row 1 must keep its own product identity');
+assert.doesNotMatch(shopee3.items[0].text, /EXCARE|Value Pack/i, 'row 1 must not absorb the next SKU');
+assert.match(shopee3.items[1].text, /EXCARE MAKEUP REMOVER/i, 'row 2 must keep EXCARE identity');
+assert.doesNotMatch(shopee3.items[1].text, /Value Pack/i, 'row 2 must not absorb row 3 Value Pack');
+assert.match(shopee3.items[2].text, /Value Pack 5/i, 'row 3 must keep Value Pack 5');
+assert.doesNotMatch(shopee3.items[2].text, /EXCARE/i, 'row 3 must not contain the previous SKU');
+const value5 = matchSkuRule(shopee3.items[2].text, productionRuleSubset);
+assert.equal(value5.status, 'matched');
+assert.equal(value5.rule?.shortName, 'HOYA Value 5', 'Value Pack 5 Qty 1 must remain Value 5, not become Value 10');
+
+const bundle = parseShopeePositionedItems(shopeeFivePlusFiveQtyTwo, 2);
+assert.equal(bundle.items.length, 1, 'Shopee 5+5 order must parse as one SKU');
+assert.equal(bundle.items[0].qty, 2, 'Shopee 5+5 order Qty must come from Qty column');
+const bundleMatch = matchSkuRule(bundle.items[0].text, productionRuleSubset);
+assert.equal(bundleMatch.status, 'matched', '5+5 bundle must match the bundle rule, not generic HOYA baby 5');
+assert.equal(bundleMatch.rule?.shortName, 'เด้งม่วง5 ชม5', '5+5 bundle must preserve both internal components');
+assert.equal(
+  getAggregatedShortName(bundleMatch.rule.shortName, bundle.items[0].qty, bundleMatch.rule.keyword),
+  'เด้งม่วง10 ชม10',
+  'Qty 2 of a 5+5 bundle must aggregate both component quantities'
+);
 
 for (const sample of shopeeQtyCases) {
   assert.notEqual(sample.packSize, sample.orderQty, 'fixture must keep pack size separate from order qty');
