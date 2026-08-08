@@ -20,7 +20,10 @@ export const productionRuleSubset = [
   { id: 1775707111772, keyword: 'MENTHOL (12)', shortName: 'เย็นฟ้า 12' },
   { id: 1777342120530, keyword: 'LAVENDER  6', shortName: 'เย็น ม.6' },
   { id: 1775706284411, keyword: 'LAVENDER (6)', shortName: 'เย็นม่วง 6' },
-  { id: 1783752746037, keyword: 'HOYA Value Pack 5', shortName: 'HOYA Value 5' }
+  { id: 1783752746037, keyword: 'HOYA Value Pack 5', shortName: 'HOYA Value 5' },
+  { id: 1777263511559, keyword: '5 แถม 5 HOYA', shortName: 'เด้งม่วง5 ชม5' },
+  { id: 1775553351296, keyword: '(5แถม5) Hoya', shortName: 'เด้งม่วง5 ชม5' },
+  { id: 1776997055946, keyword: 'Hoya 5แถม5', shortName: 'เด้งม่วง5 ชม5' }
 ];
 
 const positioned = (rows) => rows.map(([text, x, y], index) => ({ text, x, y, index }));
@@ -55,12 +58,18 @@ export const tikTokGroupedHeader = positioned([
 ]);
 
 // Shopee baselines mirror the real PDF geometry: the first product line sits ~12pt above the row-number baseline.
-// This is the production regression that previously cut off product identity such as HOYA / pack size.
 export const shopeeThreeSkuPositioned = positioned([
   ['#', 8, 300], ['ชื่อสินค้า', 30, 300], ['ตัวเลือกสินค้า', 170, 300], ['จำนวน', 260, 300],
-  ['1', 8, 327], ['Gift Set วันแม่ HAKU Cooling กลิ่นมะลิ 12 ห่อ', 30, 315], ['1', 265, 327],
-  ['2', 8, 362], ['(1แถม1) EXCARE MAKEUP REMOVER', 30, 350], ['1', 265, 362],
-  ['3', 8, 397], ['HOYA Baby Wipes Value Pack 5 ห่อ', 30, 385], ['1', 265, 397]
+  ['1', 8, 327], ['Gift Set วันแม่ HAKU Cooling กลิ่นมะลิ 12 ห่อ', 30, 315], ['พร้อมกระเป๋าของขวัญ', 30, 324], ['1', 265, 327],
+  ['2', 8, 362], ['(1แถม1) EXCARE MAKEUP REMOVER', 30, 350], ['ช่วยขจัดเมคอัพและทำความสะอาดผิว', 30, 359], ['1', 265, 362],
+  ['3', 8, 397], ['HOYA Baby Wipes Value Pack 5 ห่อ', 30, 385], ['สูตรน้ำบริสุทธิ์ 99.9%', 30, 394], ['1', 265, 397]
+]);
+
+// Sanitized from the real Shopee 5+5 order shown by the user. Qty is the order Qty, not either pack component.
+export const shopeeFivePlusFiveQtyTwo = positioned([
+  ['#', 8, 300], ['ชื่อสินค้า', 30, 300], ['ตัวเลือกสินค้า', 170, 300], ['จำนวน', 260, 300],
+  ['1', 8, 327], ['(5แถม5)ทิชชู่เปียก HOYA baby สูตรมีกลิ่นและไม่มีกลิ่น', 30, 315],
+  ['80แผ่น/ห่อ สำหรับผิวบอบบาง ผลิตในไทย', 30, 324], ['ม่วง5+ชมพู5', 170, 315], ['2', 265, 327]
 ]);
 
 export const shopeeQtyCases = [
