@@ -1,0 +1,155 @@
+name: Apply Collapsible Sidebar
+
+on:
+  push:
+    branches:
+      - frontend-collapsible-sidebar
+    paths:
+      - .github/workflows/apply-collapsible-sidebar.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: frontend-collapsible-sidebar
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Patch presentation layer
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text()
+          if 'data-pm-sidebar-toggle' in s:
+              print('Collapsible sidebar already applied')
+              raise SystemExit(0)
+
+          def replace_once(old, new, label):
+              global s
+              count = s.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, found {count}')
+              s = s.replace(old, new, 1)
+
+          replace_once(
+              '    .pm-sidebar { width: 205px; flex: 0 0 205px; background: #082548; border-right: 1px solid rgba(255,255,255,.06); display: flex; flex-direction: column; min-height: calc(100vh - 82px); position: sticky; top: 82px; align-self: flex-start; height: calc(100vh - 82px); }',
+              '    .pm-sidebar { width: 205px; flex: 0 0 205px; background: #082548; border-right: 1px solid rgba(255,255,255,.06); display: flex; flex-direction: column; min-height: calc(100vh - 82px); position: sticky; top: 82px; align-self: flex-start; height: calc(100vh - 82px); transition: width .18s ease, flex-basis .18s ease, transform .18s ease; z-index: 40; }',
+              'sidebar base css'
+          )
+
+          replace_once(
+              '    .pm-nav-btn-active { color: white; background: #0b63ce; border-color: rgba(147,197,253,.28); box-shadow: 0 8px 18px rgba(0,0,0,.15); }\n    .pm-main { flex: 1; min-width: 0; background: var(--pm-canvas); overflow-x: hidden; }',
+              '''    .pm-nav-btn-active { color: white; background: #0b63ce; border-color: rgba(147,197,253,.28); box-shadow: 0 8px 18px rgba(0,0,0,.15); }\n    .pm-sidebar-toggle-wrap { display: flex; justify-content: flex-end; padding: 10px 10px 0; }\n    .pm-sidebar-toggle { width: 30px; height: 30px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; color: #dbeafe; border: 1px solid rgba(191,219,254,.16); background: rgba(255,255,255,.05); font-size: 20px; font-weight: 900; transition: .16s ease; }\n    .pm-sidebar-toggle:hover { color: white; background: rgba(255,255,255,.10); border-color: rgba(191,219,254,.30); }\n    .pm-sidebar.pm-sidebar-collapsed { width: 68px; flex-basis: 68px; }\n    .pm-sidebar-collapsed .pm-nav-label, .pm-sidebar-collapsed .pm-sidebar-section-label, .pm-sidebar-collapsed .pm-local-workspace-copy { display: none; }\n    .pm-sidebar-collapsed .pm-nav-btn { justify-content: center; padding-left: 0; padding-right: 0; position: relative; }\n    .pm-sidebar-collapsed .pm-nav-badge { position: absolute; top: 3px; right: 3px; min-width: 16px; height: 16px; padding: 0 4px; font-size: 8px; }\n    .pm-sidebar-collapsed .pm-local-workspace-card { padding: 10px 0; display: flex; align-items: center; justify-content: center; }\n    .pm-sidebar-backdrop { display: none; }\n    .pm-mobile-menu { display: none; width: 38px; height: 38px; border-radius: 10px; align-items: center; justify-content: center; color: white; border: 1px solid rgba(191,219,254,.18); background: rgba(255,255,255,.06); font-size: 20px; font-weight: 900; flex: 0 0 auto; }\n    .pm-main { flex: 1; min-width: 0; background: var(--pm-canvas); overflow-x: hidden; transition: width .18s ease; }''',
+              'sidebar helper css'
+          )
+
+          old_media = '''    @media (max-width: 1023px) {\n      .pm-command-header { height: 68px; padding: 0 14px; }\n      .pm-brand-wrap { min-width: 0; }\n      .pm-logo-mark { width: 40px; height: 40px; }\n      .pm-app-frame { min-height: calc(100vh - 68px); }\n      .pm-sidebar { display: none; }\n      .pm-page { padding: 18px 14px 36px; }\n      .pm-page-head { align-items: flex-start; flex-direction: column; }\n    }\n    @media (max-width: 639px) {'''
+          new_media = '''    @media (max-width: 1023px) {\n      .pm-command-header { height: 68px; padding: 0 14px; }\n      .pm-brand-wrap { min-width: 0; }\n      .pm-logo-mark { width: 40px; height: 40px; }\n      .pm-app-frame { min-height: calc(100vh - 68px); }\n      .pm-sidebar { top: 68px; min-height: calc(100vh - 68px); height: calc(100vh - 68px); }\n      .pm-page { padding: 18px 14px 36px; }\n      .pm-page-head { align-items: flex-start; flex-direction: column; }\n    }\n    @media (max-width: 900px) {\n      .pm-mobile-menu { display: inline-flex; }\n      .pm-sidebar, .pm-sidebar.pm-sidebar-collapsed { position: fixed; top: 68px; left: 0; width: 205px; flex-basis: 205px; height: calc(100vh - 68px); min-height: calc(100vh - 68px); transform: translateX(-105%); z-index: 70; box-shadow: 14px 0 36px rgba(3,18,36,.22); }\n      .pm-sidebar.pm-sidebar-mobile-open { transform: translateX(0); }\n      .pm-sidebar-toggle-wrap { display: none; }\n      .pm-sidebar-collapsed .pm-nav-label, .pm-sidebar-collapsed .pm-sidebar-section-label, .pm-sidebar-collapsed .pm-local-workspace-copy { display: inline; }\n      .pm-sidebar-collapsed .pm-nav-btn { justify-content: flex-start; padding-left: 12px; padding-right: 12px; }\n      .pm-sidebar-collapsed .pm-nav-badge { position: static; margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; font-size: 9px; }\n      .pm-sidebar-collapsed .pm-local-workspace-card { padding: 12px; display: block; }\n      .pm-sidebar-backdrop { display: block; position: fixed; inset: 68px 0 0; z-index: 60; border: 0; background: rgba(4,18,36,.46); }\n      .pm-main { width: 100%; }\n    }\n    @media (max-width: 639px) {'''
+          replace_once(old_media, new_media, 'responsive css')
+
+          replace_once(
+              "      const [activeView, setActiveView] = useState('batches');\n      const [exceptionMode, setExceptionMode] = useState(false);",
+              """      const [activeView, setActiveView] = useState('batches');\n      const SIDEBAR_STORAGE_KEY = 'packmasterSidebarCollapsedV1';\n      const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {\n        try { return localStorage.getItem(SIDEBAR_STORAGE_KEY) === '1'; }\n        catch (error) { return false; }\n      });\n      const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);\n      const [exceptionMode, setExceptionMode] = useState(false);""",
+              'sidebar state'
+          )
+
+          replace_once(
+              "      const navigateView = (view) => setActiveView(view);",
+              """      const navigateView = (view) => {\n        setActiveView(view);\n        setMobileSidebarOpen(false);\n      };\n      const toggleSidebar = () => {\n        setSidebarCollapsed(current => {\n          const next = !current;\n          try { localStorage.setItem(SIDEBAR_STORAGE_KEY, next ? '1' : '0'); } catch (error) {}\n          return next;\n        });\n      };\n      useEffect(() => {\n        if (!mobileSidebarOpen) return undefined;\n        const onKeyDown = (event) => { if (event.key === 'Escape') setMobileSidebarOpen(false); };\n        const onResize = () => { if (window.innerWidth > 900) setMobileSidebarOpen(false); };\n        window.addEventListener('keydown', onKeyDown);\n        window.addEventListener('resize', onResize);\n        return () => {\n          window.removeEventListener('keydown', onKeyDown);\n          window.removeEventListener('resize', onResize);\n        };\n      }, [mobileSidebarOpen]);""",
+              'sidebar actions'
+          )
+
+          replace_once(
+              '''            <header className="pm-command-header">\n              <div className="pm-brand-wrap">''',
+              '''            <header className="pm-command-header">\n              <button type="button" data-pm-mobile-menu className="pm-mobile-menu" aria-controls="packmaster-sidebar" aria-expanded={mobileSidebarOpen} aria-label="เปิดเมนู" onClick={() => setMobileSidebarOpen(true)}><span aria-hidden="true">☰</span></button>\n              <div className="pm-brand-wrap">''',
+              'mobile header button'
+          )
+
+          replace_once(
+              '''            <div className="pm-app-frame">\n              <aside className="pm-sidebar">\n                <div className="px-3 pt-4 pb-2">''',
+              '''            <div className="pm-app-frame">\n              {mobileSidebarOpen && <button type="button" data-pm-sidebar-backdrop className="pm-sidebar-backdrop" aria-label="ปิดเมนู" onClick={() => setMobileSidebarOpen(false)}></button>}\n              <aside id="packmaster-sidebar" data-pm-sidebar data-pm-sidebar-collapsed={sidebarCollapsed ? 'true' : 'false'} className={`pm-sidebar ${sidebarCollapsed ? 'pm-sidebar-collapsed' : ''} ${mobileSidebarOpen ? 'pm-sidebar-mobile-open' : ''}`}>\n                <div className="pm-sidebar-toggle-wrap">\n                  <button type="button" data-pm-sidebar-toggle className="pm-sidebar-toggle" aria-controls="packmaster-sidebar" aria-expanded={!sidebarCollapsed} aria-label={sidebarCollapsed ? 'ขยายเมนูด้านข้าง' : 'ย่อเมนูด้านข้าง'} title={sidebarCollapsed ? 'ขยายเมนูด้านข้าง' : 'ย่อเมนูด้านข้าง'} onClick={toggleSidebar}><span aria-hidden="true">{sidebarCollapsed ? '›' : '‹'}</span></button>\n                </div>\n                <div className="px-3 pt-2 pb-2">''',
+              'sidebar shell markup'
+          )
+
+          replace_once(
+              '''                  <div className="text-[9px] font-black tracking-[0.17em] uppercase text-blue-200/45 px-3 mb-2">Workspace</div>''',
+              '''                  <div className="pm-sidebar-section-label text-[9px] font-black tracking-[0.17em] uppercase text-blue-200/45 px-3 mb-2">Workspace</div>''',
+              'workspace label'
+          )
+
+          replace_once(
+              '''                      <button key={id} onClick={() => navigateView(id)} className={`pm-nav-btn ${activeView === id ? 'pm-nav-btn-active' : ''}`}>\n                        <PMIcon name={icon} className="w-[18px] h-[18px]" />\n                        <span>{label}</span>\n                        {id === 'review' && exceptionRows.length > 0 && <span className="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-amber-400 text-[#071f3d] text-[9px] font-black flex items-center justify-center">{exceptionRows.length}</span>}\n                      </button>''',
+              '''                      <button key={id} aria-label={label} title={sidebarCollapsed ? label : undefined} onClick={() => navigateView(id)} className={`pm-nav-btn ${activeView === id ? 'pm-nav-btn-active' : ''}`}>\n                        <PMIcon name={icon} className="w-[18px] h-[18px] flex-none" />\n                        <span className="pm-nav-label">{label}</span>\n                        {id === 'review' && exceptionRows.length > 0 && <span className="pm-nav-badge ml-auto min-w-5 h-5 px-1.5 rounded-full bg-amber-400 text-[#071f3d] text-[9px] font-black flex items-center justify-center">{exceptionRows.length}</span>}\n                      </button>''',
+              'primary nav buttons'
+          )
+
+          replace_once(
+              '''                    <div className="text-[8px] font-black tracking-[0.14em] uppercase text-blue-200/35 px-3 mb-1">เครื่องมือ</div>\n                    {activeBatchId && <button onClick={()=>navigateView('upload')} className={`pm-nav-btn ${activeView==='upload'?'pm-nav-btn-active':''}`}><PMIcon name="upload" className="w-[17px] h-[17px]"/><span>อัปโหลดไฟล์</span></button>}\n                    <button onClick={()=>navigateView('safety')} className={`pm-nav-btn ${activeView==='safety'?'pm-nav-btn-active':''}`}><PMIcon name="shield" className="w-[17px] h-[17px]"/><span>เครื่องมือ / ความปลอดภัย</span></button>''',
+              '''                    <div className="pm-sidebar-section-label text-[8px] font-black tracking-[0.14em] uppercase text-blue-200/35 px-3 mb-1">เครื่องมือ</div>\n                    {activeBatchId && <button aria-label="อัปโหลดไฟล์" title={sidebarCollapsed ? 'อัปโหลดไฟล์' : undefined} onClick={()=>navigateView('upload')} className={`pm-nav-btn ${activeView==='upload'?'pm-nav-btn-active':''}`}><PMIcon name="upload" className="w-[17px] h-[17px] flex-none"/><span className="pm-nav-label">อัปโหลดไฟล์</span></button>}\n                    <button aria-label="เครื่องมือ / ความปลอดภัย" title={sidebarCollapsed ? 'เครื่องมือ / ความปลอดภัย' : undefined} onClick={()=>navigateView('safety')} className={`pm-nav-btn ${activeView==='safety'?'pm-nav-btn-active':''}`}><PMIcon name="shield" className="w-[17px] h-[17px] flex-none"/><span className="pm-nav-label">เครื่องมือ / ความปลอดภัย</span></button>''',
+              'secondary nav buttons'
+          )
+
+          replace_once(
+              '''                  <div className="rounded-xl bg-white/[0.06] border border-white/[0.08] p-3">\n                    <div className="flex items-center gap-2 text-blue-100"><span className="w-2 h-2 rounded-full bg-emerald-400"></span><span className="text-[11px] font-black">Local Workspace</span></div>\n                    <div className="text-[9px] leading-4 font-semibold text-blue-100/45 mt-1">ข้อมูลอยู่ใน Browser เครื่องนี้</div>\n                  </div>''',
+              '''                  <div className="pm-local-workspace-card rounded-xl bg-white/[0.06] border border-white/[0.08] p-3" title={sidebarCollapsed ? 'Local Workspace • ข้อมูลอยู่ใน Browser เครื่องนี้' : undefined}>\n                    <div className="flex items-center gap-2 text-blue-100"><span className="w-2 h-2 rounded-full bg-emerald-400 flex-none"></span><span className="pm-local-workspace-copy text-[11px] font-black">Local Workspace</span></div>\n                    <div className="pm-local-workspace-copy text-[9px] leading-4 font-semibold text-blue-100/45 mt-1">ข้อมูลอยู่ใน Browser เครื่องนี้</div>\n                  </div>''',
+              'local workspace card'
+          )
+
+          old_mobile_nav = '''                <div className="lg:hidden sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200 px-3 py-2 overflow-x-auto">\n                  <div className="flex gap-2 min-w-max">\n                    {[\n                      ['batches','งานแพ็ก'],['sku','คลังคำศัพท์'],['review','รีวิว & พิมพ์']\n                    ].map(([id,label]) => <button key={id} onClick={() => navigateView(id)} className={`px-3 py-2 rounded-lg text-xs font-black ${activeView === id ? 'bg-[#0b63ce] text-white' : 'bg-slate-100 text-slate-600'}`}>{label}</button>)}\n                    {activeBatchId&&<button onClick={()=>navigateView('upload')} className={`px-3 py-2 rounded-lg text-xs font-black ${activeView==='upload'?'bg-[#0b63ce] text-white':'bg-slate-100 text-slate-500'}`}>อัปโหลดไฟล์</button>}\n                    <button onClick={()=>navigateView('safety')} className={`px-3 py-2 rounded-lg text-xs font-black ${activeView==='safety'?'bg-[#0b63ce] text-white':'bg-slate-100 text-slate-500'}`}>เครื่องมือ</button>\n                  </div>\n                </div>\n'''
+          replace_once(old_mobile_nav, '', 'legacy mobile nav')
+
+          p.write_text(s)
+          PY
+
+      - name: Run full regression suite
+        run: |
+          set -euo pipefail
+          for test in tests/*.test.mjs; do
+            echo "==> $test"
+            node "$test"
+          done
+
+      - name: Compile JSX
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock @babel/core @babel/cli @babel/preset-react >/dev/null 2>&1
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path('index.html').read_text()
+          matches = re.findall(r'<script type="text/babel">(.*?)</script>', text, re.S)
+          if not matches:
+              raise SystemExit('No text/babel script found')
+          Path('/tmp/packmaster-app.jsx').write_text('\n'.join(matches))
+          PY
+          npx babel /tmp/packmaster-app.jsx --presets @babel/preset-react --out-file /tmp/packmaster-app.js
+
+      - name: Verify frozen safety invariants
+        run: |
+          set -euo pipefail
+          test "$(git hash-object packmaster-batch.js)" = '941bddd557803aa27e58bd23372b9f51d6ca1605'
+          grep -Fq 'for (let i = 0; i < MappedOrders.length; i++)' index.html
+          grep -Fq 'MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}' index.html
+          git diff --check
+
+      - name: Commit generated UI
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- index.html; then
+            echo 'No Product diff to commit'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          git commit -m 'Add collapsible desktop sidebar and mobile drawer'
+          git push origin HEAD:frontend-collapsible-sidebar
