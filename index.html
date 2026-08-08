@@ -17,6 +17,7 @@
   <script src="./packmaster-workspace.js"></script>
   <script src="./packmaster-duplicate.js"></script>
   <script src="./packmaster-exceptions.js"></script>
+  <script src="./packmaster-archive.js"></script>
   <script src="./packmaster-storage-health.js"></script>
   <script src="./packmaster-diagnostics.js"></script>
 
@@ -675,6 +676,7 @@
       const workspaceApi = window.PackMasterWorkspace;
       const duplicateApi = window.PackMasterDuplicate;
       const exceptionApi = window.PackMasterExceptions;
+      const archiveApi = window.PackMasterArchive;
       const storageHealthApi = window.PackMasterStorageHealth;
       const diagnosticsApi = window.PackMasterDiagnostics;
       const PILOT_VERSION = 'PackMaster Pilot 2026.08.08';
@@ -742,12 +744,16 @@
       });
 
       const activeBatch = useMemo(() => batches.find(batch => batch.id === activeBatchId) || null, [batches, activeBatchId]);
+      const getBatchArchivedAt = (batch) => archiveApi && batch
+        ? archiveApi.getArchivedAt(batch.id, batch.archivedAt || null)
+        : (batch?.archivedAt || null);
       const visibleBatches = useMemo(() => batches.filter(batch => {
-        if (batchViewFilter === 'ARCHIVED') return Boolean(batch.archivedAt);
-        if (batchViewFilter === 'ACTIVE') return !batch.archivedAt;
+        const archivedAt = getBatchArchivedAt(batch);
+        if (batchViewFilter === 'ARCHIVED') return Boolean(archivedAt);
+        if (batchViewFilter === 'ACTIVE') return !archivedAt;
         return true;
       }), [batches, batchViewFilter]);
-      const archivedBatchCount = useMemo(() => batches.filter(batch => Boolean(batch.archivedAt)).length, [batches]);
+      const archivedBatchCount = useMemo(() => batches.filter(batch => Boolean(getBatchArchivedAt(batch))).length, [batches]);
 
       useEffect(() => { localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); }, [skuRules]);
       useEffect(() => { localStorage.setItem('thermalMode', JSON.stringify(thermalMode)); }, [thermalMode]);
@@ -1450,25 +1456,25 @@
       };
 
       const handleArchiveBatch = async (batch) => {
-        if (!batch || !batch.id || !batchApi || !batchStorageReady) { showToast('Browser storage ยังไม่พร้อม', 'error'); return; }
+        if (!batch || !batch.id || !archiveApi) { showToast('Local Archive module ยังไม่พร้อม', 'error'); return; }
         const unresolved = (batch.reviewSkuCount || 0) + (batch.reviewQtyCount || 0) + (batch.unmappedCount || 0);
         if (unresolved > 0 && !window.confirm(`Batch นี้ยังมี ${unresolved} รายการที่ต้องตรวจ\n\nต้องการเก็บเข้าคลังต่อหรือไม่?`)) return;
         try {
-          const updated = await batchApi.archiveBatch(batch.id, new Date());
-          upsertBatchMeta(updated);
+          archiveApi.archiveBatch(batch.id, new Date());
+          setBatches(prev => [...prev]);
           setSelectedArchivedBatchIds(prev => prev.filter(id => id !== batch.id));
           showToast('เก็บ Batch เข้าคลังแล้ว', 'success');
-        } catch (err) { console.error('Archive batch failed', err); showToast('เก็บ Batch เข้าคลังไม่สำเร็จ — ข้อมูลเดิมยังอยู่', 'error'); }
+        } catch (err) { console.error('Archive sidecar failed', err); showToast('เก็บ Batch เข้าคลังไม่สำเร็จ — ข้อมูล Batch เดิมยังอยู่', 'error'); }
       };
 
       const handleRestoreArchivedBatch = async (batch) => {
-        if (!batch || !batch.id || !batchApi || !batchStorageReady) { showToast('Browser storage ยังไม่พร้อม', 'error'); return; }
+        if (!batch || !batch.id || !archiveApi) { showToast('Local Archive module ยังไม่พร้อม', 'error'); return; }
         try {
-          const updated = await batchApi.restoreArchivedBatch(batch.id, new Date());
-          upsertBatchMeta(updated);
+          archiveApi.restoreBatch(batch.id, new Date());
+          setBatches(prev => [...prev]);
           setSelectedArchivedBatchIds(prev => prev.filter(id => id !== batch.id));
           showToast('นำ Batch กลับจากคลังแล้ว', 'success');
-        } catch (err) { console.error('Restore archived batch failed', err); showToast('นำ Batch กลับไม่สำเร็จ — ข้อมูลเดิมยังอยู่', 'error'); }
+        } catch (err) { console.error('Restore archive sidecar failed', err); showToast('นำ Batch กลับไม่สำเร็จ — ข้อมูล Batch เดิมยังอยู่', 'error'); }
       };
 
       const toggleArchivedSelection = (batchId) => {
@@ -1493,7 +1499,7 @@
         const exceptionOrders = batches.reduce((sum, batch) => sum + (Number(batch.reviewSkuCount) || 0) + (Number(batch.reviewQtyCount) || 0) + (Number(batch.unmappedCount) || 0), 0);
         return diagnosticsApi.buildDiagnosticReport({
           appVersion: PILOT_VERSION,
-          batches,
+          batches: batches.map(batch => ({ ...batch, archivedAt: getBatchArchivedAt(batch) })),
           storage: storageHealth.supported === null ? null : storageHealth,
           counters: {
             processedOrders,
@@ -1534,7 +1540,7 @@
 
         setStorageHealthBusy(true);
         try {
-          const result = await storageHealthApi.cleanupArchivedReprintImages(batchApi, selectedArchivedBatchIds);
+          const result = await storageHealthApi.cleanupArchivedReprintImages(batchApi, selectedArchivedBatchIds, (meta) => archiveApi ? archiveApi.isArchived(meta.id, meta.archivedAt || null) : Boolean(meta.archivedAt));
           await refreshStorageHealth();
           showToast(`ล้างรูป Reprint แล้ว ${result.cleanedOrders} Orders จาก ${result.cleanedBatches} Batch • ข้อมูล Parsed ยังอยู่`, 'success');
         } catch (err) {
@@ -1547,14 +1553,33 @@
 
       const handleDeleteSelectedArchived = async () => {
         if (!batchApi || !batchStorageReady || selectedArchivedBatchIds.length === 0) return;
-        if (!window.confirm(`ลบ Batch ที่เก็บเข้าคลังแล้ว ${selectedArchivedBatchIds.length} รายการถาวรจาก Browser นี้หรือไม่?\n\nการลบนี้ย้อนกลับไม่ได้ เว้นแต่มี Workspace Backup`)) return;
+        const deletableIds = selectedArchivedBatchIds.filter(batchId => {
+          const batch = batches.find(row => row.id === batchId);
+          return batch && Boolean(getBatchArchivedAt(batch));
+        });
+        if (deletableIds.length === 0) { setSelectedArchivedBatchIds([]); return; }
+        if (!window.confirm(`ลบ Batch ที่เก็บเข้าคลังแล้ว ${deletableIds.length} รายการถาวรจาก Browser นี้หรือไม่?\n\nการลบนี้ย้อนกลับไม่ได้ เว้นแต่มี Workspace Backup`)) return;
+        const deletedIds = [];
         try {
-          const result = await batchApi.deleteArchivedBatches(selectedArchivedBatchIds);
-          const removed = new Set(selectedArchivedBatchIds);
-          setBatches(prev => prev.filter(batch => !removed.has(batch.id) || !batch.archivedAt));
+          for (const batchId of deletableIds) {
+            await batchApi.deleteBatch(batchId);
+            if (archiveApi) archiveApi.clearBatchArchive(batchId);
+            if (duplicateApi) duplicateApi.clearBatchFingerprints(batchId);
+            deletedIds.push(batchId);
+          }
+          const removed = new Set(deletedIds);
+          setBatches(prev => prev.filter(batch => !removed.has(batch.id)));
           setSelectedArchivedBatchIds([]);
-          showToast(`ลบ Archived Batch แล้ว ${result.deleted} รายการ`, 'success');
-        } catch (err) { console.error('Delete archived batches failed', err); showToast('ลบ Archived Batch ไม่สำเร็จ — ข้อมูลที่ลบไม่สำเร็จยังอยู่', 'error'); }
+          showToast(`ลบ Archived Batch แล้ว ${deletedIds.length} รายการ`, 'success');
+        } catch (err) {
+          if (deletedIds.length > 0) {
+            const removed = new Set(deletedIds);
+            setBatches(prev => prev.filter(batch => !removed.has(batch.id)));
+            setSelectedArchivedBatchIds(prev => prev.filter(id => !removed.has(id)));
+          }
+          console.error('Delete archived batches failed', err);
+          showToast(`ลบ Archived Batch ได้ ${deletedIds.length} รายการก่อนพบปัญหา — รายการที่ยังไม่ลบยังอยู่`, 'error');
+        }
       };
 
       const handleDeleteBatch = async (batch) => {
@@ -1570,6 +1595,10 @@
           if (duplicateApi) {
             try { duplicateApi.clearBatchFingerprints(batch.id); }
             catch (fingerprintError) { console.warn('Clear duplicate fingerprint sidecar failed', fingerprintError); }
+          }
+          if (archiveApi) {
+            try { archiveApi.clearBatchArchive(batch.id); }
+            catch (archiveError) { console.warn('Clear archive sidecar failed', archiveError); }
           }
           setBatches(prev => prev.filter(item => item.id !== batch.id));
           showToast('ลบ Batch เรียบร้อย', 'success');
@@ -1689,7 +1718,8 @@
             skuRules,
             settings: {
               thermalMode,
-              duplicateFingerprints: duplicateApi ? duplicateApi.exportFingerprintStore() : {}
+              duplicateFingerprints: duplicateApi ? duplicateApi.exportFingerprintStore() : {},
+              archiveState: archiveApi ? archiveApi.exportArchiveStore() : {}
             },
             appVersion: document.title
           });
@@ -1725,6 +1755,7 @@
           const parsed = JSON.parse(raw);
           const backup = workspaceApi.validateBackup(parsed);
           if (duplicateApi) duplicateApi.validateFingerprintStore(backup.settings.duplicateFingerprints || {});
+          if (archiveApi) archiveApi.validateArchiveStore(backup.settings.archiveState || {});
           const summary = workspaceApi.getBackupSummary(backup);
           setRestorePreview({ backup, summary });
           setRestoreFileName(file.name);
@@ -1756,6 +1787,7 @@
         const previousSkuRules = JSON.parse(JSON.stringify(skuRules));
         const previousThermalMode = thermalMode;
         const previousDuplicateFingerprints = duplicateApi ? duplicateApi.exportFingerprintStore() : {};
+        const previousArchiveState = archiveApi ? archiveApi.exportArchiveStore() : {};
         let safetyBackup = null;
         let rollbackSucceeded = false;
 
@@ -1773,7 +1805,8 @@
             skuRules: previousSkuRules,
             settings: {
               thermalMode: previousThermalMode,
-              duplicateFingerprints: previousDuplicateFingerprints
+              duplicateFingerprints: previousDuplicateFingerprints,
+              archiveState: previousArchiveState
             },
             appVersion: document.title
           });
@@ -1781,6 +1814,7 @@
 
           await workspaceApi.replaceWorkspaceBatches(backup, batchApi);
           if (duplicateApi) duplicateApi.replaceFingerprintStore(backup.settings.duplicateFingerprints || {});
+          if (archiveApi) archiveApi.replaceArchiveStore(backup.settings.archiveState || {});
 
           setSkuRules(restoredRules);
           if (typeof backup.settings.thermalMode === 'boolean') {
@@ -1805,6 +1839,7 @@
             try {
               await workspaceApi.replaceWorkspaceBatches(safetyBackup, batchApi);
               if (duplicateApi) duplicateApi.replaceFingerprintStore(previousDuplicateFingerprints);
+              if (archiveApi) archiveApi.replaceArchiveStore(previousArchiveState);
               const previousBatches = await batchApi.listBatches();
               setBatches(previousBatches);
               setSkuRules(previousSkuRules);
@@ -2104,7 +2139,7 @@
                                     </div>
                                     <p className="text-xs font-bold text-blue-950/35">อัปเดต {formatBatchUpdated(batch.updatedAt)}</p>
                                   </div>
-                                  {batch.archivedAt ? (
+                                  {getBatchArchivedAt(batch) ? (
                                     <label className="shrink-0 flex items-center gap-2 text-[10px] font-black text-slate-500 cursor-pointer"><input type="checkbox" checked={selectedArchivedBatchIds.includes(batch.id)} onChange={() => toggleArchivedSelection(batch.id)} className="w-4 h-4" /> เลือก</label>
                                   ) : (
                                     <button onClick={() => handleArchiveBatch(batch)} className="shrink-0 px-3 py-2 rounded-xl border border-slate-100 text-slate-500 hover:text-blue-700 hover:bg-blue-50 hover:border-blue-100 transition-all text-xs font-black" title="เก็บเข้าคลัง">เก็บเข้าคลัง</button>
@@ -2120,7 +2155,7 @@
 
                                 <div className="flex gap-2">
                                   <button onClick={() => handleOpenBatch(batch)} className="flex-1 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-100 px-5 py-3.5 rounded-2xl font-black text-sm transition-all flex items-center justify-center gap-2">เปิดงาน <span>→</span></button>
-                                  {batch.archivedAt && <button onClick={() => handleRestoreArchivedBatch(batch)} className="px-5 py-3.5 rounded-2xl border border-green-100 bg-green-50 text-green-700 font-black text-sm">นำกลับ</button>}
+                                  {getBatchArchivedAt(batch) && <button onClick={() => handleRestoreArchivedBatch(batch)} className="px-5 py-3.5 rounded-2xl border border-green-100 bg-green-50 text-green-700 font-black text-sm">นำกลับ</button>}
                                 </div>
                               </div>
                             );

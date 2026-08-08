@@ -48,7 +48,6 @@
       updatedAt: createdAt,
       status: 'WAITING',
       printedAt: null,
-      archivedAt: null,
       totalOrders: 0,
       readyCount: 0,
       reviewSkuCount: 0,
@@ -79,19 +78,6 @@
       unmappedCount: clean.unmapped,
       status: deriveBatchStatus(clean, printedAt)
     };
-  };
-
-  const archiveBatchMeta = (meta, now = new Date()) => {
-    if (!meta || !meta.id) throw new Error('Batch metadata is required');
-    const date = now instanceof Date ? now : new Date(now);
-    const archivedAt = date.toISOString();
-    return { ...meta, archivedAt, updatedAt: archivedAt };
-  };
-
-  const restoreBatchMeta = (meta, now = new Date()) => {
-    if (!meta || !meta.id) throw new Error('Batch metadata is required');
-    const date = now instanceof Date ? now : new Date(now);
-    return { ...meta, archivedAt: null, updatedAt: date.toISOString() };
   };
 
   const requestToPromise = (request) => new Promise((resolve, reject) => {
@@ -189,56 +175,15 @@
     await transactionToPromise(tx);
   };
 
-  const archiveBatch = async (batchId, now = new Date()) => {
-    if (!batchId) throw new Error('Batch id is required');
-    const loaded = await loadBatch(batchId);
-    if (!loaded.meta) throw new Error('Batch metadata not found');
-    const updated = archiveBatchMeta(loaded.meta, now);
-    await saveBatch(updated, loaded.orders);
-    return updated;
-  };
-
-  const restoreArchivedBatch = async (batchId, now = new Date()) => {
-    if (!batchId) throw new Error('Batch id is required');
-    const loaded = await loadBatch(batchId);
-    if (!loaded.meta) throw new Error('Batch metadata not found');
-    const updated = restoreBatchMeta(loaded.meta, now);
-    await saveBatch(updated, loaded.orders);
-    return updated;
-  };
-
-  const deleteArchivedBatches = async (batchIds) => {
-    const wanted = new Set((Array.isArray(batchIds) ? batchIds : []).filter(Boolean));
-    if (wanted.size === 0) return { deleted: 0, skipped: 0 };
-    const rows = await listBatches();
-    const deletable = rows.filter((meta) => wanted.has(meta.id) && Boolean(meta.archivedAt));
-    const skipped = wanted.size - deletable.length;
-    if (deletable.length === 0) return { deleted: 0, skipped };
-
-    const db = await openDb();
-    const tx = db.transaction([META_STORE, ORDERS_STORE], 'readwrite');
-    for (const meta of deletable) {
-      tx.objectStore(META_STORE).delete(meta.id);
-      tx.objectStore(ORDERS_STORE).delete(meta.id);
-    }
-    await transactionToPromise(tx);
-    return { deleted: deletable.length, skipped };
-  };
-
   return {
     DB_NAME,
     DB_VERSION,
     createBatchMeta,
     deriveBatchStatus,
     buildBatchMeta,
-    archiveBatchMeta,
-    restoreBatchMeta,
     listBatches,
     saveBatch,
     loadBatch,
-    deleteBatch,
-    archiveBatch,
-    restoreArchivedBatch,
-    deleteArchivedBatches
+    deleteBatch
   };
 });
