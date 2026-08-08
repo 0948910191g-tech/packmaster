@@ -1,0 +1,33 @@
+name: Smoke Test PackMaster Production Phase 1
+
+on:
+  push:
+    branches:
+      - phase1-ui-ux-v2
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch production page
+        run: |
+          curl -fsSL --retry 5 --retry-delay 2 --retry-all-errors \
+            https://0948910191g-tech.github.io/packmaster/ \
+            -o /tmp/packmaster-production.html
+          test -s /tmp/packmaster-production.html
+
+      - name: Verify Phase 1 UI markers in production
+        run: |
+          grep -F "Phase 1 UI/UX V2 — presentation-only controls" /tmp/packmaster-production.html
+          grep -F "ทุกแพลตฟอร์ม" /tmp/packmaster-production.html
+          grep -F "ค้นหา Keyword หรือ Base SKU" /tmp/packmaster-production.html
+          grep -F "Filter ใช้สำหรับรีวิวเท่านั้น" /tmp/packmaster-production.html
+
+      - name: Verify production still contains print/export core
+        run: |
+          grep -F "for (let i = 0; i < MappedOrders.length; i++)" /tmp/packmaster-production.html
+          grep -F "window.print()" /tmp/packmaster-production.html
+          grep -F "pdf.save(\`PackMaster_Labels_" /tmp/packmaster-production.html
