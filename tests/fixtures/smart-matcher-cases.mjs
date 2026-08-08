@@ -54,12 +54,13 @@ export const tikTokGroupedHeader = positioned([
   ['ค่าเริ่มต้น', 128, 24], ['HOYA ชมพู*5ห่อ', 170, 24], ['1', 265, 24]
 ]);
 
-// Synthetic positions mirror the fixed Shopee table columns while text is taken from the real PDF examples.
+// Shopee baselines mirror the real PDF geometry: the first product line sits ~12pt above the row-number baseline.
+// This is the production regression that previously cut off product identity such as HOYA / pack size.
 export const shopeeThreeSkuPositioned = positioned([
   ['#', 8, 300], ['ชื่อสินค้า', 30, 300], ['ตัวเลือกสินค้า', 170, 300], ['จำนวน', 260, 300],
-  ['1', 8, 316], ['Gift Set วันแม่ HAKU Cooling กลิ่นมะลิ 12 ห่อ', 30, 316], ['1', 265, 316],
-  ['2', 8, 346], ['(1แถม1) EXCARE MAKEUP REMOVER', 30, 346], ['1', 265, 346],
-  ['3', 8, 376], ['HOYA Baby Wipes Value Pack 5 ห่อ', 30, 376], ['1', 265, 376]
+  ['1', 8, 327], ['Gift Set วันแม่ HAKU Cooling กลิ่นมะลิ 12 ห่อ', 30, 315], ['1', 265, 327],
+  ['2', 8, 362], ['(1แถม1) EXCARE MAKEUP REMOVER', 30, 350], ['1', 265, 362],
+  ['3', 8, 397], ['HOYA Baby Wipes Value Pack 5 ห่อ', 30, 385], ['1', 265, 397]
 ]);
 
 export const shopeeQtyCases = [
