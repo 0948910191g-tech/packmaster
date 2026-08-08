@@ -7,6 +7,18 @@ export const rules = [
   { id: 6, keyword: 'Haku Extra Cooling 3 ห่อ', shortName: 'เอ็กซ์ตร้า3' }
 ];
 
+// Minimal subset copied from the user's real 2026-08-08 mapping export.
+// No customer/order data is included.
+export const productionRuleSubset = [
+  { id: 1777515381650, keyword: 'Hoya Wash Gloves  3 ห่อ', shortName: 'ถุงมือ3 ห่อ' },
+  { id: 1775698127695, keyword: 'HOYA BB 3', shortName: 'เด้งม่วง3' },
+  { id: 1775525636043, keyword: 'Hoya baby 5', shortName: 'เด้งม่วง5' },
+  { id: 1776996502978, keyword: 'Haku 1', shortName: 'ฮากุเบบี้1' },
+  { id: 1775707478916, keyword: 'JASMINE (12)', shortName: 'เย็นเขียว 12' },
+  { id: 1777027733055, keyword: '(12ห่อ) JASMINE', shortName: 'เย็นเขียว 12' },
+  { id: 1783752746037, keyword: 'HOYA Value Pack 5', shortName: 'HOYA Value 5' }
+];
+
 const positioned = (rows) => rows.map(([text, x, y], index) => ({ text, x, y, index }));
 
 // Sanitized from the real TikTok continuation order. No name/address/phone/tracking/order ID is retained.
@@ -29,6 +41,21 @@ export const tikTokFivePackQtyThree = positioned([
   ['Product', 6, 13.5], ['Name', 35, 13.5], ['SKU', 128, 13.5], ['Seller', 170, 13.5], ['SKU', 192, 13.5], ['Qty', 261, 13.5],
   ['80แผ่น/ห่อ', 6, 24], ['x', 42, 26], ['5แพ็ค', 50, 24], ['HOYA', 80, 26], ['baby', 6, 34], ['Wipes', 25, 34],
   ['แพ็ค5ห่อ', 128, 24], ['3', 265, 26]
+]);
+
+// Real TikTok PDFs can expose grouped header text-items instead of split words.
+export const tikTokGroupedHeader = positioned([
+  ['Product Name', 6, 13.5], ['SKU', 128, 13.5], ['Seller SKU', 170, 13.5], ['Qty', 261, 13.5],
+  ['(มีกลิ่นหอม 5ห่อ)HOYA baby Wipes Plus', 6, 24],
+  ['ค่าเริ่มต้น', 128, 24], ['HOYA ชมพู*5ห่อ', 170, 24], ['1', 265, 24]
+]);
+
+// Synthetic positions mirror the fixed Shopee table columns while text is taken from the real PDF examples.
+export const shopeeThreeSkuPositioned = positioned([
+  ['#', 8, 300], ['ชื่อสินค้า', 30, 300], ['ตัวเลือกสินค้า', 170, 300], ['จำนวน', 260, 300],
+  ['1', 8, 316], ['Gift Set วันแม่ HAKU Cooling กลิ่นมะลิ 12 ห่อ', 30, 316], ['1', 265, 316],
+  ['2', 8, 346], ['(1แถม1) EXCARE MAKEUP REMOVER', 30, 346], ['1', 265, 346],
+  ['3', 8, 376], ['HOYA Baby Wipes Value Pack 5 ห่อ', 30, 376], ['1', 265, 376]
 ]);
 
 export const shopeeQtyCases = [
