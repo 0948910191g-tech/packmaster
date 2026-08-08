@@ -106,3 +106,5 @@ jobs:
           git add index.html
           git commit -m 'Add Phase 2 Local Batch workflow'
           git push origin HEAD:phase2-local-batch
+
+# rerun after formatting-agnostic UI assertion
