@@ -21,14 +21,16 @@ test('print and Save PDF remain full-batch operations after safety gate', () => 
   mustInclude('{MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}');
 });
 
-test('SKU/unmapped exception can jump to SKU Library only with safely resolved product identity', () => {
+test('SKU/unmapped exception uses only safely resolved identity for inline Quick Mapping', () => {
   mustInclude('const handleFixSkuException = (row) => {');
+  mustInclude("types.some(type => type === 'REVIEW_SKU' || type === 'UNMAPPED')");
   mustInclude('const seed = pilotSafetyApi.getSkuFixSeed(row, getMatchResult);');
-  mustInclude("setActiveTab('settings');");
-  mustInclude('setSkuSearch(seed);');
-  mustInclude("setSkuFilter('ALL');");
-  mustInclude("setNewRule({ keyword: seed, shortName: '' });");
+  mustInclude("setQuickMapState({ open: true, row, keyword: seed, shortName: '' });");
+  mustInclude('data-pm-quick-mapping');
+  mustInclude('เปิดคลังคำศัพท์');
+  mustInclude("setNewRule({ keyword: seed, shortName: String(quickMapState.shortName || '') });");
   mustInclude('ตั้งชื่อ SKU');
+  assert.equal(/setQuickMapState\(\{ open: true, row, keyword: seed, shortName: ['"][^'"]+['"] \}\)/.test(html), false, 'Pilot Safety must never auto-generate the internal short name');
 });
 
 test('batch status UI uses exception-first effective status and invalidates stale completed state', () => {
