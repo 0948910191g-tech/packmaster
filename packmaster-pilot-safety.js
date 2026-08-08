@@ -24,7 +24,7 @@
     return 'READY';
   };
 
-  const getSkuFixSeed = (row) => {
+  const getSkuFixSeed = (row, resolveMatch) => {
     const value = row || {};
     const types = Array.isArray(value.types) ? value.types : [];
     const skuFixable = types.includes('UNMAPPED') || types.includes('REVIEW_SKU') || types.includes('PARSER_WARNING');
@@ -33,13 +33,20 @@
     const items = Array.isArray(value.order && value.order.parsedItems) ? value.order.parsedItems : [];
     const candidates = items.filter((item) => item && String(item.text || '').trim());
     if (candidates.length === 0) return '';
+    if (candidates.length === 1) return String(candidates[0].text || '').trim();
+    if (typeof resolveMatch !== 'function') return '';
 
-    const prioritized = candidates.find((item) => {
-      const status = String(item.matchStatus || '').toUpperCase();
-      return status === 'UNMAPPED' || status === 'REVIEW_SKU' || item.matched === false;
+    const unresolved = candidates.filter((item) => {
+      try {
+        const result = resolveMatch(String(item.text || '')) || {};
+        return result.status !== 'matched' || !result.rule;
+      } catch (err) {
+        return true;
+      }
     });
 
-    return String((prioritized || candidates[0]).text || '').trim();
+    if (unresolved.length !== 1) return '';
+    return String(unresolved[0].text || '').trim();
   };
 
   return {
