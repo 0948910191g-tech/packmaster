@@ -1504,7 +1504,6 @@
         exceptionApi ? exceptionApi.buildExceptionRows(MappedOrders) : [],
       [MappedOrders]);
       const printBlocked = pilotSafetyApi ? pilotSafetyApi.hasBlockingExceptions(exceptionRows) : exceptionRows.length > 0;
-      const currentPreviewException = CurrentPreviewOrder ? exceptionRows.find(item => item.order?.id === CurrentPreviewOrder.id) : null;
 
       const filteredExceptionRows = useMemo(() =>
         exceptionApi ? exceptionApi.filterExceptionRows(exceptionRows, exceptionType, exceptionSearch) : exceptionRows,
@@ -2259,6 +2258,7 @@
       const safeReviewPreviewIndex = FilteredOrders.length > 0 ? Math.min(reviewPreviewIndex, FilteredOrders.length - 1) : 0;
       const CurrentPreviewOrder = FilteredOrders[safeReviewPreviewIndex] || null;
       const CurrentPreviewFlags = CurrentPreviewOrder ? getReviewFlags(CurrentPreviewOrder) : null;
+      const currentPreviewException = CurrentPreviewOrder ? exceptionRows.find(item => item.order?.id === CurrentPreviewOrder.id) : null;
 
       const moveReviewPreview = (delta) => {
         if (FilteredOrders.length === 0) return;
