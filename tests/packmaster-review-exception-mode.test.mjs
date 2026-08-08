@@ -13,6 +13,7 @@ assert.match(html, /data-pm-exception-mode/, 'Exception Mode banner/marker must 
 assert.match(html, /ออกจากโหมดตรวจปัญหา/, 'Exception Mode must be explicitly dismissible');
 assert.match(html, /data-pm-review-action-bar/, 'Review persistent completion action bar must exist');
 assert.match(html, /\.pm-review-action-wrap \{ position: fixed;/, 'Review action bar must stay visible while scrolling, not only at the end of the page');
+assert.match(html, /\.pm-review-bottom-space \{[^}]*animation: none;/, 'Review workspace must disable transform animation so the fixed action bar remains viewport-fixed');
 assert.match(html, /pm-review-bottom-space/, 'Review workspace must reserve space so the fixed action bar cannot cover the last cards');
 assert.match(html, /แก้ .*รายการ/, 'Persistent Review action must guide unresolved work');
 assert.match(html, /พร้อมพิมพ์/, 'Persistent Review action must expose ready state');
