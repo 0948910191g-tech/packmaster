@@ -26,7 +26,7 @@ jobs:
               && grep -Fq './packmaster-pilot-safety.js' <<< "$html" \
               && grep -Fq 'แก้ Exception ให้ครบก่อนพิมพ์' <<< "$html" \
               && grep -Fq 'data-pm-view="review"' <<< "$html" \
-              && grep -Fq 'data-pm-review-preview="full"' <<< "$html"; then
+              && grep -Fq 'data-pm-review-layout="hybrid-grid"' <<< "$html"; then
               echo "Production smoke passed"
               exit 0
             fi
