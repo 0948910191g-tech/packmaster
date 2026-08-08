@@ -1,0 +1,53 @@
+name: Verify PackMaster Phase 1 UI V2
+
+on:
+  push:
+    branches:
+      - phase1-ui-ux-v2
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Regression tests
+        run: node tests/packmaster-smart-matcher.test.mjs
+
+      - name: Extract Babel application script
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          html = Path('index.html').read_text(encoding='utf-8')
+          match = re.search(r'<script type="text/babel">(.*?)</script>', html, re.S)
+          if not match:
+              raise SystemExit('text/babel application script not found')
+          Path('/tmp/packmaster-app.jsx').write_text(match.group(1), encoding='utf-8')
+          print('Extracted JSX application script')
+          PY
+
+      - name: Install Babel syntax checker
+        run: npm install --no-save --no-package-lock @babel/core@7 @babel/cli@7 @babel/preset-react@7
+
+      - name: Compile JSX syntax
+        run: npx babel /tmp/packmaster-app.jsx --presets @babel/preset-react --out-file /tmp/packmaster-app.js
+
+      - name: Safety invariants
+        run: |
+          grep -F "for (let i = 0; i < MappedOrders.length; i++)" index.html
+          grep -F "{MappedOrders.map((order) => (<LabelCard key={\`print-\${order.id}\`}" index.html
+          grep -F "const FilteredOrders = useMemo(() => {" index.html
+          grep -F "const filteredSkuRules = useMemo(() => {" index.html
+
+      - name: Whitespace check
+        run: git diff --check main...HEAD
