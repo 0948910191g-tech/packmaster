@@ -69,11 +69,21 @@
     .pm-command-btn:hover { background: rgba(255,255,255,.11); border-color: rgba(191,219,254,.36); transform: translateY(-1px); }
     .pm-command-safe { margin-left: 8px; border-color: rgba(110,231,183,.22); color: #d1fae5; }
     .pm-app-frame { min-height: calc(100vh - 82px); display: flex; }
-    .pm-sidebar { width: 205px; flex: 0 0 205px; background: #082548; border-right: 1px solid rgba(255,255,255,.06); display: flex; flex-direction: column; min-height: calc(100vh - 82px); position: sticky; top: 82px; align-self: flex-start; height: calc(100vh - 82px); }
+    .pm-sidebar { width: 205px; flex: 0 0 205px; background: #082548; border-right: 1px solid rgba(255,255,255,.06); display: flex; flex-direction: column; min-height: calc(100vh - 82px); position: sticky; top: 82px; align-self: flex-start; height: calc(100vh - 82px); transition: width .18s ease, flex-basis .18s ease, transform .18s ease; z-index: 40; }
     .pm-nav-btn { width: 100%; min-height: 44px; border-radius: 10px; padding: 0 12px; color: rgba(219,234,254,.65); display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 800; text-align: left; transition: .18s ease; border: 1px solid transparent; }
     .pm-nav-btn:hover { color: white; background: rgba(255,255,255,.06); }
     .pm-nav-btn-active { color: white; background: #0b63ce; border-color: rgba(147,197,253,.28); box-shadow: 0 8px 18px rgba(0,0,0,.15); }
-    .pm-main { flex: 1; min-width: 0; background: var(--pm-canvas); overflow-x: hidden; }
+    .pm-sidebar-toggle-wrap { display: flex; justify-content: flex-end; padding: 10px 10px 0; }
+    .pm-sidebar-toggle { width: 30px; height: 30px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; color: #dbeafe; border: 1px solid rgba(191,219,254,.16); background: rgba(255,255,255,.05); font-size: 20px; font-weight: 900; transition: .16s ease; }
+    .pm-sidebar-toggle:hover { color: white; background: rgba(255,255,255,.10); border-color: rgba(191,219,254,.30); }
+    .pm-sidebar.pm-sidebar-collapsed { width: 68px; flex-basis: 68px; }
+    .pm-sidebar-collapsed .pm-nav-label, .pm-sidebar-collapsed .pm-sidebar-section-label, .pm-sidebar-collapsed .pm-local-workspace-copy { display: none; }
+    .pm-sidebar-collapsed .pm-nav-btn { justify-content: center; padding-left: 0; padding-right: 0; position: relative; }
+    .pm-sidebar-collapsed .pm-nav-badge { position: absolute; top: 3px; right: 3px; min-width: 16px; height: 16px; padding: 0 4px; font-size: 8px; }
+    .pm-sidebar-collapsed .pm-local-workspace-card { padding: 10px 0; display: flex; align-items: center; justify-content: center; }
+    .pm-sidebar-backdrop { display: none; }
+    .pm-mobile-menu { display: none; width: 38px; height: 38px; border-radius: 10px; align-items: center; justify-content: center; color: white; border: 1px solid rgba(191,219,254,.18); background: rgba(255,255,255,.06); font-size: 20px; font-weight: 900; flex: 0 0 auto; }
+    .pm-main { flex: 1; min-width: 0; background: var(--pm-canvas); overflow-x: hidden; transition: width .18s ease; }
     .pm-page { max-width: 1240px; margin: 0 auto; padding: 24px 26px 44px; animation: pmFade .22s ease; }
     .pm-page-wide { max-width: 1520px; }
     @keyframes pmFade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
@@ -187,9 +197,21 @@
       .pm-brand-wrap { min-width: 0; }
       .pm-logo-mark { width: 40px; height: 40px; }
       .pm-app-frame { min-height: calc(100vh - 68px); }
-      .pm-sidebar { display: none; }
+      .pm-sidebar { top: 68px; min-height: calc(100vh - 68px); height: calc(100vh - 68px); }
       .pm-page { padding: 18px 14px 36px; }
       .pm-page-head { align-items: flex-start; flex-direction: column; }
+    }
+    @media (max-width: 900px) {
+      .pm-mobile-menu { display: inline-flex; }
+      .pm-sidebar, .pm-sidebar.pm-sidebar-collapsed { position: fixed; top: 68px; left: 0; width: 205px; flex-basis: 205px; height: calc(100vh - 68px); min-height: calc(100vh - 68px); transform: translateX(-105%); z-index: 70; box-shadow: 14px 0 36px rgba(3,18,36,.22); }
+      .pm-sidebar.pm-sidebar-mobile-open { transform: translateX(0); }
+      .pm-sidebar-toggle-wrap { display: none; }
+      .pm-sidebar-collapsed .pm-nav-label, .pm-sidebar-collapsed .pm-sidebar-section-label, .pm-sidebar-collapsed .pm-local-workspace-copy { display: inline; }
+      .pm-sidebar-collapsed .pm-nav-btn { justify-content: flex-start; padding-left: 12px; padding-right: 12px; }
+      .pm-sidebar-collapsed .pm-nav-badge { position: static; margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; font-size: 9px; }
+      .pm-sidebar-collapsed .pm-local-workspace-card { padding: 12px; display: block; }
+      .pm-sidebar-backdrop { display: block; position: fixed; inset: 68px 0 0; z-index: 60; border: 0; background: rgba(4,18,36,.46); }
+      .pm-main { width: 100%; }
     }
     @media (max-width: 639px) {
       .pm-command-header { position: relative; }
@@ -886,6 +908,12 @@
       const [activeTab, setActiveTab] = useState('upload');
       // PackMaster Frontend V3 — presentation-only navigation/pagination.
       const [activeView, setActiveView] = useState('batches');
+      const SIDEBAR_STORAGE_KEY = 'packmasterSidebarCollapsedV1';
+      const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+        try { return localStorage.getItem(SIDEBAR_STORAGE_KEY) === '1'; }
+        catch (error) { return false; }
+      });
+      const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
       const [exceptionMode, setExceptionMode] = useState(false);
       const [quickMapState, setQuickMapState] = useState({ open: false, row: null, keyword: '', shortName: '' });
       const [reviewPage, setReviewPage] = useState(1);
@@ -2345,7 +2373,28 @@
         setPreviewMode('labels');
         setActiveView('review');
       };
-      const navigateView = (view) => setActiveView(view);
+      const navigateView = (view) => {
+        setActiveView(view);
+        setMobileSidebarOpen(false);
+      };
+      const toggleSidebar = () => {
+        setSidebarCollapsed(current => {
+          const next = !current;
+          try { localStorage.setItem(SIDEBAR_STORAGE_KEY, next ? '1' : '0'); } catch (error) {}
+          return next;
+        });
+      };
+      useEffect(() => {
+        if (!mobileSidebarOpen) return undefined;
+        const onKeyDown = (event) => { if (event.key === 'Escape') setMobileSidebarOpen(false); };
+        const onResize = () => { if (window.innerWidth > 900) setMobileSidebarOpen(false); };
+        window.addEventListener('keydown', onKeyDown);
+        window.addEventListener('resize', onResize);
+        return () => {
+          window.removeEventListener('keydown', onKeyDown);
+          window.removeEventListener('resize', onResize);
+        };
+      }, [mobileSidebarOpen]);
 
       return (
         <div className="min-h-screen bg-[#f8fafc] text-blue-950 font-sans relative">
@@ -2380,6 +2429,7 @@
 
           <div className="no-print pm-shell" data-pm-shell="v3">
             <header className="pm-command-header">
+              <button type="button" data-pm-mobile-menu className="pm-mobile-menu" aria-controls="packmaster-sidebar" aria-expanded={mobileSidebarOpen} aria-label="เปิดเมนู" onClick={() => setMobileSidebarOpen(true)}><span aria-hidden="true">☰</span></button>
               <div className="pm-brand-wrap">
                 <div className="pm-logo-mark"><PMIcon name="box" className="w-7 h-7" /></div>
                 <div className="min-w-0">
@@ -2402,32 +2452,36 @@
             </header>
 
             <div className="pm-app-frame">
-              <aside className="pm-sidebar">
-                <div className="px-3 pt-4 pb-2">
-                  <div className="text-[9px] font-black tracking-[0.17em] uppercase text-blue-200/45 px-3 mb-2">Workspace</div>
+              {mobileSidebarOpen && <button type="button" data-pm-sidebar-backdrop className="pm-sidebar-backdrop" aria-label="ปิดเมนู" onClick={() => setMobileSidebarOpen(false)}></button>}
+              <aside id="packmaster-sidebar" data-pm-sidebar data-pm-sidebar-collapsed={sidebarCollapsed ? 'true' : 'false'} className={`pm-sidebar ${sidebarCollapsed ? 'pm-sidebar-collapsed' : ''} ${mobileSidebarOpen ? 'pm-sidebar-mobile-open' : ''}`}>
+                <div className="pm-sidebar-toggle-wrap">
+                  <button type="button" data-pm-sidebar-toggle className="pm-sidebar-toggle" aria-controls="packmaster-sidebar" aria-expanded={!sidebarCollapsed} aria-label={sidebarCollapsed ? 'ขยายเมนูด้านข้าง' : 'ย่อเมนูด้านข้าง'} title={sidebarCollapsed ? 'ขยายเมนูด้านข้าง' : 'ย่อเมนูด้านข้าง'} onClick={toggleSidebar}><span aria-hidden="true">{sidebarCollapsed ? '›' : '‹'}</span></button>
+                </div>
+                <div className="px-3 pt-2 pb-2">
+                  <div className="pm-sidebar-section-label text-[9px] font-black tracking-[0.17em] uppercase text-blue-200/45 px-3 mb-2">Workspace</div>
                   <nav data-pm-primary-nav className="space-y-1.5">
                     {[
                       ['batches','box','งานแพ็ก'],
                       ['sku','barcode','คลังคำศัพท์'],
                       ['review','review','รีวิว & พิมพ์']
                     ].map(([id, icon, label]) => (
-                      <button key={id} onClick={() => navigateView(id)} className={`pm-nav-btn ${activeView === id ? 'pm-nav-btn-active' : ''}`}>
-                        <PMIcon name={icon} className="w-[18px] h-[18px]" />
-                        <span>{label}</span>
-                        {id === 'review' && exceptionRows.length > 0 && <span className="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-amber-400 text-[#071f3d] text-[9px] font-black flex items-center justify-center">{exceptionRows.length}</span>}
+                      <button key={id} aria-label={label} title={sidebarCollapsed ? label : undefined} onClick={() => navigateView(id)} className={`pm-nav-btn ${activeView === id ? 'pm-nav-btn-active' : ''}`}>
+                        <PMIcon name={icon} className="w-[18px] h-[18px] flex-none" />
+                        <span className="pm-nav-label">{label}</span>
+                        {id === 'review' && exceptionRows.length > 0 && <span className="pm-nav-badge ml-auto min-w-5 h-5 px-1.5 rounded-full bg-amber-400 text-[#071f3d] text-[9px] font-black flex items-center justify-center">{exceptionRows.length}</span>}
                       </button>
                     ))}
                   </nav>
                   <div data-pm-secondary-nav className="mt-4 pt-3 border-t border-white/10 space-y-1.5">
-                    <div className="text-[8px] font-black tracking-[0.14em] uppercase text-blue-200/35 px-3 mb-1">เครื่องมือ</div>
-                    {activeBatchId && <button onClick={()=>navigateView('upload')} className={`pm-nav-btn ${activeView==='upload'?'pm-nav-btn-active':''}`}><PMIcon name="upload" className="w-[17px] h-[17px]"/><span>อัปโหลดไฟล์</span></button>}
-                    <button onClick={()=>navigateView('safety')} className={`pm-nav-btn ${activeView==='safety'?'pm-nav-btn-active':''}`}><PMIcon name="shield" className="w-[17px] h-[17px]"/><span>เครื่องมือ / ความปลอดภัย</span></button>
+                    <div className="pm-sidebar-section-label text-[8px] font-black tracking-[0.14em] uppercase text-blue-200/35 px-3 mb-1">เครื่องมือ</div>
+                    {activeBatchId && <button aria-label="อัปโหลดไฟล์" title={sidebarCollapsed ? 'อัปโหลดไฟล์' : undefined} onClick={()=>navigateView('upload')} className={`pm-nav-btn ${activeView==='upload'?'pm-nav-btn-active':''}`}><PMIcon name="upload" className="w-[17px] h-[17px] flex-none"/><span className="pm-nav-label">อัปโหลดไฟล์</span></button>}
+                    <button aria-label="เครื่องมือ / ความปลอดภัย" title={sidebarCollapsed ? 'เครื่องมือ / ความปลอดภัย' : undefined} onClick={()=>navigateView('safety')} className={`pm-nav-btn ${activeView==='safety'?'pm-nav-btn-active':''}`}><PMIcon name="shield" className="w-[17px] h-[17px] flex-none"/><span className="pm-nav-label">เครื่องมือ / ความปลอดภัย</span></button>
                   </div>
                 </div>
                 <div className="mt-auto p-3 border-t border-white/10">
-                  <div className="rounded-xl bg-white/[0.06] border border-white/[0.08] p-3">
-                    <div className="flex items-center gap-2 text-blue-100"><span className="w-2 h-2 rounded-full bg-emerald-400"></span><span className="text-[11px] font-black">Local Workspace</span></div>
-                    <div className="text-[9px] leading-4 font-semibold text-blue-100/45 mt-1">ข้อมูลอยู่ใน Browser เครื่องนี้</div>
+                  <div className="pm-local-workspace-card rounded-xl bg-white/[0.06] border border-white/[0.08] p-3" title={sidebarCollapsed ? 'Local Workspace • ข้อมูลอยู่ใน Browser เครื่องนี้' : undefined}>
+                    <div className="flex items-center gap-2 text-blue-100"><span className="w-2 h-2 rounded-full bg-emerald-400 flex-none"></span><span className="pm-local-workspace-copy text-[11px] font-black">Local Workspace</span></div>
+                    <div className="pm-local-workspace-copy text-[9px] leading-4 font-semibold text-blue-100/45 mt-1">ข้อมูลอยู่ใน Browser เครื่องนี้</div>
                   </div>
                 </div>
               </aside>
@@ -2442,15 +2496,6 @@
                     </div>
                   </div>
                 )}
-                <div className="lg:hidden sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200 px-3 py-2 overflow-x-auto">
-                  <div className="flex gap-2 min-w-max">
-                    {[
-                      ['batches','งานแพ็ก'],['sku','คลังคำศัพท์'],['review','รีวิว & พิมพ์']
-                    ].map(([id,label]) => <button key={id} onClick={() => navigateView(id)} className={`px-3 py-2 rounded-lg text-xs font-black ${activeView === id ? 'bg-[#0b63ce] text-white' : 'bg-slate-100 text-slate-600'}`}>{label}</button>)}
-                    {activeBatchId&&<button onClick={()=>navigateView('upload')} className={`px-3 py-2 rounded-lg text-xs font-black ${activeView==='upload'?'bg-[#0b63ce] text-white':'bg-slate-100 text-slate-500'}`}>อัปโหลดไฟล์</button>}
-                    <button onClick={()=>navigateView('safety')} className={`px-3 py-2 rounded-lg text-xs font-black ${activeView==='safety'?'bg-[#0b63ce] text-white':'bg-slate-100 text-slate-500'}`}>เครื่องมือ</button>
-                  </div>
-                </div>
 
                 {activeView === 'batches' && (
                   <section data-pm-view="batches" className="pm-page">
