@@ -80,6 +80,7 @@ assert.ok(['เย็นฟ้า12', 'เย็นฟ้า 12'].includes(menth
 
 const lavender6 = matchSkuRule('HAKU Cooling LAVENDER 6 ห่อ', productionRuleSubset);
 assert.equal(lavender6.status, 'ambiguous', 'Conflicting real internal names must still require review');
+assert.equal(lavender6.rule, null, 'True mapping conflicts must never choose a SKU automatically');
 
 const t1 = parseTikTokPositionedItems(tikTokContinuationPage1, null);
 const t2 = parseTikTokPositionedItems(tikTokContinuationPage2, 3);
