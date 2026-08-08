@@ -1,0 +1,70 @@
+name: Apply Phase 3C Exception Inbox
+
+on:
+  push:
+    branches:
+      - phase3c-exception-inbox
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Exception helper tests
+        run: node tests/packmaster-exceptions.test.mjs
+
+      - name: Confirm UI RED before first patch
+        run: |
+          if grep -Fq '<script src="./packmaster-exceptions.js"></script>' index.html; then
+            echo "Phase 3C patch already present; skip RED gate"
+          else
+            if node tests/packmaster-phase3c-ui.test.mjs; then
+              echo "Expected Phase 3C UI test to fail before patch" >&2
+              exit 1
+            else
+              echo "TDD RED confirmed"
+            fi
+          fi
+
+      - name: Apply UI patch
+        run: node tools/patch-phase3c-exceptions.cjs
+
+      - name: Phase 3C UI GREEN
+        run: node tests/packmaster-phase3c-ui.test.mjs
+
+      - name: Existing regressions
+        run: |
+          node tests/packmaster-smart-matcher.test.mjs
+          node tests/packmaster-batch.test.mjs
+          node tests/packmaster-workspace.test.mjs
+          node tests/packmaster-workspace-validation.test.mjs
+          node tests/packmaster-duplicate.test.mjs
+          node tests/packmaster-phase3b-ui.test.mjs
+
+      - name: Safety checks
+        run: |
+          grep -F 'for (let i = 0; i < MappedOrders.length; i++)' index.html
+          grep -F '{MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}' index.html
+          git diff --check
+
+      - name: Commit patched UI when changed
+        run: |
+          if git diff --quiet; then
+            echo "No generated UI changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Integrate Phase 3C Exception Inbox"
+          git push
