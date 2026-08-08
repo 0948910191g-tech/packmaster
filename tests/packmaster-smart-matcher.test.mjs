@@ -74,6 +74,13 @@ const jasmine12 = matchSkuRule(
 assert.equal(jasmine12.status, 'matched', 'HAKU Cooling Jasmine 12-pack should be confidently matched');
 assert.equal(jasmine12.rule?.shortName, 'เย็นเขียว 12', 'Jasmine 12-pack must never become generic HAKU Baby 1');
 
+const menthol12 = matchSkuRule('HAKU Cooling MENTHOL 12 ห่อ', productionRuleSubset);
+assert.equal(menthol12.status, 'matched', 'Formatting-only internal-name aliases must not become ambiguous');
+assert.ok(['เย็นฟ้า12', 'เย็นฟ้า 12'].includes(menthol12.rule?.shortName));
+
+const lavender6 = matchSkuRule('HAKU Cooling LAVENDER 6 ห่อ', productionRuleSubset);
+assert.equal(lavender6.status, 'ambiguous', 'Conflicting real internal names must still require review');
+
 const t1 = parseTikTokPositionedItems(tikTokContinuationPage1, null);
 const t2 = parseTikTokPositionedItems(tikTokContinuationPage2, 3);
 assert.equal(t1.items.length, 1, 'TikTok first continuation page should contain one SKU');
