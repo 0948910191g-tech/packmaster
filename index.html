@@ -383,14 +383,20 @@
 
       for (const qtyHeader of qtyHeaders) {
         const sameLine = entries.filter(item => Math.abs(item.y - qtyHeader.y) <= 5);
-        const normalized = sameLine.map(item => normalizeMatchText(item.text));
-        const skuHeaders = sameLine.filter(item => normalizeMatchText(item.text) === 'sku').sort((a, b) => a.x - b.x);
-        const sellerHeader = sameLine.find(item => normalizeMatchText(item.text) === 'seller');
-        if (normalized.includes('product') && normalized.includes('name') && skuHeaders.length >= 1 && sellerHeader) {
+        const lineText = normalizeMatchText(sameLine.map(item => item.text).join(' '));
+        const sellerHeader = sameLine.find(item => normalizeMatchText(item.text).includes('seller'));
+        const skuHeaders = sameLine
+          .filter(item => /(^|\s)sku($|\s)/.test(normalizeMatchText(item.text)))
+          .sort((a, b) => a.x - b.x);
+        const firstSkuHeader = sellerHeader
+          ? (skuHeaders.find(item => item.x < sellerHeader.x - 1) || skuHeaders[0])
+          : skuHeaders[0];
+
+        if (lineText.includes('product name') && firstSkuHeader && sellerHeader && qtyHeader.x > sellerHeader.x) {
           header = {
             y: qtyHeader.y,
             qtyX: qtyHeader.x,
-            firstSkuX: skuHeaders[0].x,
+            firstSkuX: firstSkuHeader.x,
             sellerX: sellerHeader.x
           };
           break;
