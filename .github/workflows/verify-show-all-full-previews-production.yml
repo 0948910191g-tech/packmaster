@@ -1,0 +1,108 @@
+name: Verify Show All Full Previews Production
+
+on:
+  push:
+    branches:
+      - verify-show-all-full-previews-production
+
+permissions:
+  contents: read
+
+jobs:
+  production-browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: verify-show-all-full-previews-production
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Wait for live show-all build
+        run: |
+          set -euo pipefail
+          URL='https://0948910191g-tech.github.io/packmaster/'
+          for attempt in $(seq 1 18); do
+            html="$(curl -fsSL --max-time 20 "${URL}?show-all=${GITHUB_SHA}" || true)"
+            if grep -Fq 'data-pm-review-preview-item' <<< "$html" \
+              && grep -Fq 'FilteredOrders.map((order,index)=>' <<< "$html" \
+              && ! grep -Fq 'reviewPreviewIndex' <<< "$html"; then
+              echo 'Live show-all preview assets are ready'
+              exit 0
+            fi
+            sleep 10
+          done
+          echo 'Live show-all preview build did not appear in time' >&2
+          exit 1
+      - name: Install Chromium
+        run: |
+          npm install --no-save --no-package-lock playwright
+          npx playwright install --with-deps chromium
+      - name: Exercise live 73-order full preview workflow
+        run: |
+          cat > show-all-production-smoke.mjs <<'JS'
+          import { chromium } from 'playwright';
+          const browser = await chromium.launch({ headless: true });
+          const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+          const page = await context.newPage();
+          const pageErrors = [];
+          const consoleErrors = [];
+          page.on('pageerror', error => pageErrors.push(String(error)));
+          page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+          const assert = (condition, message) => { if (!condition) throw new Error(message); };
+          const prod = 'https://0948910191g-tech.github.io/packmaster/?verify-show-all=1';
+
+          await page.goto(prod, { waitUntil: 'networkidle' });
+          await page.locator('[data-pm-shell="v3"]').waitFor({ state: 'visible' });
+          await page.evaluate(async () => {
+            const api = window.PackMasterBatch;
+            if (!api) throw new Error('PackMasterBatch unavailable');
+            for (const batch of await api.listBatches()) await api.deleteBatch(batch.id);
+            localStorage.setItem('skuMappingRules', JSON.stringify([{ id: 'prod-show-all-rule', keyword: 'PROD SHOW ALL SKU', shortName: 'preview1' }]));
+            const meta = api.createBatchMeta([], new Date('2026-08-08T16:15:00Z'));
+            const img = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1200"><rect width="100%" height="100%" fill="white"/><text x="60" y="120" font-size="50" fill="black">PRODUCTION FULL LABEL</text></svg>');
+            const orders = Array.from({ length: 73 }, (_, idx) => {
+              const n = idx + 1;
+              return { id: `prod-show-all-${n}`, tracking: `PROD-${String(n).padStart(4, '0')}`, parsedItems: [{ text: 'PROD SHOW ALL SKU', qty: 1 }], pdfImage: img, platform: n % 2 ? 'SHOPEE' : 'TIKTOK', orderId: `PRODORDER${String(n).padStart(4, '0')}`, declaredTotalQty: null, parserWarning: false };
+            });
+            const savedMeta = api.buildBatchMeta(meta, { total: 73, ready: 73, reviewSku: 0, reviewQty: 0, unmapped: 0 }, { now: new Date('2026-08-08T16:15:00Z') });
+            await api.saveBatch(savedMeta, orders);
+          });
+
+          await page.reload({ waitUntil: 'networkidle' });
+          await page.getByRole('button', { name: 'เปิดงาน', exact: true }).first().click();
+          await page.locator('[data-pm-view="upload"]').waitFor({ state: 'visible' });
+          await page.getByRole('button', { name: 'รีวิว & พิมพ์', exact: true }).first().click();
+          await page.locator('[data-pm-review-preview="full"]').waitFor({ state: 'visible' });
+          const items = page.locator('[data-pm-review-preview-item]');
+          await items.nth(72).waitFor({ state: 'attached' });
+          assert(await items.count() === 73, `Expected 73 live previews, got ${await items.count()}`);
+          await page.getByText('เห็น Label จริงก่อนพิมพ์ • 1 / 73', { exact: true }).waitFor();
+          await page.getByText('เห็น Label จริงก่อนพิมพ์ • 73 / 73', { exact: true }).waitFor();
+          assert(await page.locator('[data-pm-action="review-preview-prev"]').count() === 0, 'Previous must not exist');
+          assert(await page.locator('[data-pm-action="review-preview-next"]').count() === 0, 'Next must not exist');
+
+          const search = page.getByPlaceholder('ค้นหา Order / SKU / ชื่อภายใน');
+          await search.fill('PROD-0073');
+          await page.waitForFunction(() => document.querySelectorAll('[data-pm-review-preview-item]').length === 1);
+          await page.getByText('เห็น Label จริงก่อนพิมพ์ • 1 / 1', { exact: true }).waitFor();
+          await search.fill('');
+          await page.waitForFunction(() => document.querySelectorAll('[data-pm-review-preview-item]').length === 73);
+
+          await page.getByRole('button', { name: 'มุมมองรายการ', exact: true }).click();
+          await page.getByText('หน้า 1 / 7 • แสดง 12 รายการ', { exact: true }).waitFor();
+          await page.getByRole('button', { name: 'พรีวิวเต็มหน้า', exact: true }).click();
+          await page.waitForFunction(() => document.querySelectorAll('[data-pm-review-preview-item]').length === 73);
+
+          assert(pageErrors.length === 0, `Page errors: ${pageErrors.join(' | ')}`);
+          const relevantConsoleErrors = consoleErrors.filter(text => !/favicon|ERR_BLOCKED_BY_CLIENT/i.test(text));
+          assert(relevantConsoleErrors.length === 0, `Console errors: ${relevantConsoleErrors.join(' | ')}`);
+          await page.evaluate(async () => {
+            const api = window.PackMasterBatch;
+            for (const batch of await api.listBatches()) await api.deleteBatch(batch.id);
+            localStorage.removeItem('skuMappingRules');
+          });
+          await browser.close();
+          console.log('PackMaster live 73-order show-all full previews passed');
+          JS
+          node show-all-production-smoke.mjs
