@@ -1,0 +1,144 @@
+name: Validate Review Usability Corrections
+
+on:
+  push:
+    branches:
+      - frontend-usability-pilot-pass
+    paths:
+      - .github/workflows/validate-review-usability-corrections.yml
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: frontend-usability-pilot-pass
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Chromium
+        run: |
+          npm install --no-save --no-package-lock playwright
+          npx playwright install --with-deps chromium
+      - name: Start static server
+        run: |
+          python3 -m http.server 4173 >/tmp/packmaster-review-correction-http.log 2>&1 &
+          echo $! >/tmp/packmaster-review-correction-http.pid
+          for attempt in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:4173/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/packmaster-review-correction-http.log
+          exit 1
+      - name: Exercise corrected exception priority and persistent actions
+        run: |
+          cat > review-usability-corrections-smoke.mjs <<'JS'
+          import { chromium } from 'playwright';
+
+          const browser = await chromium.launch({ headless: true });
+          const context = await browser.newContext({ viewport: { width: 1536, height: 820 } });
+          const page = await context.newPage();
+          const pageErrors = [];
+          const consoleErrors = [];
+          page.on('pageerror', error => pageErrors.push(String(error)));
+          page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+          const assert = (condition, message) => { if (!condition) throw new Error(message); };
+
+          await page.goto('http://127.0.0.1:4173/', { waitUntil: 'networkidle' });
+          await page.locator('[data-pm-shell="v3"]').waitFor({ state: 'visible' });
+          await page.getByRole('button', { name: 'เริ่มงานแพ็กใหม่', exact: true }).click();
+          await page.locator('[data-pm-view="upload"]').waitFor({ state: 'visible' });
+
+          await page.evaluate(async () => {
+            const api = window.PackMasterBatch;
+            const batches = await api.listBatches();
+            const batch = batches[0];
+            localStorage.setItem('skuMappingRules', JSON.stringify([{ id:'known', keyword:'KNOWN REVIEW SKU', shortName:'เด้งม่วง5' }]));
+            const image = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1200"><rect width="100%" height="100%" fill="white"/><text x="50" y="100" font-size="44">REVIEW QA</text></svg>');
+            // Deliberately place Unmapped before Qty. Exception Mode must reorder Qty first.
+            const orders = [
+              { id:'unmapped-first', tracking:'UNMAPPED-0001', orderId:'UNMAPPEDORDER1', platform:'SHOPEE', parsedItems:[{text:'NEW REVIEW SKU',qty:1}], declaredTotalQty:1, parserWarning:false, pdfImage:image },
+              { id:'ready-middle', tracking:'READY-0001', orderId:'READYORDER1', platform:'SHOPEE', parsedItems:[{text:'KNOWN REVIEW SKU',qty:1}], declaredTotalQty:1, parserWarning:false, pdfImage:image },
+              { id:'qty-last', tracking:'QTY-0001', orderId:'QTYORDER1', platform:'TIKTOK', parsedItems:[{text:'KNOWN REVIEW SKU',qty:1}], declaredTotalQty:2, parserWarning:false, pdfImage:image }
+            ];
+            const meta = api.buildBatchMeta(batch, { total:3, ready:1, reviewSku:0, reviewQty:1, unmapped:1 }, { now:new Date('2026-08-09T00:16:00+07:00') });
+            await api.saveBatch(meta, orders);
+          });
+
+          await page.reload({ waitUntil: 'networkidle' });
+          await page.getByRole('button', { name: 'เปิดงาน', exact: true }).first().click();
+          await page.locator('[data-pm-view="upload"]').waitFor({ state: 'visible' });
+          await page.locator('[data-pm-action="resolve-active-exceptions"]').click();
+          await page.locator('[data-pm-view="review"]').waitFor({ state: 'visible' });
+          const cards = page.locator('[data-pm-review-preview-item]');
+          await page.waitForFunction(() => document.querySelectorAll('[data-pm-review-preview-item]').length === 2);
+          assert(await cards.count() === 2, 'Exception Mode should show two unresolved cards');
+          await cards.nth(0).getByText('QTY-0001', { exact: true }).waitFor();
+          await cards.nth(1).getByText('UNMAPPED-0001', { exact: true }).waitFor();
+
+          // Fixed action bar must remain viewport-bound after scrolling deep into Review.
+          const actionWrap = page.locator('.pm-review-action-wrap');
+          await actionWrap.waitFor({ state: 'visible' });
+          const position = await actionWrap.evaluate(el => getComputedStyle(el).position);
+          assert(position === 'fixed', `Review action wrapper must be fixed, got ${position}`);
+          const before = await actionWrap.boundingBox();
+          await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+          await page.waitForTimeout(150);
+          const after = await actionWrap.boundingBox();
+          assert(before && after, 'Review action bar must have a viewport bounding box');
+          assert(Math.abs(before.y - after.y) < 4, `Fixed Review action bar moved with document: ${before.y} -> ${after.y}`);
+
+          // Real exception type values must filter correctly.
+          const exceptionCard = page.getByText('รายการที่ต้องตรวจ', { exact: true }).locator('..').locator('..');
+          const exceptionSelect = page.locator('select').filter({ has: page.locator('option[value="REVIEW_QTY"]') }).first();
+          await exceptionSelect.selectOption('REVIEW_QTY');
+          await page.waitForTimeout(50);
+          await page.getByText('1 รายการที่ต้องตัดสินใจ', { exact: true }).waitFor();
+          await exceptionSelect.selectOption('REVIEW_SKU');
+          await page.waitForTimeout(50);
+          await page.getByText('0 รายการที่ต้องตัดสินใจ', { exact: true }).waitFor();
+          await exceptionSelect.selectOption('ALL');
+
+          // Quick Mapping must still work for real UNMAPPED type and must not guess short name.
+          const unmappedCard = cards.filter({ hasText:'UNMAPPED-0001' });
+          await unmappedCard.getByRole('button', { name:'ตั้งชื่อ SKU', exact:true }).click();
+          const quick = page.locator('[data-pm-quick-mapping]');
+          await quick.waitFor({ state:'visible' });
+          assert((await quick.locator('input').nth(0).inputValue()).includes('NEW REVIEW SKU'), 'Quick Mapping must receive safe Unmapped seed');
+          const shortInput = quick.getByPlaceholder('เช่น เด้งม่วง5');
+          assert(await shortInput.inputValue() === '', 'Quick Mapping must never prefill internal short name');
+          await shortInput.fill('เด้งเขียว7');
+          await quick.getByRole('button', { name:'บันทึกและใช้', exact:true }).click();
+          await page.waitForFunction(() => document.querySelectorAll('[data-pm-review-preview-item]').length === 1);
+          await cards.first().getByText('QTY-0001', { exact:true }).waitFor();
+
+          // Qty remains authoritative for print safety.
+          assert(await page.locator('[data-pm-action="print"]').isDisabled(), 'Print must stay locked while Qty exception remains');
+          assert(await page.locator('[data-pm-action="save-pdf"]').isDisabled(), 'Save PDF must stay locked while Qty exception remains');
+
+          assert(pageErrors.length === 0, `Page errors: ${pageErrors.join(' | ')}`);
+          const relevant = consoleErrors.filter(text => !/favicon|ERR_BLOCKED_BY_CLIENT/i.test(text));
+          assert(relevant.length === 0, `Console errors: ${relevant.join(' | ')}`);
+
+          await page.evaluate(async () => {
+            const api = window.PackMasterBatch;
+            for (const batch of await api.listBatches()) await api.deleteBatch(batch.id);
+            localStorage.removeItem('skuMappingRules');
+          });
+          await browser.close();
+          console.log('PackMaster corrected Review usability Chromium smoke passed');
+          JS
+          node review-usability-corrections-smoke.mjs
+      - name: Verify frozen core and full-Batch print scope
+        run: |
+          set -euo pipefail
+          grep -Fq 'for (let i = 0; i < MappedOrders.length; i++)' index.html
+          grep -Fq 'MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}' index.html
+          test "$(git hash-object packmaster-batch.js)" = "941bddd557803aa27e58bd23372b9f51d6ca1605"
+      - name: Stop server
+        if: always()
+        run: kill "$(cat /tmp/packmaster-review-correction-http.pid)" 2>/dev/null || true
