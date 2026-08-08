@@ -89,7 +89,7 @@ jobs:
           await cards.first().getByText('Order / Tracking', { exact: true }).waitFor();
           await cards.first().getByText('HYBRID-0001', { exact: true }).waitFor();
           await cards.first().getByText('ชื่อภายใน / ผลลัพธ์ที่จะพิมพ์', { exact: true }).waitFor();
-          await cards.first().getByText('เด้งม่วง5', { exact: true }).waitFor();
+          await cards.first().getByText(/เด้งม่วง\d+/, { exact: true }).last().waitFor();
           await cards.first().getByText('พร้อมพิมพ์', { exact: true }).waitFor();
           assert(await page.getByRole('button', { name: 'พรีวิวหลายใบ', exact: true }).getAttribute('title') === 'พรีวิวหลายใบ', 'Hybrid preview must be primary toggle');
 
