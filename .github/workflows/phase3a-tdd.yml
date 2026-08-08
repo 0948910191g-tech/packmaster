@@ -23,6 +23,10 @@ jobs:
       - name: Workspace backup restore tests
         run: node tests/packmaster-workspace.test.mjs
 
+      - name: Workspace strict validation tests
+        if: always()
+        run: node tests/packmaster-workspace-validation.test.mjs
+
       - name: Smart matcher regression tests
         if: always()
         run: node tests/packmaster-smart-matcher.test.mjs
