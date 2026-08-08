@@ -67,25 +67,12 @@ jobs:
             await page.getByRole('button', { name: /กลับรายการ Batch/ }).waitFor();
             const batchId = await page.evaluate(async () => (await window.PackMasterBatch.listBatches())[0].id);
 
-            await page.evaluate(async id => {
+            await page.evaluate(id => {
               window.PackMasterDuplicate.appendBatchFingerprints(id, [{
                 hash: 'SANITIZED-HASH-001',
                 size: 123,
                 addedAt: '2026-08-08T13:30:00.000Z',
                 name: 'must-not-persist.pdf'
-              }]);
-              const loaded = await window.PackMasterBatch.loadBatch(id);
-              await window.PackMasterBatch.saveBatch(loaded.meta, [{
-                id: 'sanitized-order-1',
-                tracking: 'SANITIZED-TRACK',
-                orderId: 'SANITIZED-ORDER',
-                platform: 'TIKTOK',
-                parsedItems: [],
-                displayItems: ['SANITIZED OUTPUT'],
-                originalQty: 1,
-                qtyWarning: false,
-                parserWarning: false,
-                pdfImage: ''
               }]);
             }, batchId);
 
@@ -103,7 +90,7 @@ jobs:
             assert.equal(Object.prototype.hasOwnProperty.call(state.meta, 'sourceFiles'), false, 'new sidecar write must not add sourceFiles to Batch metadata');
             assert.ok(state.raw.includes('SANITIZED-HASH-001'));
 
-            // Download a real Workspace Backup and prove the optional sidecar travels in settings.
+            // Leave active Batch through the normal path, then download a real Workspace Backup.
             await page.getByRole('button', { name: /กลับรายการ Batch/ }).click();
             await page.getByRole('button', { name: /คลังคำศัพท์/ }).click();
             await page.getByRole('heading', { name: 'คลังคำศัพท์' }).waitFor();
@@ -141,8 +128,25 @@ jobs:
             await page.getByText(/ไฟล์ Backup ใช้งานไม่ได้/).waitFor();
             assert.equal(await page.evaluate(id => window.PackMasterDuplicate.getBatchFingerprints(id)[0].hash, batchId), 'SANITIZED-HASH-001');
 
-            // Explicit clear-orders action must clear duplicate history without mutating Batch schema.
+            // Seed a sanitized Order only after Restore while the Batch is closed, so React cannot overwrite it.
             await page.getByRole('button', { name: /งานแพ็ก/ }).click();
+            await page.evaluate(async id => {
+              const loaded = await window.PackMasterBatch.loadBatch(id);
+              await window.PackMasterBatch.saveBatch(loaded.meta, [{
+                id: 'sanitized-order-clear',
+                tracking: 'SANITIZED-CLEAR-TRACK',
+                orderId: 'SANITIZED-CLEAR-ORDER',
+                platform: 'TIKTOK',
+                parsedItems: [],
+                displayItems: ['SANITIZED OUTPUT'],
+                originalQty: 1,
+                qtyWarning: false,
+                parserWarning: false,
+                pdfImage: ''
+              }]);
+            }, batchId);
+
+            // Explicit clear-orders action must clear duplicate history without mutating Batch schema.
             await page.getByRole('button', { name: 'เปิดงาน' }).first().click();
             await page.getByRole('button', { name: /รีวิว & พิมพ์/ }).click();
             await page.getByRole('heading', { name: 'รีวิวและพิมพ์' }).waitFor();
@@ -150,6 +154,8 @@ jobs:
             await page.getByRole('button', { name: /ล้างออเดอร์/ }).click();
             await page.waitForTimeout(700);
             assert.deepEqual(await page.evaluate(id => window.PackMasterDuplicate.getBatchFingerprints(id), batchId), []);
+            const finalMeta = await page.evaluate(async id => (await window.PackMasterBatch.loadBatch(id)).meta, batchId);
+            assert.equal(Object.prototype.hasOwnProperty.call(finalMeta, 'sourceFiles'), false);
 
             if (errors.length) throw new Error(`Unexpected browser errors:\n${errors.join('\n')}`);
             console.log('PackMaster duplicate sidecar browser smoke passed');
