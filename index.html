@@ -717,6 +717,8 @@
       const [activeBatchId, setActiveBatchId] = useState(null);
       const [batchStorageReady, setBatchStorageReady] = useState(false);
       const [batchLoading, setBatchLoading] = useState(true);
+      const [batchViewFilter, setBatchViewFilter] = useState('ACTIVE');
+      const [selectedArchivedBatchIds, setSelectedArchivedBatchIds] = useState([]);
 
       // Phase 3A — Workspace Backup / Restore Safety
       const [restorePreview, setRestorePreview] = useState(null);
@@ -728,6 +730,12 @@
       });
 
       const activeBatch = useMemo(() => batches.find(batch => batch.id === activeBatchId) || null, [batches, activeBatchId]);
+      const visibleBatches = useMemo(() => batches.filter(batch => {
+        if (batchViewFilter === 'ARCHIVED') return Boolean(batch.archivedAt);
+        if (batchViewFilter === 'ACTIVE') return !batch.archivedAt;
+        return true;
+      }), [batches, batchViewFilter]);
+      const archivedBatchCount = useMemo(() => batches.filter(batch => Boolean(batch.archivedAt)).length, [batches]);
 
       useEffect(() => { localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); }, [skuRules]);
       useEffect(() => { localStorage.setItem('thermalMode', JSON.stringify(thermalMode)); }, [thermalMode]);
@@ -1413,6 +1421,44 @@
         setActiveTab('upload');
       };
 
+      const handleArchiveBatch = async (batch) => {
+        if (!batch || !batch.id || !batchApi || !batchStorageReady) { showToast('Browser storage ยังไม่พร้อม', 'error'); return; }
+        const unresolved = (batch.reviewSkuCount || 0) + (batch.reviewQtyCount || 0) + (batch.unmappedCount || 0);
+        if (unresolved > 0 && !window.confirm(`Batch นี้ยังมี ${unresolved} รายการที่ต้องตรวจ\n\nต้องการเก็บเข้าคลังต่อหรือไม่?`)) return;
+        try {
+          const updated = await batchApi.archiveBatch(batch.id, new Date());
+          upsertBatchMeta(updated);
+          setSelectedArchivedBatchIds(prev => prev.filter(id => id !== batch.id));
+          showToast('เก็บ Batch เข้าคลังแล้ว', 'success');
+        } catch (err) { console.error('Archive batch failed', err); showToast('เก็บ Batch เข้าคลังไม่สำเร็จ — ข้อมูลเดิมยังอยู่', 'error'); }
+      };
+
+      const handleRestoreArchivedBatch = async (batch) => {
+        if (!batch || !batch.id || !batchApi || !batchStorageReady) { showToast('Browser storage ยังไม่พร้อม', 'error'); return; }
+        try {
+          const updated = await batchApi.restoreArchivedBatch(batch.id, new Date());
+          upsertBatchMeta(updated);
+          setSelectedArchivedBatchIds(prev => prev.filter(id => id !== batch.id));
+          showToast('นำ Batch กลับจากคลังแล้ว', 'success');
+        } catch (err) { console.error('Restore archived batch failed', err); showToast('นำ Batch กลับไม่สำเร็จ — ข้อมูลเดิมยังอยู่', 'error'); }
+      };
+
+      const toggleArchivedSelection = (batchId) => {
+        setSelectedArchivedBatchIds(prev => prev.includes(batchId) ? prev.filter(id => id !== batchId) : [...prev, batchId]);
+      };
+
+      const handleDeleteSelectedArchived = async () => {
+        if (!batchApi || !batchStorageReady || selectedArchivedBatchIds.length === 0) return;
+        if (!window.confirm(`ลบ Batch ที่เก็บเข้าคลังแล้ว ${selectedArchivedBatchIds.length} รายการถาวรจาก Browser นี้หรือไม่?\n\nการลบนี้ย้อนกลับไม่ได้ เว้นแต่มี Workspace Backup`)) return;
+        try {
+          const result = await batchApi.deleteArchivedBatches(selectedArchivedBatchIds);
+          const removed = new Set(selectedArchivedBatchIds);
+          setBatches(prev => prev.filter(batch => !removed.has(batch.id) || !batch.archivedAt));
+          setSelectedArchivedBatchIds([]);
+          showToast(`ลบ Archived Batch แล้ว ${result.deleted} รายการ`, 'success');
+        } catch (err) { console.error('Delete archived batches failed', err); showToast('ลบ Archived Batch ไม่สำเร็จ — ข้อมูลที่ลบไม่สำเร็จยังอยู่', 'error'); }
+      };
+
       const handleDeleteBatch = async (batch) => {
         if (!batch || !batch.id || !batchApi) return;
         if (!batchStorageReady) {
@@ -1864,6 +1910,17 @@
                         </button>
                       </div>
 
+                      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div className="inline-flex bg-white border-2 border-blue-50 rounded-2xl p-1.5 shadow-sm">
+                          {[['ACTIVE','Active'],['ARCHIVED','Archived'],['ALL','All']].map(([id,label]) => (
+                            <button key={id} onClick={() => { setBatchViewFilter(id); setSelectedArchivedBatchIds([]); }} className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${batchViewFilter === id ? 'bg-blue-950 text-white' : 'text-blue-950/50 hover:bg-blue-50'}`}>{label}{id === 'ARCHIVED' ? ` (${archivedBatchCount})` : ''}</button>
+                          ))}
+                        </div>
+                        {batchViewFilter === 'ARCHIVED' && selectedArchivedBatchIds.length > 0 && (
+                          <button onClick={handleDeleteSelectedArchived} className="px-4 py-2.5 rounded-xl bg-red-50 border border-red-100 text-red-600 text-xs font-black">ลบที่เลือก ({selectedArchivedBatchIds.length})</button>
+                        )}
+                      </div>
+
                       {!batchStorageReady && !batchLoading && (
                         <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-800 text-sm font-bold flex items-start gap-3">
                           <span>⚠️</span>
@@ -1883,9 +1940,11 @@
                           <p className="text-blue-950/45 font-semibold text-sm mb-7">สร้างงานแพ็กรอบแรก แล้วอัปโหลด Shopee / TikTok ได้เลย</p>
                           <button onClick={handleCreateBatch} className="bg-blue-950 text-white px-7 py-3.5 rounded-2xl font-black text-sm">＋ สร้าง Batch แรก</button>
                         </div>
+                      ) : visibleBatches.length === 0 ? (
+                        <div className="bg-white border-2 border-dashed border-blue-100 rounded-[2rem] p-12 text-center text-blue-950/40 font-bold">ไม่มี Batch ในมุมมองนี้</div>
                       ) : (
                         <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                          {batches.map((batch) => {
+                          {visibleBatches.map((batch) => {
                             const statusUi = getBatchStatusUi(batch.status);
                             return (
                               <div key={batch.id} className="bg-white border-2 border-blue-50 rounded-[2rem] p-7 shadow-lg shadow-blue-900/[0.03] hover:border-blue-100 transition-all">
@@ -1897,7 +1956,11 @@
                                     </div>
                                     <p className="text-xs font-bold text-blue-950/35">อัปเดต {formatBatchUpdated(batch.updatedAt)}</p>
                                   </div>
-                                  <button onClick={() => handleDeleteBatch(batch)} className="shrink-0 w-10 h-10 rounded-xl border border-slate-100 text-slate-400 hover:text-red-500 hover:bg-red-50 hover:border-red-100 transition-all" title="ลบ Batch">🗑️</button>
+                                  {batch.archivedAt ? (
+                                    <label className="shrink-0 flex items-center gap-2 text-[10px] font-black text-slate-500 cursor-pointer"><input type="checkbox" checked={selectedArchivedBatchIds.includes(batch.id)} onChange={() => toggleArchivedSelection(batch.id)} className="w-4 h-4" /> เลือก</label>
+                                  ) : (
+                                    <button onClick={() => handleArchiveBatch(batch)} className="shrink-0 px-3 py-2 rounded-xl border border-slate-100 text-slate-500 hover:text-blue-700 hover:bg-blue-50 hover:border-blue-100 transition-all text-xs font-black" title="เก็บเข้าคลัง">เก็บเข้าคลัง</button>
+                                  )}
                                 </div>
 
                                 <div className="grid grid-cols-4 gap-3 mb-6">
@@ -1907,9 +1970,10 @@
                                   <div className="bg-slate-50 rounded-2xl p-3"><div className="text-[9px] uppercase tracking-wider font-black text-slate-400 mb-1">Unmapped</div><div className="text-2xl font-black text-slate-600">{batch.unmappedCount || 0}</div></div>
                                 </div>
 
-                                <button onClick={() => handleOpenBatch(batch)} className="w-full bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-100 px-5 py-3.5 rounded-2xl font-black text-sm transition-all flex items-center justify-center gap-2">
-                                  เปิดงาน <span>→</span>
-                                </button>
+                                <div className="flex gap-2">
+                                  <button onClick={() => handleOpenBatch(batch)} className="flex-1 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-100 px-5 py-3.5 rounded-2xl font-black text-sm transition-all flex items-center justify-center gap-2">เปิดงาน <span>→</span></button>
+                                  {batch.archivedAt && <button onClick={() => handleRestoreArchivedBatch(batch)} className="px-5 py-3.5 rounded-2xl border border-green-100 bg-green-50 text-green-700 font-black text-sm">นำกลับ</button>}
+                                </div>
                               </div>
                             );
                           })}
