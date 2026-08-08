@@ -40,7 +40,7 @@ jobs:
 
       - name: Exercise Frontend V3 workflow
         run: |
-          cat > /tmp/frontend-v3-smoke.mjs <<'JS'
+          cat > .frontend-v3-smoke.mjs <<'JS'
           import { chromium } from 'playwright';
 
           const browser = await chromium.launch({ headless: true });
@@ -129,7 +129,8 @@ jobs:
           await browser.close();
           console.log('PackMaster Frontend V3 Chromium smoke passed');
           JS
-          node /tmp/frontend-v3-smoke.mjs
+          node .frontend-v3-smoke.mjs
+          rm -f .frontend-v3-smoke.mjs
 
       - name: Stop local server
         if: always()
