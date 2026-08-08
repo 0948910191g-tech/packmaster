@@ -39,6 +39,9 @@ jobs:
       - name: Duplicate detection regression tests
         run: node tests/packmaster-duplicate.test.mjs
 
+      - name: Duplicate sidecar guard
+        run: node tests/packmaster-duplicate-sidecar.test.mjs
+
       - name: Duplicate upload UI guard
         run: node tests/packmaster-phase3b-ui.test.mjs
 

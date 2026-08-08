@@ -800,7 +800,8 @@
             }
             try {
               const fileHash = await duplicateApi.hashFile(file);
-              const duplicate = duplicateApi.findExactFileDuplicate(fileHash, activeBatch?.sourceFiles || []);
+              const knownFingerprints = duplicateApi.getKnownFingerprints(activeBatchId, orders.length > 0 ? (activeBatch?.sourceFiles || []) : []);
+              const duplicate = duplicateApi.findExactFileDuplicate(fileHash, knownFingerprints);
               fingerprinted.push({ file, hash: fileHash, duplicate });
             } catch (hashError) {
               console.warn('Duplicate fingerprint unavailable for file', file.name, hashError);
@@ -1132,21 +1133,12 @@
 
             resetActiveBatchCompletion();
 
-            if (activeBatch && acceptedSourceFiles.length > 0) {
-              const nextMeta = {
-                ...activeBatch,
-                sourceFiles: [...(Array.isArray(activeBatch.sourceFiles) ? activeBatch.sourceFiles : []), ...acceptedSourceFiles],
-                printedAt: null,
-                updatedAt: new Date().toISOString()
-              };
-              upsertBatchMeta(nextMeta);
-              if (batchStorageReady && batchApi) {
-                try {
-                  await batchApi.saveBatch(nextMeta, [...orders, ...allNewOrders]);
-                } catch (sourceSaveError) {
-                  console.error('Save source fingerprint failed', sourceSaveError);
-                  showToast('นำเข้าได้ แต่บันทึกประวัติไฟล์ซ้ำไม่สำเร็จ — กรุณา Backup ก่อนสลับ Batch', 'error');
-                }
+            if (duplicateApi && acceptedSourceFiles.length > 0) {
+              try {
+                duplicateApi.appendBatchFingerprints(activeBatchId, acceptedSourceFiles);
+              } catch (fingerprintSaveError) {
+                console.error('Save duplicate fingerprint sidecar failed', fingerprintSaveError);
+                showToast('นำเข้าได้ แต่บันทึกประวัติไฟล์ซ้ำใน LocalStorage ไม่สำเร็จ — กรุณา Backup ก่อนสลับ Batch', 'error');
               }
             }
 
@@ -1469,6 +1461,10 @@
 
         try {
           await batchApi.deleteBatch(batch.id);
+          if (duplicateApi) {
+            try { duplicateApi.clearBatchFingerprints(batch.id); }
+            catch (fingerprintError) { console.warn('Clear duplicate fingerprint sidecar failed', fingerprintError); }
+          }
           setBatches(prev => prev.filter(item => item.id !== batch.id));
           showToast('ลบ Batch เรียบร้อย', 'success');
         } catch (err) {
@@ -1519,6 +1515,10 @@
               return;
             }
           }
+        }
+        if (duplicateApi && activeBatchId) {
+          try { duplicateApi.clearBatchFingerprints(activeBatchId); }
+          catch (fingerprintError) { console.warn('Clear duplicate fingerprint sidecar failed', fingerprintError); }
         }
         showToast('ล้าง Orders ใน Batch เรียบร้อย', 'success');
       };
@@ -1581,7 +1581,10 @@
           const payload = await workspaceApi.collectBackupPayload({
             batchApi,
             skuRules,
-            settings: { thermalMode },
+            settings: {
+              thermalMode,
+              duplicateFingerprints: duplicateApi ? duplicateApi.exportFingerprintStore() : {}
+            },
             appVersion: document.title
           });
           const backup = workspaceApi.createBackup(payload, new Date());
@@ -1615,6 +1618,7 @@
           const raw = await file.text();
           const parsed = JSON.parse(raw);
           const backup = workspaceApi.validateBackup(parsed);
+          if (duplicateApi) duplicateApi.validateFingerprintStore(backup.settings.duplicateFingerprints || {});
           const summary = workspaceApi.getBackupSummary(backup);
           setRestorePreview({ backup, summary });
           setRestoreFileName(file.name);
@@ -1645,6 +1649,7 @@
         setWorkspaceBusy(true);
         const previousSkuRules = JSON.parse(JSON.stringify(skuRules));
         const previousThermalMode = thermalMode;
+        const previousDuplicateFingerprints = duplicateApi ? duplicateApi.exportFingerprintStore() : {};
         let safetyBackup = null;
         let rollbackSucceeded = false;
 
@@ -1660,12 +1665,16 @@
           const safetyPayload = await workspaceApi.collectBackupPayload({
             batchApi,
             skuRules: previousSkuRules,
-            settings: { thermalMode: previousThermalMode },
+            settings: {
+              thermalMode: previousThermalMode,
+              duplicateFingerprints: previousDuplicateFingerprints
+            },
             appVersion: document.title
           });
           safetyBackup = workspaceApi.createBackup(safetyPayload, new Date());
 
           await workspaceApi.replaceWorkspaceBatches(backup, batchApi);
+          if (duplicateApi) duplicateApi.replaceFingerprintStore(backup.settings.duplicateFingerprints || {});
 
           setSkuRules(restoredRules);
           if (typeof backup.settings.thermalMode === 'boolean') {
@@ -1689,6 +1698,7 @@
           if (safetyBackup) {
             try {
               await workspaceApi.replaceWorkspaceBatches(safetyBackup, batchApi);
+              if (duplicateApi) duplicateApi.replaceFingerprintStore(previousDuplicateFingerprints);
               const previousBatches = await batchApi.listBatches();
               setBatches(previousBatches);
               setSkuRules(previousSkuRules);
