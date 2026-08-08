@@ -48,6 +48,12 @@ jobs:
       - name: Exception Inbox UI guard
         run: node tests/packmaster-phase3c-ui.test.mjs
 
+      - name: Batch archive lifecycle tests
+        run: node tests/packmaster-archive.test.mjs
+
+      - name: Batch archive UI guard
+        run: node tests/packmaster-phase3d-ui.test.mjs
+
       - name: Existing guardrail tests when present
         run: |
           if [ -f tests/packmaster-guardrails.test.mjs ]; then
