@@ -11,7 +11,7 @@ helper = r'''    const parseShopeePositionedItems = (rawItems, declaredTotalQty 
         index: Number.isFinite(item && item.index) ? item.index : index
       })).filter(item => item.text);
 
-      const hashHeaders = entries.filter(item => normalizeMatchText(item.text) === '#');
+      const hashHeaders = entries.filter(item => item.text.trim() === '#');
       let header = null;
 
       for (const hashHeader of hashHeaders) {
@@ -33,7 +33,7 @@ helper = r'''    const parseShopeePositionedItems = (rawItems, declaredTotalQty 
         break;
       }
 
-      const hasTableSignal = entries.some(item => normalizeMatchText(item.text) === '#') &&
+      const hasTableSignal = entries.some(item => item.text.trim() === '#') &&
         normalizeMatchText(entries.map(item => item.text).join(' ')).includes('ชอสนคา');
 
       if (!header) {
@@ -120,6 +120,16 @@ if '    const parseShopeePositionedItems = ' not in text:
     if marker not in text:
         raise SystemExit('hasQtyWarning marker not found')
     text = text.replace(marker, helper + marker, 1)
+
+# Patch the already-inserted helper too: normalizeMatchText intentionally removes '#'.
+text = text.replace(
+    "const hashHeaders = entries.filter(item => normalizeMatchText(item.text) === '#');",
+    "const hashHeaders = entries.filter(item => item.text.trim() === '#');"
+)
+text = text.replace(
+    "const hasTableSignal = entries.some(item => normalizeMatchText(item.text) === '#') &&",
+    "const hasTableSignal = entries.some(item => item.text.trim() === '#') &&"
+)
 
 if 'const shopeePositionedResult = parseShopeePositionedItems' not in text:
     start_marker = "              if (platform === 'SHOPEE') {\n"
