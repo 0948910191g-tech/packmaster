@@ -23,7 +23,7 @@ test('print and Save PDF remain full-batch operations after safety gate', () => 
 
 test('SKU/unmapped exception uses only safely resolved identity for inline Quick Mapping', () => {
   mustInclude('const handleFixSkuException = (row) => {');
-  mustInclude("types.some(type => type === 'SKU' || type === 'UNMAPPED')");
+  mustInclude("types.some(type => type === 'REVIEW_SKU' || type === 'UNMAPPED')");
   mustInclude('const seed = pilotSafetyApi.getSkuFixSeed(row, getMatchResult);');
   mustInclude("setQuickMapState({ open: true, row, keyword: seed, shortName: '' });");
   mustInclude('data-pm-quick-mapping');
