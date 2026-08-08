@@ -133,9 +133,11 @@
         .replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/g, '')
         .replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, ' ')
         .replace(/\s+/g, ' ')
-        .trim();
+        .trim()
+        .replace(/\bbb\b/g, 'baby');
 
     const COMMON_MATCH_TERMS = new Set(['hoya', 'haku', 'baby', 'wipes', 'wipe', 'ทชชเปยก', 'ผาเปยก']);
+    const RULE_UNIT_TOKENS = new Set(['หอ', 'แพค', 'pack', 'packs', 'ลัง', 'case', 'x', 'ชน', 'ชิ้น', 'แผน']);
     const VARIANT_CONCEPTS = {
       VALUE_PACK: ['value pack', 'valuepack', 'แวลู', 'แวล'],
       PLUS: ['plus', 'พลส', 'พลัส'],
@@ -148,7 +150,7 @@
       NONO: ['nono'],
       ALCOHOL: ['alcohol', 'alc', 'แอลกอฮอล']
     };
-    const HARD_VARIANT_CONCEPTS = new Set(['VALUE_PACK', 'PLUS', 'EXTRA']);
+    const HARD_VARIANT_CONCEPTS = new Set(['VALUE_PACK', 'PLUS', 'EXTRA', 'MENTHOL', 'LAVENDER', 'JASMINE', 'MIX']);
 
     const getVariantConcepts = (value) => {
       const text = normalizeMatchText(value);
@@ -171,6 +173,33 @@
       return tokens;
     };
 
+    const tokenMatchesSearch = (token, searchArea) => {
+      if (!token) return false;
+      if (/^\d{1,4}$/.test(token)) {
+        const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`(^|\\D)${escaped}(?!\\d)`).test(searchArea);
+      }
+      if (/^[a-z0-9]+$/.test(token)) {
+        const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`(^|[^a-z0-9])${escaped}(?![a-z0-9])`).test(searchArea);
+      }
+      return searchArea.includes(token);
+    };
+
+    const extractRulePackNumbers = (value) => {
+      const clean = normalizeMatchText(value);
+      const explicit = extractPackTokens(clean);
+      if (explicit.size > 0) {
+        return new Set([...explicit].map(token => parseInt(token.split(':')[0], 10)).filter(Number.isFinite));
+      }
+      const trailing = clean.match(/(?:^|\D)(\d{1,3})\s*$/);
+      return trailing ? new Set([parseInt(trailing[1], 10)]) : new Set();
+    };
+
+    const extractTextPackNumbers = (value) => new Set(
+      [...extractPackTokens(value)].map(token => parseInt(token.split(':')[0], 10)).filter(Number.isFinite)
+    );
+
     const scoreSkuRule = (rule, textToSearch, allRules = []) => {
       const searchArea = normalizeMatchText(textToSearch);
       const cleanKw = normalizeMatchText(rule && rule.keyword);
@@ -180,11 +209,13 @@
       let hardConflict = false;
       const reasons = [];
       const ruleTokens = cleanKw.split(' ').filter(Boolean);
-      const matchedTokens = ruleTokens.filter(token => searchArea.includes(token));
+      const matchedTokens = ruleTokens.filter(token => tokenMatchesSearch(token, searchArea));
       const coverage = ruleTokens.length ? matchedTokens.length / ruleTokens.length : 0;
+      const textConcepts = getVariantConcepts(searchArea);
+      const ruleConcepts = getVariantConcepts(cleanKw);
 
       if (searchArea.includes(cleanKw)) {
-        score += 120;
+        score += 140;
         reasons.push('exact');
       }
       if (coverage === 1) {
@@ -195,36 +226,49 @@
         reasons.push('partial-terms');
       }
 
+      const specificTokens = ruleTokens.filter(token =>
+        !/^\d{1,4}$/.test(token) && !COMMON_MATCH_TERMS.has(token) && !RULE_UNIT_TOKENS.has(token)
+      );
+      const matchedSpecific = specificTokens.filter(token => tokenMatchesSearch(token, searchArea));
+      const hasConceptIdentity = [...ruleConcepts].some(concept => textConcepts.has(concept));
+      if (specificTokens.length > 0 && matchedSpecific.length === 0 && !hasConceptIdentity) {
+        score -= 220;
+        hardConflict = true;
+        reasons.push('identity-miss');
+      }
+
       matchedTokens.forEach(token => {
         if (COMMON_MATCH_TERMS.has(token)) {
           score += 4;
           return;
         }
+        if (/^\d{1,4}$/.test(token)) {
+          score += 8;
+          return;
+        }
         const frequency = (Array.isArray(allRules) ? allRules : []).filter(candidate =>
-          normalizeMatchText(candidate && candidate.keyword).includes(token)
+          tokenMatchesSearch(token, normalizeMatchText(candidate && candidate.keyword))
         ).length;
         score += frequency <= 1 ? 18 : 9;
       });
 
-      const textPacks = extractPackTokens(searchArea);
-      const rulePacks = extractPackTokens(cleanKw);
-      if (rulePacks.size > 0 && textPacks.size > 0) {
-        const packMatch = [...rulePacks].some(token => textPacks.has(token));
+      const textPackNumbers = extractTextPackNumbers(searchArea);
+      const rulePackNumbers = extractRulePackNumbers(cleanKw);
+      if (rulePackNumbers.size > 0 && textPackNumbers.size > 0) {
+        const packMatch = [...rulePackNumbers].some(number => textPackNumbers.has(number));
         if (packMatch) {
-          score += 40;
+          score += 50;
           reasons.push('pack');
         } else {
-          score -= 180;
+          score -= 200;
           hardConflict = true;
           reasons.push('pack-conflict');
         }
       }
 
-      const textConcepts = getVariantConcepts(searchArea);
-      const ruleConcepts = getVariantConcepts(cleanKw);
       ruleConcepts.forEach(concept => {
         if (textConcepts.has(concept)) {
-          score += 30;
+          score += 40;
           reasons.push(`concept:${concept}`);
         } else {
           score -= HARD_VARIANT_CONCEPTS.has(concept) ? 160 : 35;
@@ -235,15 +279,25 @@
 
       HARD_VARIANT_CONCEPTS.forEach(concept => {
         if (textConcepts.has(concept) && !ruleConcepts.has(concept)) {
-          score -= 180;
+          score -= 200;
           hardConflict = true;
           reasons.push(`unexpected:${concept}`);
         }
       });
 
+      const coolingFamilyConcepts = new Set(['MENTHOL', 'LAVENDER', 'JASMINE', 'EXTRA', 'MIX']);
+      if (textConcepts.has('COOLING') && !ruleConcepts.has('COOLING') &&
+          ![...ruleConcepts].some(concept => coolingFamilyConcepts.has(concept)) &&
+          ruleTokens.includes('haku')) {
+        score -= 180;
+        hardConflict = true;
+        reasons.push('cooling-generic-conflict');
+      }
+
       const numericRuleTokens = ruleTokens.filter(token => /^\d{1,4}$/.test(token));
-      if (numericRuleTokens.some(token => searchArea.includes(token)) && [...ruleConcepts].every(concept => textConcepts.has(concept))) {
-        score += 25;
+      if (numericRuleTokens.some(token => tokenMatchesSearch(token, searchArea)) &&
+          [...ruleConcepts].every(concept => textConcepts.has(concept))) {
+        score += 20;
         reasons.push('concept-number');
       }
 
@@ -251,8 +305,27 @@
     };
 
     const matchSkuRule = (textToSearch, rules) => {
-      const candidates = (Array.isArray(rules) ? rules : [])
-        .map(rule => scoreSkuRule(rule, textToSearch, rules))
+      const searchArea = normalizeMatchText(textToSearch);
+      const normalizedRules = (Array.isArray(rules) ? rules : [])
+        .map(rule => ({ rule, cleanKw: normalizeMatchText(rule && rule.keyword) }))
+        .filter(entry => entry.cleanKw);
+
+      const exactMatches = normalizedRules
+        .filter(entry => searchArea.includes(entry.cleanKw))
+        .sort((a, b) => b.cleanKw.length - a.cleanKw.length);
+
+      if (exactMatches.length > 0) {
+        const longestLength = exactMatches[0].cleanKw.length;
+        const longest = exactMatches.filter(entry => entry.cleanKw.length === longestLength);
+        const outputs = new Set(longest.map(entry => String(entry.rule && entry.rule.shortName || '').trim()));
+        if (outputs.size > 1) {
+          return { status: 'ambiguous', rule: null, score: 1000, runnerUpScore: 1000, reason: 'exact-conflict' };
+        }
+        return { status: 'matched', rule: longest[0].rule, score: 1000, runnerUpScore: 0, reason: 'exact-longest' };
+      }
+
+      const candidates = normalizedRules
+        .map(entry => scoreSkuRule(entry.rule, textToSearch, rules))
         .filter(candidate => Number.isFinite(candidate.score))
         .sort((a, b) => b.score - a.score);
 
@@ -268,7 +341,9 @@
         return { status: 'unmatched', rule: null, score: best.score, runnerUpScore, reason: best.reason };
       }
 
-      if (runnerUp && !runnerUp.hardConflict && best.score - runnerUp.score < 20) {
+      if (runnerUp && !runnerUp.hardConflict &&
+          String(runnerUp.rule && runnerUp.rule.shortName || '').trim() !== String(best.rule && best.rule.shortName || '').trim() &&
+          best.score - runnerUp.score < 20) {
         return { status: 'ambiguous', rule: null, score: best.score, runnerUpScore, reason: 'score-gap' };
       }
 
