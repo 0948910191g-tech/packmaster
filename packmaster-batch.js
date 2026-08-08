@@ -31,7 +31,13 @@
 
   const createBatchMeta = (existingBatches = [], now = new Date()) => {
     const date = now instanceof Date ? now : new Date(now);
-    const sequence = (Array.isArray(existingBatches) ? existingBatches.length : 0) + 1;
+    const existing = Array.isArray(existingBatches) ? existingBatches : [];
+    const highestNamedSequence = existing.reduce((highest, batch) => {
+      const match = String(batch && batch.name || '').match(/Batch\s*#(\d+)/i);
+      if (!match) return highest;
+      return Math.max(highest, parseInt(match[1], 10) || 0);
+    }, 0);
+    const sequence = Math.max(existing.length, highestNamedSequence) + 1;
     const createdAt = date.toISOString();
     const randomPart = Math.random().toString(36).slice(2, 8);
 
