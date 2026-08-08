@@ -15,6 +15,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="./packmaster-batch.js"></script>
   <script src="./packmaster-workspace.js"></script>
+  <script src="./packmaster-duplicate.js"></script>
 
   <script>
     tailwind.config = { theme: { extend: { fontFamily: { sans: ['"Noto Sans Thai"', 'sans-serif'] } } } }
@@ -669,6 +670,7 @@
     function App() {
       const batchApi = window.PackMasterBatch;
       const workspaceApi = window.PackMasterWorkspace;
+      const duplicateApi = window.PackMasterDuplicate;
       const [activeTab, setActiveTab] = useState('upload');
       const [orders, setOrders] = useState([]);
       const [skuRules, setSkuRules] = useState(() => {
@@ -765,13 +767,61 @@
       }, [skuRules]);
 
       const handleFileUpload = async (e) => {
-        const files = Array.from(e.target.files);
+        let files = Array.from(e.target.files);
         if (files.length === 0) return;
 
         if (!activeBatchId) {
           showToast('กรุณาสร้างหรือเปิด Batch ก่อนอัปโหลดไฟล์', 'error');
           e.target.value = null;
           return;
+        }
+
+        // Phase 3B — Duplicate Upload Safety Layer. Parser/Matcher/Qty logic below remains unchanged.
+        let acceptedSourceFiles = [];
+        if (duplicateApi) {
+          const fingerprinted = [];
+          for (const file of files) {
+            if (!file.name.toLowerCase().endsWith('.pdf')) {
+              fingerprinted.push({ file, hash: null, duplicate: null });
+              continue;
+            }
+            try {
+              const fileHash = await duplicateApi.hashFile(file);
+              const duplicate = duplicateApi.findExactFileDuplicate(fileHash, activeBatch?.sourceFiles || []);
+              fingerprinted.push({ file, hash: fileHash, duplicate });
+            } catch (hashError) {
+              console.warn('Duplicate fingerprint unavailable for file', file.name, hashError);
+              fingerprinted.push({ file, hash: null, duplicate: null });
+            }
+          }
+
+          const exactDuplicates = fingerprinted.filter(entry => entry.duplicate);
+          if (exactDuplicates.length > 0) {
+            const names = exactDuplicates.map(entry => entry.file.name).join(', ');
+            const importAgain = window.confirm(`พบไฟล์ PDF ที่เคยนำเข้า Batch นี้แล้ว: \n\n${names}\n\nกด OK หากต้องการนำเข้าซ้ำจริง ๆ หรือ Cancel เพื่อข้ามไฟล์ที่ซ้ำ`);
+            if (!importAgain) {
+              const duplicateFiles = new Set(exactDuplicates.map(entry => entry.file));
+              files = files.filter(file => !duplicateFiles.has(file));
+            }
+          }
+
+          const acceptedSet = new Set(files);
+          acceptedSourceFiles = fingerprinted
+            .filter(entry => acceptedSet.has(entry.file) && entry.hash)
+            .map(entry => ({
+              name: entry.file.name,
+              size: Number(entry.file.size) || 0,
+              hash: entry.hash,
+              addedAt: new Date().toISOString()
+            }));
+
+          if (files.length === 0) {
+            showToast('ข้ามไฟล์ที่ซ้ำทั้งหมดแล้ว — ไม่มีข้อมูลใหม่ถูกเพิ่ม', 'success');
+            e.target.value = null;
+            return;
+          }
+        } else {
+          showToast('Duplicate checker ไม่พร้อม — อัปโหลดต่อได้ แต่รอบนี้จะไม่มีการตรวจไฟล์ซ้ำ', 'error');
         }
 
         if (orders.length >= 150) {
@@ -1055,7 +1105,38 @@
           }
           
           if (allNewOrders.length > 0) {
+            const duplicateSignals = duplicateApi
+              ? duplicateApi.findOrderDuplicateSignals(allNewOrders, orders)
+              : [];
+
+            if (duplicateSignals.length > 0) {
+              const importPossibleDuplicates = window.confirm(`พบ Order ที่อาจซ้ำกับข้อมูลใน Batch นี้ ${duplicateSignals.length} รายการ\n\nระบบจะไม่ลบหรือรวม Qty ให้อัตโนมัติ\nกด OK หากตรวจแล้วต้องการนำเข้าต่อ หรือ Cancel เพื่อหยุดรอบนี้`);
+              if (!importPossibleDuplicates) {
+                showToast('ยกเลิกการเพิ่ม Order ที่อาจซ้ำ — ข้อมูลเดิมยังอยู่ครบ', 'error');
+                return;
+              }
+            }
+
             resetActiveBatchCompletion();
+
+            if (activeBatch && acceptedSourceFiles.length > 0) {
+              const nextMeta = {
+                ...activeBatch,
+                sourceFiles: [...(Array.isArray(activeBatch.sourceFiles) ? activeBatch.sourceFiles : []), ...acceptedSourceFiles],
+                printedAt: null,
+                updatedAt: new Date().toISOString()
+              };
+              upsertBatchMeta(nextMeta);
+              if (batchStorageReady && batchApi) {
+                try {
+                  await batchApi.saveBatch(nextMeta, [...orders, ...allNewOrders]);
+                } catch (sourceSaveError) {
+                  console.error('Save source fingerprint failed', sourceSaveError);
+                  showToast('นำเข้าได้ แต่บันทึกประวัติไฟล์ซ้ำไม่สำเร็จ — กรุณา Backup ก่อนสลับ Batch', 'error');
+                }
+              }
+            }
+
             setOrders(prev => [...prev, ...allNewOrders]); 
             setActiveTab('preview');
             showToast(`เพิ่มข้อมูลสำเร็จ ${allNewOrders.length} ใบ`, 'success');
