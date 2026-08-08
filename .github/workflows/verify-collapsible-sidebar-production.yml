@@ -1,0 +1,165 @@
+name: Verify Collapsible Sidebar Production
+
+on:
+  push:
+    branches:
+      - verify-collapsible-sidebar-production
+    paths:
+      - .github/workflows/verify-collapsible-sidebar-production.yml
+
+permissions:
+  contents: read
+
+jobs:
+  production-browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: verify-collapsible-sidebar-production
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Wait for live sidebar build
+        run: |
+          set -euo pipefail
+          URL='https://0948910191g-tech.github.io/packmaster/'
+          for attempt in $(seq 1 24); do
+            html="$(curl -fsSL --max-time 20 "${URL}?sidebar=${GITHUB_SHA}-${attempt}" || true)"
+            if grep -Fq 'data-pm-sidebar-toggle' <<< "$html" \
+              && grep -Fq 'data-pm-mobile-menu' <<< "$html" \
+              && grep -Fq 'packmasterSidebarCollapsedV1' <<< "$html" \
+              && grep -Fq 'pm-sidebar-mobile-open' <<< "$html"; then
+              echo 'Live collapsible sidebar assets are ready'
+              exit 0
+            fi
+            sleep 10
+          done
+          echo 'Live collapsible sidebar build did not appear in time' >&2
+          exit 1
+
+      - name: Verify live frozen Batch adapter
+        run: |
+          set -euo pipefail
+          curl -fsSL --max-time 20 'https://0948910191g-tech.github.io/packmaster/packmaster-batch.js?verify=e73f7065' -o /tmp/live-packmaster-batch.js
+          test "$(git hash-object /tmp/live-packmaster-batch.js)" = '941bddd557803aa27e58bd23372b9f51d6ca1605'
+
+      - name: Install Chromium
+        run: |
+          npm install --no-save --no-package-lock playwright
+          npx playwright install --with-deps chromium
+
+      - name: Exercise live desktop and mobile sidebar
+        run: |
+          cat > verify-sidebar-production.mjs <<'JS'
+          import { chromium } from 'playwright';
+
+          const browser = await chromium.launch({ headless: true });
+          const context = await browser.newContext({ viewport: { width: 1536, height: 820 } });
+          const page = await context.newPage();
+          const pageErrors = [];
+          const consoleErrors = [];
+          page.on('pageerror', error => pageErrors.push(String(error)));
+          page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+          const assert = (condition, message) => { if (!condition) throw new Error(message); };
+          const near = (value, target, tolerance = 5) => Math.abs(value - target) <= tolerance;
+          const url = 'https://0948910191g-tech.github.io/packmaster/?verify-sidebar=e73f7065';
+
+          await page.goto(url, { waitUntil: 'networkidle' });
+          await page.locator('[data-pm-shell="v3"]').waitFor({ state: 'visible' });
+          await page.evaluate(async () => {
+            localStorage.removeItem('packmasterSidebarCollapsedV1');
+            const api = window.PackMasterBatch;
+            if (api) for (const batch of await api.listBatches()) await api.deleteBatch(batch.id);
+          });
+          await page.reload({ waitUntil: 'networkidle' });
+
+          const sidebar = page.locator('[data-pm-sidebar]');
+          const main = page.locator('.pm-main');
+          const toggle = page.locator('[data-pm-sidebar-toggle]');
+          const expanded = await sidebar.boundingBox();
+          const mainBefore = await main.boundingBox();
+          assert(expanded && near(expanded.width, 205), `Desktop expanded width expected 205, got ${expanded?.width}`);
+          assert(await toggle.getAttribute('aria-expanded') === 'true', 'Expanded toggle aria-expanded must be true');
+
+          await toggle.click();
+          await page.waitForTimeout(250);
+          const collapsed = await sidebar.boundingBox();
+          const mainAfter = await main.boundingBox();
+          assert(collapsed && near(collapsed.width, 68), `Desktop collapsed width expected 68, got ${collapsed?.width}`);
+          assert(mainBefore && mainAfter && mainAfter.width > mainBefore.width + 120, `Main workspace did not regain width: ${mainBefore?.width} -> ${mainAfter?.width}`);
+          assert(await page.evaluate(() => localStorage.getItem('packmasterSidebarCollapsedV1')) === '1', 'Collapsed preference must persist');
+          const batchNav = sidebar.getByRole('button', { name: 'งานแพ็ก', exact: true });
+          assert(await batchNav.getAttribute('title') === 'งานแพ็ก', 'Collapsed nav must expose title');
+          await sidebar.getByRole('button', { name: 'คลังคำศัพท์', exact: true }).click();
+          await page.locator('[data-pm-view="sku"]').waitFor({ state: 'visible' });
+
+          await page.reload({ waitUntil: 'networkidle' });
+          await page.waitForTimeout(120);
+          const persisted = await sidebar.boundingBox();
+          assert(persisted && near(persisted.width, 68), `Reload must restore 68px collapsed width, got ${persisted?.width}`);
+          await toggle.click();
+          await page.waitForTimeout(220);
+          const expandedAgain = await sidebar.boundingBox();
+          assert(expandedAgain && near(expandedAgain.width, 205), `Expand must restore 205px, got ${expandedAgain?.width}`);
+
+          // Seed desktop collapse preference and switch to a mobile viewport.
+          await page.evaluate(() => localStorage.setItem('packmasterSidebarCollapsedV1', '1'));
+          await page.setViewportSize({ width: 390, height: 844 });
+          await page.reload({ waitUntil: 'networkidle' });
+          const mobileMenu = page.locator('[data-pm-mobile-menu]');
+          await mobileMenu.waitFor({ state: 'visible' });
+          let mobileBox = await sidebar.boundingBox();
+          assert(mobileBox && mobileBox.width >= 200 && mobileBox.x < -100, `Mobile drawer must begin off-canvas at full width: ${JSON.stringify(mobileBox)}`);
+          assert(await mobileMenu.getAttribute('aria-expanded') === 'false', 'Mobile menu starts closed');
+
+          await mobileMenu.click();
+          await page.waitForTimeout(220);
+          mobileBox = await sidebar.boundingBox();
+          assert(mobileBox && near(mobileBox.width, 205) && mobileBox.x >= -2, `Mobile drawer must open around 205px: ${JSON.stringify(mobileBox)}`);
+          assert(await sidebar.locator('.pm-nav-label').first().isVisible(), 'Desktop collapsed preference must not hide mobile labels');
+          const backdrop = page.locator('[data-pm-sidebar-backdrop]');
+          await backdrop.waitFor({ state: 'visible' });
+          await backdrop.click({ position: { x: 380, y: 300 } });
+          await page.waitForTimeout(220);
+          mobileBox = await sidebar.boundingBox();
+          assert(mobileBox && mobileBox.x < -100, 'Backdrop must close mobile drawer');
+
+          await mobileMenu.click();
+          await page.waitForTimeout(180);
+          await sidebar.getByRole('button', { name: 'รีวิว & พิมพ์', exact: true }).click();
+          await page.locator('[data-pm-view="review"]').waitFor({ state: 'visible' });
+          await page.waitForTimeout(180);
+          mobileBox = await sidebar.boundingBox();
+          assert(mobileBox && mobileBox.x < -100, 'Selecting navigation must close drawer');
+
+          await mobileMenu.click();
+          await page.waitForTimeout(180);
+          await page.keyboard.press('Escape');
+          await page.waitForTimeout(180);
+          mobileBox = await sidebar.boundingBox();
+          assert(mobileBox && mobileBox.x < -100, 'Escape must close drawer');
+          const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+          assert(overflow <= 2, `Mobile sidebar must not create horizontal overflow: ${overflow}px`);
+
+          assert(pageErrors.length === 0, `Page errors: ${pageErrors.join(' | ')}`);
+          const relevantConsoleErrors = consoleErrors.filter(text => !/favicon|ERR_BLOCKED_BY_CLIENT/i.test(text));
+          assert(relevantConsoleErrors.length === 0, `Console errors: ${relevantConsoleErrors.join(' | ')}`);
+
+          await page.evaluate(async () => {
+            localStorage.removeItem('packmasterSidebarCollapsedV1');
+            const api = window.PackMasterBatch;
+            if (api) for (const batch of await api.listBatches()) await api.deleteBatch(batch.id);
+          });
+          await browser.close();
+          console.log('PackMaster live collapsible sidebar production verification passed');
+          JS
+          node verify-sidebar-production.mjs
+
+      - name: Verify production source safety markers
+        run: |
+          set -euo pipefail
+          html="$(curl -fsSL --max-time 20 'https://0948910191g-tech.github.io/packmaster/?verify-source=e73f7065')"
+          grep -Fq 'for (let i = 0; i < MappedOrders.length; i++)' <<< "$html"
+          grep -Fq 'MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}' <<< "$html"
