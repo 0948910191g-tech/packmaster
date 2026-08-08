@@ -1,356 +1,114 @@
-# PackMaster Local Hardening → Pilot-ready Implementation Plan
+# PackMaster Local Hardening → Pilot-ready Master Rollout
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+**Scope:** Phase 3A ถึง External Pilot readiness
 
-**Goal:** ทำให้ PackMaster พร้อม External Pilot แบบ Local-first โดยเพิ่ม Backup/Restore, Duplicate Detection, Exception Inbox, Batch Archive, Storage Health/Cleanup, Recovery UX, Performance hardening และ Local Pilot Diagnostics โดยไม่ใช้บริการเสียเงินและไม่เพิ่ม Database/Cloud Backend
+ไฟล์นี้ใช้ล็อกลำดับงานและข้อห้ามร่วม ส่วนรายละเอียด implementation ให้ยึด per-feature plan ล่าสุดของแต่ละ Phase
 
-**Architecture:** รักษา Parser/Matcher/Qty/Print core เดิมไว้และเพิ่ม utility/storage modules รอบ Core เท่านั้น โดยให้ `packmaster-batch.js` เป็น boundary ของ IndexedDB และสร้างโมดูล local-only เพิ่มตาม responsibility. UI ยังอยู่ใน `index.html` และ consume helper APIs ผ่าน `window.*` เพื่อไม่ต้อง rewrite framework.
+## Hard Gates
 
-**Tech Stack:** React 18 UMD, Babel Standalone, Tailwind CDN, IndexedDB, LocalStorage, Web Crypto, File API, StorageManager API, PDF.js, html2canvas, jsPDF, Node 22 tests, GitHub Actions, GitHub Pages
+1. ห้ามใช้บริการที่มีค่าใช้จ่ายหรือ feature ที่ต้องเปิด Billing
+2. ห้ามเพิ่ม Supabase, Firebase, Cloud DB, backend persistence, Login/Auth, multi-user sync หรือ Cloud Batch
+3. IndexedDB จาก Phase 2 เป็น frozen local persistence boundary
+4. ตลอด Phase 3 ห้ามเปลี่ยน `packmaster-batch.js`, `DB_NAME`, `DB_VERSION`, object stores หรือทำ schema migration เว้นแต่มี Real Failure Case ที่ existing public API แก้ไม่ได้และผู้ใช้ออกคำสั่งใหม่
+5. ใช้ public Batch APIs เดิมเท่านั้น: `listBatches`, `loadBatch`, `saveBatch`, `deleteBatch`
+6. ข้อมูลเสริมของ Phase 3 ให้ใช้ LocalStorage sidecar หรือ derived state ก่อน
+7. ห้ามแก้ Shopee Parser, TikTok Parser, Multi-SKU, Qty Parsing, SKU Matcher, Bundle Matching, Quantity Aggregation และ Print/Save PDF/Thermal core โดยไม่มี Real Failure Case + regression
+8. ห้าม commit fixture/backup/PDF จริงจากลูกค้า
+9. Print / Save PDF ต้องยังอิง full `MappedOrders`
 
-## Global Constraints
+## Release Pattern
 
-- ห้ามเพิ่มหรือเปิดใช้งานบริการที่อาจมีค่าใช้จ่าย
-- ห้ามเพิ่ม Database / Cloud DB / Supabase / Firebase / backend persistence
-- ห้ามเพิ่ม Login / Auth / Multi-user sync / Cloud Batch History
-- ห้ามแก้ Shopee Parser, TikTok Parser, Multi-SKU, Qty Parsing, SKU Matcher, Bundle Matching, Quantity Aggregation หรือ Print/Save PDF/Thermal core หากไม่มี Real Failure Case + regression fixture
-- ห้าม commit PDF/fixture ที่มี PII จริง
-- ห้าม rewrite framework หรือ refactor unrelated code
-- ทุก feature ต้อง degrade safely เมื่อ Browser API ไม่รองรับ
-- ทุก write ที่อาจทำข้อมูลหายต้องมี validation/confirmation และห้าม auto-delete เงียบ ๆ
-- Print / Save PDF ต้องยังอิง full `MappedOrders`
+ทุก Phase ใช้:
 
----
+`Plan → TDD RED → Minimal implementation → Existing regressions → Browser smoke → Diff review → Draft PR → PR CI → Merge → Main CI → GitHub Pages → Production smoke`
 
-### Task 1: Workspace Backup / Restore Core
+ห้ามรวม subsystem เสี่ยงหลายเรื่องใน PR เดียว
 
-**Files:**
-- Create: `packmaster-workspace.js`
-- Test: `tests/packmaster-workspace.test.mjs`
-- Modify: `packmaster-batch.js`
-- Modify: `.github/workflows/apply-smart-matcher.yml`
+## Phase 3A — Workspace Backup / Restore
 
-**Interfaces:**
-- Consumes: `PackMasterBatch.listBatches()`, `loadBatch(id)`, `saveBatch(meta, orders)`, `deleteBatch(id)`
-- Produces:
-  - `PackMasterWorkspace.buildBackup({ appVersion, settings, skuRules, batches, batchOrders, now })`
-  - `PackMasterWorkspace.validateBackup(payload)`
-  - `PackMasterWorkspace.exportBackup(payload)`
-  - `PackMasterWorkspace.restoreWorkspace(payload, adapters)`
-  - `PackMasterBatch.replaceWorkspaceBatches(rows)`
+Authoritative plan: `2026-08-08-workspace-backup-restore.md`
 
-- [ ] **Step 1: Write failing backup schema tests**
+- เพิ่ม `packmaster-workspace.js`
+- Backup JSON มี schema/version
+- Backup SKU rules, settings, Batch metadata และ Batch orders
+- Restore แบบ Replace Workspace เท่านั้นในรอบแรก
+- Validate + Preview + explicit confirm ก่อนเขียน
+- ใช้ existing Batch public APIs เท่านั้น
+- ไม่มี network request
+- ห้ามแก้ `packmaster-batch.js`
 
-```js
-assert.equal(backup.schema, 'packmaster-workspace-backup');
-assert.equal(backup.version, 1);
-assert.throws(() => workspace.validateBackup({ schema: 'wrong', version: 1 }), /schema/i);
-assert.throws(() => workspace.validateBackup({ schema: 'packmaster-workspace-backup', version: 99 }), /version/i);
-```
+## Phase 3B — Duplicate Upload Detection
 
-- [ ] **Step 2: Run RED**
+- เพิ่ม pure helper สำหรับ SHA-256 file fingerprint และ order duplicate signals
+- Exact duplicate: block default + explicit override
+- Possible order duplicate: warning เท่านั้น
+- ห้ามแก้ Parser/Matcher/Qty
+- Fingerprint persistence ใช้ LocalStorage sidecar keyed by Batch ID
+- ไม่เพิ่ม field ใหม่ใน IndexedDB Batch metadata
 
-Run: `node tests/packmaster-workspace.test.mjs`
-Expected: FAIL because `packmaster-workspace.js` does not exist.
+## Phase 3C — Exception Inbox
 
-- [ ] **Step 3: Implement pure backup/validation helpers**
+- Derived view จาก `MappedOrders` / existing warning flags เท่านั้น
+- Primary summary precedence: Review Qty → Review SKU/parser warning → Unmapped → Ready
+- Order หนึ่งรายการมีหลาย warning badge ได้
+- ไม่ mutate `orders` หรือ `MappedOrders`
+- Print/Export ไม่เปลี่ยน
 
-Use explicit required fields, reject unsupported schema/version, preserve unknown optional fields only by ignore, and never silently coerce required arrays.
+## Phase 3D — Batch Archive / Lifecycle
 
-- [ ] **Step 4: Add atomic-ish local replace helper**
+- Archive state ใช้ LocalStorage sidecar keyed by Batch ID
+- Operational status ใน IndexedDB เดิมไม่เปลี่ยน
+- Archive / Restore Archive / Active-Archived filter
+- Delete ใช้ existing `deleteBatch(id)` และต้อง explicit confirm
+- ห้าม auto-delete / auto-archive
 
-`replaceWorkspaceBatches(rows)` must validate all rows before deleting current batch stores; write metadata/orders in one IndexedDB readwrite transaction across `batchMeta` + `batchOrders` so transaction abort preserves previous DB state.
+## Phase 3E — Storage Health / Safe Cleanup
 
-- [ ] **Step 5: Run GREEN + existing regressions**
+- ใช้ `navigator.storage.estimate()` เมื่อ Browser รองรับ
+- ถ้าไม่รองรับต้อง degrade safely
+- Cleanup เฉพาะ Batch ที่ผู้ใช้เลือกเอง
+- ใช้ `loadBatch(id)` → strip `pdfImage` → `saveBatch(existingMeta, orders)`
+- ห้าม migration / auto cleanup / auto delete
 
-Run:
-```bash
-node tests/packmaster-workspace.test.mjs
-node tests/packmaster-batch.test.mjs
-node tests/packmaster-smart-matcher.test.mjs
-```
-Expected: PASS.
+## Phase 3F — Recovery UX / Local Diagnostics
 
-- [ ] **Step 6: Wire workspace tests into CI**
+- Error สำคัญต้องบอกว่าเกิดอะไรขึ้น, ข้อมูลยังอยู่ไหม, ทำอะไรต่อ
+- Diagnostic export เป็น aggregate/sanitized data เท่านั้น
+- ไม่ export raw PDF image หรือ direct customer/order identifiers
+- JSON/CSV download local-only ไม่มี telemetry network
 
-Add `node tests/packmaster-workspace.test.mjs` after Local Batch tests.
+## Phase 3G — Performance Hardening
 
----
+- ใช้ synthetic data เท่านั้น
+- วัด hotspot ก่อน optimize
+- ใช้ Set/Map/memoization/debounce เมื่อมีหลักฐาน
+- ห้าม refactor Parser/Matcher แบบเดา
 
-### Task 2: Backup / Restore UI
+## Phase 3H / Phase 4 — Pilot-ready Package
 
-**Files:**
-- Modify: `index.html`
-- Create: `tools/patch-phase3a-workspace.cjs`
-- Test: `tests/packmaster-phase3-ui.test.mjs`
+เพิ่ม:
 
-**Interfaces:**
-- Consumes: `window.PackMasterWorkspace`, current `skuRules`, `thermalMode`, Batch API
-- Produces UI handlers: `handleWorkspaceBackup`, `handleWorkspaceRestoreFile`
+- First-run local data notice
+- App/build version
+- Pilot checklist
+- Recovery guide
+- Local data privacy guide
+- Sanitized sample
+- Local KPI/diagnostic export
+- Production smoke suite
 
-- [ ] **Step 1: Write RED UI marker tests**
+## External Pilot Gate
 
-Assert `index.html` contains script include, Backup card, Restore input, privacy warning, and both handlers while frozen-core hashes remain unchanged.
+เมื่อ Phase 3A–3H พร้อมและ Production smoke ผ่าน ให้หยุดที่ External Pilot ก่อน
 
-- [ ] **Step 2: Run RED**
+เก็บ KPI แบบ Local/Manual เช่น Orders/day, Ready %, Review %, Unmapped %, Duplicate prevented, time saved และ browser/storage issues
 
-Run: `node tests/packmaster-phase3-ui.test.mjs`
-Expected: FAIL on missing Phase 3A markers.
+แม้ Pilot ภายหลังชี้ว่าต้องมี Database ก็ห้ามเริ่ม Database/Login/SaaS โดยอัตโนมัติ ต้องได้รับคำสั่งใหม่จากผู้ใช้ก่อน
 
-- [ ] **Step 3: Patch UI minimally**
+## Definition of Done
 
-Add `packmaster-workspace.js` before Babel app script. Add Backup/Restore controls inside SKU/Settings area rather than a new top-level menu. Backup must download JSON locally. Restore must parse → validate → show `window.confirm` summary → replace only after confirmation → reload batches/SKU/settings.
-
-- [ ] **Step 4: Verify privacy and failure UX**
-
-Restore failure message must state that current workspace was not intentionally cleared. Backup UI must warn that backup may contain parsed customer/order data and should not be shared publicly.
-
-- [ ] **Step 5: Run regressions + JSX compile + frozen core hash**
-
-Expected all PASS and unchanged core hash.
-
----
-
-### Task 3: Duplicate Upload Detection
-
-**Files:**
-- Create: `packmaster-duplicate.js`
-- Test: `tests/packmaster-duplicate.test.mjs`
-- Modify: `packmaster-batch.js`
-- Modify: `index.html`
-
-**Interfaces:**
-- Produces:
-  - `hashFile(file) -> Promise<string>` using `crypto.subtle.digest('SHA-256', bytes)`
-  - `findExactFileDuplicate(fileHash, sourceFiles)`
-  - `findOrderDuplicateSignals(newOrders, existingOrders)`
-- Batch metadata adds optional `sourceFiles[]` entries `{ name, size, hash, addedAt }`; missing field remains backward compatible.
-
-- [ ] **Step 1: RED tests for exact file duplicate + order signal**
-
-```js
-assert.equal(dup.findExactFileDuplicate('abc', [{ hash: 'abc' }]).hash, 'abc');
-assert.deepEqual(dup.findOrderDuplicateSignals([{ platform:'TIKTOK', tracking:'X' }], [{ platform:'TIKTOK', tracking:'X' }]).length, 1);
-```
-
-- [ ] **Step 2: Implement helper without Parser changes**
-
-File hash exact match = strong duplicate. Order-level signal = warning only; it must not delete/merge Qty or mutate parsed orders.
-
-- [ ] **Step 3: Integrate before upload**
-
-Hash selected files before processing. Exact duplicate defaults to blocked and asks explicit confirmation to import anyway. Store accepted fingerprint in active Batch metadata.
-
-- [ ] **Step 4: Integrate post-parse warning**
-
-If parsed order signals collide with current Batch, show warning with collision count before appending. Explicit override required; no auto-delete.
-
-- [ ] **Step 5: Tests / browser smoke**
-
-Test: same file blocked by default, override works, different file processes, existing Parser regressions unchanged.
-
----
-
-### Task 4: Exception Inbox
-
-**Files:**
-- Create: `packmaster-exceptions.js`
-- Test: `tests/packmaster-exceptions.test.mjs`
-- Modify: `index.html`
-
-**Interfaces:**
-- Produces:
-  - `getExceptionFlags(mappedOrder)`
-  - `getPrimaryStatus(flags)` precedence `reviewQty > reviewSku/parserWarning > unmapped > ready`
-  - `buildExceptionRows(mappedOrders)` preserving multi-warning badges
-
-- [ ] **Step 1: RED tests for precedence + multi-warning filtering**
-
-An order with Qty + SKU warning must count once in primary summary as Qty but match both Qty and SKU filters.
-
-- [ ] **Step 2: Implement pure derived helpers**
-
-No second source of truth. No writes to `orders` or `MappedOrders`.
-
-- [ ] **Step 3: Add `ต้องตรวจ` panel in Review**
-
-Display exception count, type filters, search, next/previous navigation, and jump-to-context behavior using existing Review table/list.
-
-- [ ] **Step 4: Keep print/export unaffected**
-
-Static test must continue confirming PDF export loop and print area use full `MappedOrders`.
-
----
-
-### Task 5: Batch Archive / Lifecycle
-
-**Files:**
-- Modify: `packmaster-batch.js`
-- Test: `tests/packmaster-batch.test.mjs`
-- Modify: `index.html`
-
-**Interfaces:**
-- Metadata optional: `archivedAt: null | ISO string`
-- Produces `archiveBatch(id, archivedAt)`, `restoreArchivedBatch(id)`, `deleteArchivedBatches(ids)`
-
-- [ ] **Step 1: RED lifecycle tests**
-
-Archive must preserve operational `status` and set only `archivedAt`. Restore clears `archivedAt`. No helper may auto-delete.
-
-- [ ] **Step 2: Implement adapter methods in IndexedDB transaction**
-
-- [ ] **Step 3: UI filters Active / Archived / All**
-
-Add Archive/Restore buttons and explicit confirmation when archiving a Batch with unresolved Review/Unmapped counts.
-
-- [ ] **Step 4: Bulk delete only selected archived batches**
-
-Require checkbox selection + explicit confirm; never provide auto-clean execution.
-
----
-
-### Task 6: Storage Health / Safe Cleanup
-
-**Files:**
-- Create: `packmaster-storage-health.js`
-- Test: `tests/packmaster-storage-health.test.mjs`
-- Modify: `packmaster-batch.js`
-- Modify: `index.html`
-
-**Interfaces:**
-- Produces `estimateStorage(navigatorLike)` returning `{ supported, usage, quota, percent }`
-- Produces `stripReprintPayload(order)` removing only `pdfImage` heavy payload and preserving parsed/match/display fields
-- Batch adapter method `cleanupArchivedReprintImages(ids)`
-
-- [ ] **Step 1: RED tests for supported/unsupported StorageManager**
-
-Unsupported API returns `supported:false` without throw.
-
-- [ ] **Step 2: RED tests for payload stripping**
-
-Verify `pdfImage` removed while `parsedItems`, platform, references, warnings remain.
-
-- [ ] **Step 3: Implement cleanup only for user-selected archived batches**
-
-Return cleanup summary including batches touched and orders stripped. Never delete Batch metadata automatically.
-
-- [ ] **Step 4: Add Storage Health UI**
-
-Show usage/quota when available and explicit warning that removing reprint images may make original label-image reprint unavailable.
-
----
-
-### Task 7: Recovery UX + Diagnostics
-
-**Files:**
-- Create: `packmaster-diagnostics.js`
-- Test: `tests/packmaster-diagnostics.test.mjs`
-- Modify: `index.html`
-
-**Interfaces:**
-- Produces `buildDiagnosticReport({ appVersion, batches, storage, counters, errors })`
-- Report must exclude raw `pdfImage` and must redact direct order/tracking identifiers from exported diagnostic rows.
-
-- [ ] **Step 1: RED privacy tests**
-
-Diagnostic export must not contain `pdfImage`, full tracking values, raw customer names/addresses, or PDF binary.
-
-- [ ] **Step 2: Implement local counters**
-
-Track only local aggregate counters: processed orders, ready/review/unmapped totals, duplicate blocks/overrides, storage warnings, export/print counts, processing duration where already measurable.
-
-- [ ] **Step 3: Add Download Diagnostics JSON/CSV**
-
-No network call. Include app/build version and Browser capability flags.
-
-- [ ] **Step 4: Improve recoverable error copy**
-
-For IndexedDB/backup/storage/export errors, message must state `เกิดอะไรขึ้น`, `ข้อมูลปัจจุบันยังอยู่ไหม`, `ควรทำอะไรต่อ`.
-
----
-
-### Task 8: High-volume Rendering / Persistence Hardening
-
-**Files:**
-- Test: `tests/packmaster-performance-guard.test.mjs`
-- Modify: `index.html`
-- Modify: `packmaster-batch.js` only if evidence requires adapter tuning
-
-**Interfaces:**
-- No core Parser/Matcher behavior changes.
-
-- [ ] **Step 1: Add synthetic PII-free large mapped-order fixture**
-
-Generate in test code, not committed customer PDF. Target at least 2,000 lightweight mapped rows for derived filter/exception operations.
-
-- [ ] **Step 2: Measure pure helper operations**
-
-Guard against accidental O(n²) duplicate/exception/filter implementations for common paths; avoid brittle millisecond thresholds, prefer operation-count/algorithmic assertions where possible.
-
-- [ ] **Step 3: Optimize only measured hotspots**
-
-Allowed: memoization, Sets/Maps for duplicate lookup, debounced persistence, avoiding unnecessary derived array recreation. Forbidden: Parser refactor.
-
-- [ ] **Step 4: Browser smoke 150-page-equivalent UI state**
-
-Verify navigation/filter/archive/backup controls remain responsive and no uncaught runtime errors occur.
-
----
-
-### Task 9: First-run / Pilot-ready Package
-
-**Files:**
-- Create: `docs/PILOT_CHECKLIST.md`
-- Create: `docs/RECOVERY_GUIDE.md`
-- Create: `docs/PRIVACY_LOCAL_DATA.md`
-- Modify: `index.html`
-
-**Interfaces:**
-- UI shows local-first notice + app version/build identifier.
-
-- [ ] **Step 1: Add first-run local notice**
-
-Explain: data stays in this Browser, Backup is recommended, clearing Browser/site data can remove local workspace.
-
-- [ ] **Step 2: Write Pilot Checklist**
-
-Cover sanitized setup, Backup before pilot, test upload, exception review, print smoke, recovery exercise, KPI collection.
-
-- [ ] **Step 3: Write Recovery Guide**
-
-Cover restore JSON, storage-full cleanup, browser reset consequence, what to export before moving device.
-
-- [ ] **Step 4: Write Local Data Privacy guide**
-
-Explain which local artifacts may contain customer/order data and prohibit uploading real backups/PDFs to public issues/repo.
-
----
-
-### Task 10: Release Verification + Production Gate
-
-**Files:**
-- Verify all Phase 3 files/tests
-
-- [ ] **Step 1: Run full CI suite**
-
-Must include Smart Matcher, Batch, Workspace, Duplicate, Exceptions, Storage Health, Diagnostics, Phase 3 UI/guard tests.
-
-- [ ] **Step 2: Frozen core integrity check**
-
-Compare parser/matcher/Qty core region/hash against Phase 2 `main` baseline; reject unrelated core changes.
-
-- [ ] **Step 3: Browser end-to-end smoke**
-
-Exercise: create Batch → upload synthetic/local fixture path where feasible → duplicate block → exception view → backup → archive → storage view → restore → diagnostics.
-
-- [ ] **Step 4: PR review and merge only when green**
-
-Use feature branch → PR → CI → merge main → main CI → GitHub Pages.
-
-- [ ] **Step 5: Production smoke**
-
-Verify live production assets and local-only browser workflow. Do not introduce any network dependency beyond existing CDN/static hosting.
-
-## Stop Gate After Phase 4 Readiness
-
-เมื่อ Tasks 1–10 ผ่าน ให้หยุดที่ External Pilot readiness. ห้ามเริ่ม SaaS Foundation, Login, Supabase, Cloud Batch, Subscription หรือ Marketplace API integration จนกว่าจะมี Pilot evidence และผู้ใช้ออกคำสั่งใหม่ที่ยกเลิกข้อห้าม Database/paid services อย่างชัดเจน
+- ทุก Phase ผ่าน regression + browser smoke + production smoke
+- ไม่มี paid service dependency
+- `packmaster-batch.js`, `DB_NAME`, `DB_VERSION`, object stores และ Core Parser/Matcher/Qty/Print ไม่ถูกเปลี่ยนใน Phase 3
+- ระบบพร้อม External Pilot แบบ Local-first
+- หยุดที่ Pilot Gate
