@@ -27,6 +27,42 @@
     return rest;
   };
 
+  const cleanupArchivedReprintImages = async (batchApi, batchIds) => {
+    if (!batchApi || typeof batchApi.loadBatch !== 'function' || typeof batchApi.saveBatch !== 'function') {
+      throw new Error('Local Batch API is required');
+    }
+
+    const ids = [...new Set((Array.isArray(batchIds) ? batchIds : []).filter(Boolean))];
+    let cleanedBatches = 0;
+    let cleanedOrders = 0;
+    let skippedBatches = 0;
+
+    for (const batchId of ids) {
+      const loaded = await batchApi.loadBatch(batchId);
+      if (!loaded || !loaded.meta || !loaded.meta.archivedAt) {
+        skippedBatches += 1;
+        continue;
+      }
+
+      const sourceOrders = Array.isArray(loaded.orders) ? loaded.orders : [];
+      const nextOrders = sourceOrders.map(stripReprintPayload);
+      const removedCount = sourceOrders.reduce((count, order) => (
+        count + (order && Object.prototype.hasOwnProperty.call(order, 'pdfImage') ? 1 : 0)
+      ), 0);
+
+      if (removedCount === 0) {
+        skippedBatches += 1;
+        continue;
+      }
+
+      await batchApi.saveBatch(loaded.meta, nextOrders);
+      cleanedBatches += 1;
+      cleanedOrders += removedCount;
+    }
+
+    return { cleanedBatches, cleanedOrders, skippedBatches };
+  };
+
   const formatBytes = (bytes) => {
     const value = Math.max(0, Number(bytes) || 0);
     if (value === 0) return '0 B';
@@ -36,5 +72,5 @@
     return `${amount >= 10 || index === 0 ? Math.round(amount) : Math.round(amount * 10) / 10} ${units[index]}`;
   };
 
-  return { estimateStorage, stripReprintPayload, formatBytes };
+  return { estimateStorage, stripReprintPayload, cleanupArchivedReprintImages, formatBytes };
 });
