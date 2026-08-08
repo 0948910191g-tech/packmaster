@@ -6,6 +6,7 @@ import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspacePath = path.resolve(__dirname, '../packmaster-workspace.js');
+const indexPath = path.resolve(__dirname, '../index.html');
 
 assert.ok(fs.existsSync(workspacePath), 'packmaster-workspace.js must exist');
 
@@ -123,4 +124,26 @@ await assert.rejects(
 );
 assert.equal(calls.length, callsBeforeInvalidReplace, 'invalid backup must fail validation before any write');
 
-console.log('PackMaster workspace backup/restore helper tests passed');
+const html = fs.readFileSync(indexPath, 'utf8');
+const requiredUiMarkers = [
+  '<script src="./packmaster-workspace.js"></script>',
+  'const workspaceApi = window.PackMasterWorkspace;',
+  'const [restorePreview, setRestorePreview] = useState(null);',
+  'const [workspaceBusy, setWorkspaceBusy] = useState(false);',
+  'const handleWorkspaceBackup = async () => {',
+  'const handleWorkspaceRestoreFile = async (event) => {',
+  'const handleConfirmWorkspaceRestore = async () => {',
+  'ความปลอดภัย Workspace',
+  'สำรอง Workspace',
+  'กู้คืน Workspace',
+  'Replace Workspace'
+];
+
+for (const marker of requiredUiMarkers) {
+  assert.ok(html.includes(marker), `index.html must include Workspace Safety marker: ${marker}`);
+}
+
+assert.ok(html.includes('for (let i = 0; i < MappedOrders.length; i++)'), 'Save PDF must keep full MappedOrders export loop');
+assert.ok(html.includes('{MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}'), 'Print area must keep full MappedOrders rendering');
+
+console.log('PackMaster workspace backup/restore helper and UI integration tests passed');
