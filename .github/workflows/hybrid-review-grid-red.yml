@@ -1,0 +1,22 @@
+name: Hybrid Review Grid RED
+
+on:
+  push:
+    branches:
+      - frontend-v3-hybrid-review-grid
+    paths:
+      - tests/packmaster-hybrid-review-grid.test.mjs
+      - .github/workflows/hybrid-review-grid-red.yml
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node tests/packmaster-hybrid-review-grid.test.mjs
