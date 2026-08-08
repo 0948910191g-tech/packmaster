@@ -14,6 +14,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -50,4 +52,4 @@ jobs:
           grep -F "const filteredSkuRules = useMemo(() => {" index.html
 
       - name: Whitespace check
-        run: git diff --check main...HEAD
+        run: git diff --check origin/main...HEAD
