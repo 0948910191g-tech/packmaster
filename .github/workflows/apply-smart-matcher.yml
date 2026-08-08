@@ -30,6 +30,12 @@ jobs:
       - name: Local batch regression tests
         run: node tests/packmaster-batch.test.mjs
 
+      - name: Workspace backup restore regression tests
+        run: node tests/packmaster-workspace.test.mjs
+
+      - name: Workspace strict validation tests
+        run: node tests/packmaster-workspace-validation.test.mjs
+
       - name: Existing guardrail tests when present
         run: |
           if [ -f tests/packmaster-guardrails.test.mjs ]; then
