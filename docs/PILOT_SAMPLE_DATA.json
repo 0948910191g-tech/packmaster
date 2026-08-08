@@ -1,0 +1,54 @@
+{
+  "schema": "packmaster-pilot-sample",
+  "version": 1,
+  "note": "Synthetic sample only. No real customer, tracking, address, phone, order ID, or marketplace PDF data is included.",
+  "batches": [
+    {
+      "name": "Sample Batch #001",
+      "status": "REVIEW",
+      "totalOrders": 4,
+      "readyCount": 2,
+      "reviewSkuCount": 1,
+      "reviewQtyCount": 1,
+      "unmappedCount": 0
+    }
+  ],
+  "orders": [
+    {
+      "id": "sample-ready-001",
+      "platform": "SHOPEE",
+      "tracking": "SYNTHETIC-TRACKING-001",
+      "parsedItems": [{ "text": "Synthetic HOYA Baby 5 pack", "qty": 2 }],
+      "displayItems": ["หมูเด้ง10"],
+      "qtyWarning": false,
+      "parserWarning": false
+    },
+    {
+      "id": "sample-ready-002",
+      "platform": "TIKTOK",
+      "tracking": "SYNTHETIC-TRACKING-002",
+      "parsedItems": [{ "text": "Synthetic HAKU Cooling", "qty": 1 }],
+      "displayItems": ["เย็นฟ้า1"],
+      "qtyWarning": false,
+      "parserWarning": false
+    },
+    {
+      "id": "sample-review-sku",
+      "platform": "SHOPEE",
+      "tracking": "SYNTHETIC-TRACKING-003",
+      "parsedItems": [{ "text": "Synthetic ambiguous product", "qty": 1 }],
+      "displayItems": ["⚠️ ตรวจสอบ SKU"],
+      "qtyWarning": false,
+      "parserWarning": true
+    },
+    {
+      "id": "sample-review-qty",
+      "platform": "TIKTOK",
+      "tracking": "SYNTHETIC-TRACKING-004",
+      "parsedItems": [{ "text": "Synthetic quantity mismatch", "qty": 2 }],
+      "displayItems": ["⚠️ ตรวจสอบ Qty"],
+      "qtyWarning": true,
+      "parserWarning": false
+    }
+  ]
+}
