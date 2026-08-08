@@ -5,7 +5,7 @@ const html = fs.readFileSync('index.html', 'utf8');
 
 assert.match(html, /data-pm-review-preview="grid"/, 'Hybrid review grid marker must exist');
 assert.match(html, /data-pm-review-layout="hybrid-grid"/, 'Hybrid review layout marker must exist');
-assert.match(html, /FilteredOrders\.map\(\(order,index\)=>/, 'Hybrid review must render every filtered review order');
+assert.match(html, /ReviewDisplayOrders\.map\(\(order,index\)=>/, 'Hybrid review must render every presentation-scope review order');
 assert.match(html, /<LabelCard order=\{order\} thermalMode=\{thermalMode\} \/>/, 'Each hybrid preview item must use the real LabelCard');
 assert.equal(html.includes('reviewPreviewIndex'), false, 'Hybrid preview must not hide orders behind a single-order cursor');
 assert.equal(html.includes('review-preview-prev'), false, 'Hybrid preview must not require Previous navigation');
