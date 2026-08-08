@@ -24,6 +24,17 @@ jobs:
           node-version: '22'
       - name: Apply targeted Frontend usability patch
         run: python3 tools/apply-frontend-usability-pilot-pass.py
+      - name: Repair generated patch boundary
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('index.html')
+          text = path.read_text(encoding='utf-8')
+          duplicate = 'const sortBatchRows = (rows) =>      const sortBatchRows = (rows) =>'
+          if duplicate not in text:
+              raise SystemExit('Expected generated boundary duplication not found')
+          path.write_text(text.replace(duplicate, 'const sortBatchRows = (rows) =>', 1), encoding='utf-8')
+          PY
       - name: Run repository regression tests
         run: |
           set -euo pipefail
