@@ -5,9 +5,12 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import {
   rules,
+  productionRuleSubset,
   tikTokContinuationPage1,
   tikTokContinuationPage2,
   tikTokFivePackQtyThree,
+  tikTokGroupedHeader,
+  shopeeThreeSkuPositioned,
   shopeeQtyCases
 } from './fixtures/smart-matcher-cases.mjs';
 
@@ -25,6 +28,7 @@ globalThis.__packmasterSmart = {
   matchSkuRule,
   parseExplicitTotalQty,
   parseTikTokPositionedItems,
+  parseShopeePositionedItems: typeof parseShopeePositionedItems === 'function' ? parseShopeePositionedItems : null,
   hasQtyWarning,
   getAggregatedShortName
 };`;
@@ -36,6 +40,7 @@ const {
   matchSkuRule,
   parseExplicitTotalQty,
   parseTikTokPositionedItems,
+  parseShopeePositionedItems,
   hasQtyWarning,
   getAggregatedShortName
 } = context.__packmasterSmart;
@@ -54,6 +59,29 @@ const ambiguousRules = [
 ];
 assert.equal(matchSkuRule('HOYA baby wipes 5', ambiguousRules).status, 'ambiguous', 'close candidates must require review');
 
+// Production regressions from the user's actual mapping export + real Shopee product text.
+const hoyaBaby3 = matchSkuRule(
+  'แพ็ค3ห่อ HOYA Baby Wipes ทิชชู่เปียกสูตรน้ำบริสุทธิ์ 99.9% 80 แผ่น สำหรับผิวบอบบาง',
+  productionRuleSubset
+);
+assert.equal(hoyaBaby3.status, 'matched', 'HOYA Baby 3-pack should be confidently matched');
+assert.equal(hoyaBaby3.rule?.shortName, 'เด้งม่วง3', 'HOYA Baby 3-pack must never become Wash Gloves 3-pack');
+
+const jasmine12 = matchSkuRule(
+  'Gift Set วันแม่ HAKU Cooling (ฮากุ ผ้าเปียกติดแอร์) กลิ่นมะลิ 12 ห่อ พร้อมกระเป๋าของขวัญ',
+  productionRuleSubset
+);
+assert.equal(jasmine12.status, 'matched', 'HAKU Cooling Jasmine 12-pack should be confidently matched');
+assert.equal(jasmine12.rule?.shortName, 'เย็นเขียว 12', 'Jasmine 12-pack must never become generic HAKU Baby 1');
+
+const menthol12 = matchSkuRule('HAKU Cooling MENTHOL 12 ห่อ', productionRuleSubset);
+assert.equal(menthol12.status, 'matched', 'Formatting-only internal-name aliases must not become ambiguous');
+assert.ok(['เย็นฟ้า12', 'เย็นฟ้า 12'].includes(menthol12.rule?.shortName));
+
+const lavender6 = matchSkuRule('HAKU Cooling LAVENDER 6 ห่อ', productionRuleSubset);
+assert.equal(lavender6.status, 'ambiguous', 'Conflicting real internal names must still require review');
+assert.equal(lavender6.rule, null, 'True mapping conflicts must never choose a SKU automatically');
+
 const t1 = parseTikTokPositionedItems(tikTokContinuationPage1, null);
 const t2 = parseTikTokPositionedItems(tikTokContinuationPage2, 3);
 assert.equal(t1.items.length, 1, 'TikTok first continuation page should contain one SKU');
@@ -65,6 +93,17 @@ const tQty3 = parseTikTokPositionedItems(tikTokFivePackQtyThree, 3);
 assert.equal(tQty3.items.length, 1);
 assert.equal(tQty3.items[0].qty, 3, 'Pack size 5 must not overwrite TikTok order Qty 3');
 assert.equal(hasQtyWarning(tQty3.items, 3, false), false);
+
+const groupedTikTok = parseTikTokPositionedItems(tikTokGroupedHeader, 1);
+assert.equal(groupedTikTok.parserWarning, false, 'Grouped Product Name / Seller SKU headers must be accepted');
+assert.equal(groupedTikTok.items.length, 1, 'Grouped TikTok header must still produce one row');
+assert.equal(groupedTikTok.items[0].qty, 1);
+
+assert.ok(parseShopeePositionedItems, 'Shopee must have a deterministic positioned-column parser');
+const shopee3 = parseShopeePositionedItems(shopeeThreeSkuPositioned, 3);
+assert.deepEqual([...shopee3.items].map(item => item.qty), [1, 1, 1], 'Shopee row Qty must come from the Qty column, never row numbers/footer total');
+assert.equal(shopee3.items.length, 3);
+assert.equal(hasQtyWarning(shopee3.items, 3, shopee3.parserWarning), false);
 
 for (const sample of shopeeQtyCases) {
   assert.notEqual(sample.packSize, sample.orderQty, 'fixture must keep pack size separate from order qty');

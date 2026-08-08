@@ -133,9 +133,11 @@
         .replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/g, '')
         .replace(/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g, ' ')
         .replace(/\s+/g, ' ')
-        .trim();
+        .trim()
+        .replace(/\bbb\b/g, 'baby');
 
     const COMMON_MATCH_TERMS = new Set(['hoya', 'haku', 'baby', 'wipes', 'wipe', 'ทชชเปยก', 'ผาเปยก']);
+    const RULE_UNIT_TOKENS = new Set(['หอ', 'แพค', 'pack', 'packs', 'ลัง', 'case', 'x', 'ชน', 'ชิ้น', 'แผน']);
     const VARIANT_CONCEPTS = {
       VALUE_PACK: ['value pack', 'valuepack', 'แวลู', 'แวล'],
       PLUS: ['plus', 'พลส', 'พลัส'],
@@ -148,7 +150,7 @@
       NONO: ['nono'],
       ALCOHOL: ['alcohol', 'alc', 'แอลกอฮอล']
     };
-    const HARD_VARIANT_CONCEPTS = new Set(['VALUE_PACK', 'PLUS', 'EXTRA']);
+    const HARD_VARIANT_CONCEPTS = new Set(['VALUE_PACK', 'PLUS', 'EXTRA', 'MENTHOL', 'LAVENDER', 'JASMINE', 'MIX']);
 
     const getVariantConcepts = (value) => {
       const text = normalizeMatchText(value);
@@ -171,6 +173,33 @@
       return tokens;
     };
 
+    const tokenMatchesSearch = (token, searchArea) => {
+      if (!token) return false;
+      if (/^\d{1,4}$/.test(token)) {
+        const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`(^|\\D)${escaped}(?!\\d)`).test(searchArea);
+      }
+      if (/^[a-z0-9]+$/.test(token)) {
+        const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`(^|[^a-z0-9])${escaped}(?![a-z0-9])`).test(searchArea);
+      }
+      return searchArea.includes(token);
+    };
+
+    const extractRulePackNumbers = (value) => {
+      const clean = normalizeMatchText(value);
+      const explicit = extractPackTokens(clean);
+      if (explicit.size > 0) {
+        return new Set([...explicit].map(token => parseInt(token.split(':')[0], 10)).filter(Number.isFinite));
+      }
+      const trailing = clean.match(/(?:^|\D)(\d{1,3})\s*$/);
+      return trailing ? new Set([parseInt(trailing[1], 10)]) : new Set();
+    };
+
+    const extractTextPackNumbers = (value) => new Set(
+      [...extractPackTokens(value)].map(token => parseInt(token.split(':')[0], 10)).filter(Number.isFinite)
+    );
+
     const scoreSkuRule = (rule, textToSearch, allRules = []) => {
       const searchArea = normalizeMatchText(textToSearch);
       const cleanKw = normalizeMatchText(rule && rule.keyword);
@@ -180,11 +209,13 @@
       let hardConflict = false;
       const reasons = [];
       const ruleTokens = cleanKw.split(' ').filter(Boolean);
-      const matchedTokens = ruleTokens.filter(token => searchArea.includes(token));
+      const matchedTokens = ruleTokens.filter(token => tokenMatchesSearch(token, searchArea));
       const coverage = ruleTokens.length ? matchedTokens.length / ruleTokens.length : 0;
+      const textConcepts = getVariantConcepts(searchArea);
+      const ruleConcepts = getVariantConcepts(cleanKw);
 
       if (searchArea.includes(cleanKw)) {
-        score += 120;
+        score += 140;
         reasons.push('exact');
       }
       if (coverage === 1) {
@@ -195,36 +226,49 @@
         reasons.push('partial-terms');
       }
 
+      const specificTokens = ruleTokens.filter(token =>
+        !/^\d{1,4}$/.test(token) && !COMMON_MATCH_TERMS.has(token) && !RULE_UNIT_TOKENS.has(token)
+      );
+      const matchedSpecific = specificTokens.filter(token => tokenMatchesSearch(token, searchArea));
+      const hasConceptIdentity = [...ruleConcepts].some(concept => textConcepts.has(concept));
+      if (specificTokens.length > 0 && matchedSpecific.length === 0 && !hasConceptIdentity) {
+        score -= 220;
+        hardConflict = true;
+        reasons.push('identity-miss');
+      }
+
       matchedTokens.forEach(token => {
         if (COMMON_MATCH_TERMS.has(token)) {
           score += 4;
           return;
         }
+        if (/^\d{1,4}$/.test(token)) {
+          score += 8;
+          return;
+        }
         const frequency = (Array.isArray(allRules) ? allRules : []).filter(candidate =>
-          normalizeMatchText(candidate && candidate.keyword).includes(token)
+          tokenMatchesSearch(token, normalizeMatchText(candidate && candidate.keyword))
         ).length;
         score += frequency <= 1 ? 18 : 9;
       });
 
-      const textPacks = extractPackTokens(searchArea);
-      const rulePacks = extractPackTokens(cleanKw);
-      if (rulePacks.size > 0 && textPacks.size > 0) {
-        const packMatch = [...rulePacks].some(token => textPacks.has(token));
+      const textPackNumbers = extractTextPackNumbers(searchArea);
+      const rulePackNumbers = extractRulePackNumbers(cleanKw);
+      if (rulePackNumbers.size > 0 && textPackNumbers.size > 0) {
+        const packMatch = [...rulePackNumbers].some(number => textPackNumbers.has(number));
         if (packMatch) {
-          score += 40;
+          score += 50;
           reasons.push('pack');
         } else {
-          score -= 180;
+          score -= 200;
           hardConflict = true;
           reasons.push('pack-conflict');
         }
       }
 
-      const textConcepts = getVariantConcepts(searchArea);
-      const ruleConcepts = getVariantConcepts(cleanKw);
       ruleConcepts.forEach(concept => {
         if (textConcepts.has(concept)) {
-          score += 30;
+          score += 40;
           reasons.push(`concept:${concept}`);
         } else {
           score -= HARD_VARIANT_CONCEPTS.has(concept) ? 160 : 35;
@@ -235,24 +279,55 @@
 
       HARD_VARIANT_CONCEPTS.forEach(concept => {
         if (textConcepts.has(concept) && !ruleConcepts.has(concept)) {
-          score -= 180;
+          score -= 200;
           hardConflict = true;
           reasons.push(`unexpected:${concept}`);
         }
       });
 
+      const coolingFamilyConcepts = new Set(['MENTHOL', 'LAVENDER', 'JASMINE', 'EXTRA', 'MIX']);
+      if (textConcepts.has('COOLING') && !ruleConcepts.has('COOLING') &&
+          ![...ruleConcepts].some(concept => coolingFamilyConcepts.has(concept)) &&
+          ruleTokens.includes('haku')) {
+        score -= 180;
+        hardConflict = true;
+        reasons.push('cooling-generic-conflict');
+      }
+
       const numericRuleTokens = ruleTokens.filter(token => /^\d{1,4}$/.test(token));
-      if (numericRuleTokens.some(token => searchArea.includes(token)) && [...ruleConcepts].every(concept => textConcepts.has(concept))) {
-        score += 25;
+      if (numericRuleTokens.some(token => tokenMatchesSearch(token, searchArea)) &&
+          [...ruleConcepts].every(concept => textConcepts.has(concept))) {
+        score += 20;
         reasons.push('concept-number');
       }
 
       return { rule, score, hardConflict, reason: reasons.join(',') || 'weak' };
     };
 
+    const normalizeOutputIdentity = (value) => normalizeMatchText(value).replace(/\s+/g, '');
+
     const matchSkuRule = (textToSearch, rules) => {
-      const candidates = (Array.isArray(rules) ? rules : [])
-        .map(rule => scoreSkuRule(rule, textToSearch, rules))
+      const searchArea = normalizeMatchText(textToSearch);
+      const normalizedRules = (Array.isArray(rules) ? rules : [])
+        .map(rule => ({ rule, cleanKw: normalizeMatchText(rule && rule.keyword) }))
+        .filter(entry => entry.cleanKw);
+
+      const exactMatches = normalizedRules
+        .filter(entry => searchArea.includes(entry.cleanKw))
+        .sort((a, b) => b.cleanKw.length - a.cleanKw.length);
+
+      if (exactMatches.length > 0) {
+        const longestLength = exactMatches[0].cleanKw.length;
+        const longest = exactMatches.filter(entry => entry.cleanKw.length === longestLength);
+        const outputs = new Set(longest.map(entry => normalizeOutputIdentity(entry.rule && entry.rule.shortName)));
+        if (outputs.size > 1) {
+          return { status: 'ambiguous', rule: null, score: 1000, runnerUpScore: 1000, reason: 'exact-conflict' };
+        }
+        return { status: 'matched', rule: longest[0].rule, score: 1000, runnerUpScore: 0, reason: 'exact-longest' };
+      }
+
+      const candidates = normalizedRules
+        .map(entry => scoreSkuRule(entry.rule, textToSearch, rules))
         .filter(candidate => Number.isFinite(candidate.score))
         .sort((a, b) => b.score - a.score);
 
@@ -268,7 +343,9 @@
         return { status: 'unmatched', rule: null, score: best.score, runnerUpScore, reason: best.reason };
       }
 
-      if (runnerUp && !runnerUp.hardConflict && best.score - runnerUp.score < 20) {
+      if (runnerUp && !runnerUp.hardConflict &&
+          normalizeOutputIdentity(runnerUp.rule && runnerUp.rule.shortName) !== normalizeOutputIdentity(best.rule && best.rule.shortName) &&
+          best.score - runnerUp.score < 20) {
         return { status: 'ambiguous', rule: null, score: best.score, runnerUpScore, reason: 'score-gap' };
       }
 
@@ -308,14 +385,20 @@
 
       for (const qtyHeader of qtyHeaders) {
         const sameLine = entries.filter(item => Math.abs(item.y - qtyHeader.y) <= 5);
-        const normalized = sameLine.map(item => normalizeMatchText(item.text));
-        const skuHeaders = sameLine.filter(item => normalizeMatchText(item.text) === 'sku').sort((a, b) => a.x - b.x);
-        const sellerHeader = sameLine.find(item => normalizeMatchText(item.text) === 'seller');
-        if (normalized.includes('product') && normalized.includes('name') && skuHeaders.length >= 1 && sellerHeader) {
+        const lineText = normalizeMatchText(sameLine.map(item => item.text).join(' '));
+        const sellerHeader = sameLine.find(item => normalizeMatchText(item.text).includes('seller'));
+        const skuHeaders = sameLine
+          .filter(item => /(^|\s)sku($|\s)/.test(normalizeMatchText(item.text)))
+          .sort((a, b) => a.x - b.x);
+        const firstSkuHeader = sellerHeader
+          ? (skuHeaders.find(item => item.x < sellerHeader.x - 1) || skuHeaders[0])
+          : skuHeaders[0];
+
+        if (lineText.includes('product name') && firstSkuHeader && sellerHeader && qtyHeader.x > sellerHeader.x) {
           header = {
             y: qtyHeader.y,
             qtyX: qtyHeader.x,
-            firstSkuX: skuHeaders[0].x,
+            firstSkuX: firstSkuHeader.x,
             sellerX: sellerHeader.x
           };
           break;
@@ -370,6 +453,116 @@
       });
 
       if (items.length !== markers.length) parserWarning = true;
+      return { items, declaredTotalQty, parserWarning, reason: parserWarning ? 'partial-row-parse' : 'positioned-columns' };
+    };
+
+    const parseShopeePositionedItems = (rawItems, declaredTotalQty = null) => {
+      const entries = (Array.isArray(rawItems) ? rawItems : []).map((item, index) => ({
+        text: String(item && (item.text ?? item.str) || '').trim(),
+        x: Number(item && (item.x ?? (item.transform && item.transform[4]))) || 0,
+        y: Number(item && (item.y ?? (item.transform && item.transform[5]))) || 0,
+        index: Number.isFinite(item && item.index) ? item.index : index
+      })).filter(item => item.text);
+
+      const hashHeaders = entries.filter(item => item.text.trim() === '#');
+      let header = null;
+
+      for (const hashHeader of hashHeaders) {
+        const sameLine = entries.filter(item => Math.abs(item.y - hashHeader.y) <= 6).sort((a, b) => a.x - b.x);
+        const lineText = normalizeMatchText(sameLine.map(item => item.text).join(' '));
+        if (!lineText.includes('ชอสนคา') || !lineText.includes('จานวน')) continue;
+
+        const nonHash = sameLine.filter(item => item.index !== hashHeader.index);
+        const productHeader = nonHash.find(item => normalizeMatchText(item.text).includes('ชอสนคา')) || nonHash[0];
+        const qtyHeader = [...nonHash].reverse().find(item => normalizeMatchText(item.text).includes('จานวน')) || nonHash[nonHash.length - 1];
+        if (!productHeader || !qtyHeader || qtyHeader.x <= productHeader.x) continue;
+
+        header = {
+          y: hashHeader.y,
+          rowX: hashHeader.x,
+          productX: productHeader.x,
+          qtyX: qtyHeader.x
+        };
+        break;
+      }
+
+      const hasTableSignal = entries.some(item => item.text.trim() === '#') &&
+        normalizeMatchText(entries.map(item => item.text).join(' ')).includes('ชอสนคา');
+
+      if (!header) {
+        return { items: [], declaredTotalQty, parserWarning: hasTableSignal, reason: hasTableSignal ? 'header-not-found' : 'no-table' };
+      }
+
+      const rowCandidates = entries.filter(item =>
+        /^\d{1,2}$/.test(item.text) && Math.abs(item.x - header.rowX) <= 16 && Math.abs(item.y - header.y) > 5
+      );
+      if (rowCandidates.length === 0) {
+        return { items: [], declaredTotalQty, parserWarning: true, reason: 'row-index-empty' };
+      }
+
+      const nearest = [...rowCandidates].sort((a, b) => Math.abs(a.y - header.y) - Math.abs(b.y - header.y))[0];
+      const direction = Math.sign(nearest.y - header.y) || 1;
+      const distance = item => (item.y - header.y) * direction;
+      const sortedRows = rowCandidates.filter(item => distance(item) > 4).sort((a, b) => distance(a) - distance(b));
+      const rowMarkers = [];
+      let expected = 1;
+      for (const candidate of sortedRows) {
+        const rowNumber = parseInt(candidate.text, 10);
+        if (rowNumber === expected) {
+          rowMarkers.push(candidate);
+          expected += 1;
+        }
+      }
+
+      if (rowMarkers.length === 0) {
+        return { items: [], declaredTotalQty, parserWarning: true, reason: 'row-sequence-empty' };
+      }
+
+      const footerDistances = entries
+        .filter(item => {
+          const normalized = normalizeMatchText(item.text);
+          return normalized.includes('shopee order') || normalized.includes('powered by');
+        })
+        .map(distance)
+        .filter(value => value > distance(rowMarkers[rowMarkers.length - 1]));
+      const footerDistance = footerDistances.length ? Math.min(...footerDistances) : Infinity;
+
+      const items = [];
+      let parserWarning = false;
+
+      rowMarkers.forEach((rowMarker, rowIndex) => {
+        const currentDistance = distance(rowMarker);
+        const nextDistance = rowIndex < rowMarkers.length - 1 ? distance(rowMarkers[rowIndex + 1]) : footerDistance;
+        const lower = currentDistance - 6;
+        const upper = Number.isFinite(nextDistance) ? nextDistance - 2 : Infinity;
+        const rowEntries = entries.filter(item => {
+          const d = distance(item);
+          return d >= lower && d < upper && item.index !== rowMarker.index;
+        });
+
+        const qtyCandidates = rowEntries.filter(item =>
+          /^\d{1,4}$/.test(item.text) && Math.abs(item.x - header.qtyX) <= 22
+        ).sort((a, b) => {
+          const aDistance = Math.abs(distance(a) - currentDistance) + Math.abs(a.x - header.qtyX) / 10;
+          const bDistance = Math.abs(distance(b) - currentDistance) + Math.abs(b.x - header.qtyX) / 10;
+          return aDistance - bDistance;
+        });
+        const qtyItem = qtyCandidates[0] || null;
+        const qty = qtyItem ? parseInt(qtyItem.text, 10) : NaN;
+
+        const productParts = rowEntries
+          .filter(item => item.index !== (qtyItem && qtyItem.index) && item.x >= header.productX - 6 && item.x < header.qtyX - 8)
+          .sort((a, b) => distance(a) - distance(b) || a.x - b.x || a.index - b.index);
+        const productText = productParts.map(item => item.text).join(' ').trim();
+
+        if (!productText || !Number.isFinite(qty) || qty < 1) {
+          parserWarning = true;
+          return;
+        }
+        items.push({ text: productText, qty });
+      });
+
+      if (items.length !== rowMarkers.length) parserWarning = true;
       return { items, declaredTotalQty, parserWarning, reason: parserWarning ? 'partial-row-parse' : 'positioned-columns' };
     };
 
@@ -596,6 +789,11 @@
               }
 
               if (platform === 'SHOPEE') {
+                  const shopeePositionedResult = parseShopeePositionedItems(positionedItems, declaredTotalQty);
+                  if (shopeePositionedResult.items.length > 0 || shopeePositionedResult.parserWarning) {
+                      parsedItems = shopeePositionedResult.items;
+                      parserWarning = shopeePositionedResult.parserWarning;
+                  } else {
                   let remainingText = zone.trim();
                   let currentItemNum = 1;
                   
@@ -673,9 +871,10 @@
                           currentItemNum++;
                       }
                   }
+                  }
               }
 
-              if (parsedItems.length === 0 && platform !== 'TIKTOK') {
+              if (parsedItems.length === 0 && platform !== 'TIKTOK' && !parserWarning) {
                   let itemStr = zone.trim();
                   
                   let textWithoutQty = itemStr.replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ').trim();
