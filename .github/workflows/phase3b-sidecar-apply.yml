@@ -1,4 +1,4 @@
-# Retry after confirming legacy hash casing is intentionally preserved.
+# Retry after confirming backup export intentionally has a duplicateApi fallback.
 name: Apply PackMaster Phase 3B Sidecar Guardrail
 
 on:
