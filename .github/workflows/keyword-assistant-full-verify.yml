@@ -30,7 +30,7 @@ jobs:
       - name: Compile JSX
         run: |
           set -euo pipefail
-          npm install --no-save --no-package-lock @babel/core @babel/preset-react >/dev/null 2>&1
+          npm install --no-save --no-package-lock @babel/core @babel/cli @babel/preset-react >/dev/null 2>&1
           python - <<'PY'
           from pathlib import Path
           html = Path('index.html').read_text()
