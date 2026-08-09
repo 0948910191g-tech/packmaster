@@ -1,0 +1,178 @@
+name: Apply Layout V4 Temp
+
+on:
+  push:
+    branches:
+      - frontend-layout-cleanup-v4
+    paths:
+      - .github/workflows/apply-layout-v4-temp.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: frontend-layout-cleanup-v4
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Apply layout foundation patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('index.html')
+          s = p.read_text()
+
+          def replace_once(old, new, label):
+              global s
+              count = s.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly 1 match, got {count}')
+              s = s.replace(old, new, 1)
+
+          # Shared layout tokens.
+          replace_once(
+              "      --pm-muted: #708096;\n",
+              "      --pm-muted: #708096;\n"
+              "      --pm-header-h: 82px;\n"
+              "      --pm-header-h-mobile: 68px;\n"
+              "      --pm-page-pad-x: 24px;\n"
+              "      --pm-page-pad-y: 20px;\n"
+              "      --pm-section-gap: 16px;\n"
+              "      --pm-card-gap: 14px;\n"
+              "      --pm-control-h: 40px;\n"
+              "      --pm-content-max: 1240px;\n"
+              "      --pm-content-wide: 1520px;\n"
+              "      --pm-z-header: 80;\n"
+              "      --pm-z-sidebar: 60;\n",
+              'layout tokens'
+          )
+
+          # Shell/header/sidebar use shared dimensions.
+          s = s.replace(".pm-command-header { height: 82px;", ".pm-command-header { height: var(--pm-header-h);")
+          s = s.replace("top: 0; z-index: 50;", "top: 0; z-index: var(--pm-z-header);")
+          s = s.replace(".pm-app-frame { min-height: calc(100vh - 82px);", ".pm-app-frame { min-height: calc(100vh - var(--pm-header-h));")
+          s = s.replace("min-height: calc(100vh - 82px); position: sticky; top: 82px; align-self: flex-start; height: calc(100vh - 82px);", "min-height: calc(100vh - var(--pm-header-h)); position: sticky; top: var(--pm-header-h); align-self: flex-start; height: calc(100vh - var(--pm-header-h));")
+
+          # Page rhythm and shared actions.
+          replace_once(
+              "    .pm-page { max-width: 1240px; margin: 0 auto; padding: 24px 26px 44px; animation: pmFade .22s ease; }\n"
+              "    .pm-page-wide { max-width: 1520px; }\n"
+              "    @keyframes pmFade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }\n"
+              "    .pm-page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-bottom: 18px; }\n",
+              "    .pm-page { max-width: var(--pm-content-max); margin: 0 auto; padding: var(--pm-page-pad-y) var(--pm-page-pad-x) 48px; animation: pmFade .18s ease; }\n"
+              "    .pm-page-wide { max-width: var(--pm-content-wide); }\n"
+              "    @keyframes pmFade { from { opacity: 0; } to { opacity: 1; } }\n"
+              "    .pm-page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--pm-section-gap); margin-bottom: var(--pm-section-gap); }\n"
+              "    .pm-page-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }\n"
+              "    .pm-section-stack { display: flex; flex-direction: column; gap: var(--pm-section-gap); }\n",
+              'page rhythm'
+          )
+          s = s.replace("min-height: 38px; padding: 0 14px;", "min-height: var(--pm-control-h); padding: 0 14px;")
+
+          # Operational two-column SKU layout.
+          insert_after = "    .pm-review-grid-output { min-height: 36px; }\n"
+          if insert_after not in s:
+              raise SystemExit('SKU layout insertion anchor missing')
+          s = s.replace(insert_after, insert_after +
+              "    .pm-sku-layout { display: grid; grid-template-columns: minmax(320px, 360px) minmax(0, 1fr); gap: var(--pm-section-gap); align-items: start; }\n"
+              "    .pm-sku-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }\n", 1)
+
+          # Convert overlap-prone UI back to normal document flow.
+          old_active = "    .pm-active-batch-bar { position: sticky; top: 82px; z-index: 42; margin: 0; border-bottom: 1px solid #d9e5f2; background: rgba(255,255,255,.97); backdrop-filter: blur(12px); box-shadow: 0 5px 16px rgba(26,54,93,.06); padding: 9px 18px; }\n"
+          new_active = "    .pm-active-batch-bar { position: static; margin: 0; border-bottom: 1px solid #d9e5f2; background: #ffffff; box-shadow: 0 2px 8px rgba(26,54,93,.035); padding: 10px var(--pm-page-pad-x); }\n"
+          replace_once(old_active, new_active, 'active batch bar')
+
+          old_review = "    .pm-review-action-wrap { position: fixed; left: 225px; right: 20px; bottom: 12px; z-index: 45; margin-top: 0; pointer-events: none; }\n"
+          new_review = "    .pm-review-action-wrap { position: static; margin-top: var(--pm-section-gap); pointer-events: auto; }\n"
+          replace_once(old_review, new_review, 'review action wrap')
+          s = s.replace("box-shadow: 0 14px 35px rgba(7,31,61,.16);", "box-shadow: 0 6px 18px rgba(7,31,61,.08);")
+          replace_once("    .pm-review-bottom-space { padding-bottom: 118px; animation: none; }\n", "    .pm-review-bottom-space { padding-bottom: 48px; }\n", 'legacy bottom spacing')
+
+          # Replace overlap-specific responsive rules with layout stacking only.
+          old_media = "    @media (max-width: 1023px) { .pm-active-batch-bar { position: static; padding: 8px 10px; } .pm-active-batch-inner { align-items: flex-start; flex-direction: column; } .pm-review-action-wrap { left: 10px; right: 10px; bottom: 10px; } .pm-review-action-bar { align-items: stretch; flex-direction: column; } .pm-review-bottom-space { padding-bottom: 168px; } }\n"
+          new_media = "    @media (max-width: 1180px) { .pm-sku-layout { grid-template-columns: minmax(0, 1fr); } }\n"
+          new_media += "    @media (max-width: 1023px) { .pm-active-batch-bar { padding: 9px 14px; } .pm-active-batch-inner { align-items: flex-start; flex-direction: column; } .pm-review-action-bar { align-items: stretch; flex-direction: column; } .pm-page-actions { width: 100%; justify-content: flex-start; } }\n"
+          replace_once(old_media, new_media, 'responsive overlap rules')
+
+          # Existing general responsive dimensions now use shared tokens.
+          s = s.replace(".pm-command-header { height: 68px; padding: 0 14px; }", ".pm-command-header { height: var(--pm-header-h-mobile); padding: 0 14px; }")
+          s = s.replace(".pm-app-frame { min-height: calc(100vh - 68px); }", ".pm-app-frame { min-height: calc(100vh - var(--pm-header-h-mobile)); }")
+          s = s.replace(".pm-sidebar { top: 68px; min-height: calc(100vh - 68px); height: calc(100vh - 68px); }", ".pm-sidebar { top: var(--pm-header-h-mobile); min-height: calc(100vh - var(--pm-header-h-mobile)); height: calc(100vh - var(--pm-header-h-mobile)); }")
+          s = s.replace("top: 68px; left: 0; width: 205px; flex-basis: 205px; height: calc(100vh - 68px); min-height: calc(100vh - 68px);", "top: var(--pm-header-h-mobile); left: 0; width: 205px; flex-basis: 205px; height: calc(100vh - var(--pm-header-h-mobile)); min-height: calc(100vh - var(--pm-header-h-mobile));")
+          s = s.replace("inset: 68px 0 0;", "inset: var(--pm-header-h-mobile) 0 0;")
+          s = s.replace("    @media (max-width: 639px) {\n      .pm-command-header { position: relative; }\n      .pm-page { padding-left: 10px; padding-right: 10px; }\n      .pm-metric-value { font-size: 20px; }\n    }", "    @media (max-width: 639px) {\n      .pm-page { --pm-page-pad-x: 10px; padding-left: var(--pm-page-pad-x); padding-right: var(--pm-page-pad-x); }\n      .pm-page-actions > * { flex: 1 1 auto; }\n      .pm-metric-value { font-size: 20px; }\n    }")
+
+          # Page-level markers/classes and remove secondary sticky editor.
+          replace_once('className="grid xl:grid-cols-[340px_minmax(0,1fr)] gap-4 items-start"', 'data-pm-sku-layout className="pm-sku-layout"', 'sku layout marker')
+          replace_once('className="space-y-4 xl:sticky xl:top-4"', 'className="space-y-4"', 'sku editor normal flow')
+          replace_once('<section data-pm-view="review" className="pm-page pm-page-wide pm-review-bottom-space">', '<section data-pm-view="review" data-pm-review-layout className="pm-page pm-page-wide">', 'review layout marker')
+          replace_once('<div className="flex flex-wrap items-center gap-2">\n                        <button onClick={()=>setThermalMode(!thermalMode)}', '<div className="pm-page-actions">\n                        <button onClick={()=>setThermalMode(!thermalMode)}', 'review page actions')
+          replace_once('<div className="flex flex-wrap gap-2">\n                        <label className="pm-secondary-btn cursor-pointer"><PMIcon name="upload" /> นำเข้า', '<div className="pm-page-actions">\n                        <label className="pm-secondary-btn cursor-pointer"><PMIcon name="upload" /> นำเข้า', 'sku page actions')
+          replace_once('<div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">\n                            <div><div className="pm-section-kicker">ค้นหา / กรองกฎ</div>', '<div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">\n                            <div><div className="pm-section-kicker">ค้นหา / กรองกฎ</div>', 'sku toolbar anchor')
+          # Give SKU search/sort group a shared toolbar class.
+          replace_once('<div className="flex flex-wrap gap-2">\n                              <div className="relative min-w-[230px] flex-1"><PMIcon name="search"', '<div className="pm-sku-toolbar">\n                              <div className="relative min-w-[230px] flex-1"><PMIcon name="search"', 'sku toolbar group')
+          replace_once('<div className="pm-review-action-wrap no-print"><div data-pm-review-action-bar', '<div data-pm-review-action-dock className="pm-review-action-wrap no-print"><div data-pm-review-action-bar', 'review dock marker')
+
+          # Add stable page markers for all major workspaces without changing behavior.
+          s = s.replace('<section data-pm-view="batches" className="pm-page">', '<section data-pm-view="batches" data-pm-layout-v4 className="pm-page">', 1)
+          s = s.replace('<section data-pm-view="upload" className="pm-page pm-page-wide">', '<section data-pm-view="upload" data-pm-layout-v4 className="pm-page pm-page-wide">', 1)
+          s = s.replace('<section data-pm-view="sku" className="pm-page">', '<section data-pm-view="sku" data-pm-layout-v4 className="pm-page">', 1)
+          s = s.replace('<section data-pm-view="safety" className="pm-page">', '<section data-pm-view="safety" data-pm-layout-v4 className="pm-page">', 1)
+
+          p.write_text(s)
+          PY
+
+      - name: Verify layout contract
+        run: node tests/packmaster-layout-v4.test.mjs
+
+      - name: Verify key UI regressions
+        run: |
+          node tests/packmaster-collapsible-sidebar.test.mjs
+          node tests/packmaster-active-batch-context.test.mjs
+          node tests/packmaster-review-exception-mode.test.mjs
+          node tests/packmaster-review-quick-mapping.test.mjs
+          node tests/packmaster-full-review-preview.test.mjs
+          node tests/packmaster-pilot-safety-ui.test.mjs
+          node tests/packmaster-frontend-v3-ui.test.mjs
+          node tests/packmaster-guardrails.test.mjs
+
+      - name: Verify frozen core and print scope
+        run: |
+          test "$(git hash-object packmaster-batch.js)" = '941bddd557803aa27e58bd23372b9f51d6ca1605'
+          grep -Fq 'for (let i = 0; i < MappedOrders.length; i++)' index.html
+          grep -Fq 'MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}' index.html
+
+      - name: Verify JSX compiles
+        run: |
+          npm install --no-save --no-package-lock @babel/core @babel/preset-react
+          node - <<'JS'
+          const fs = require('fs');
+          const babel = require('@babel/core');
+          const html = fs.readFileSync('index.html', 'utf8');
+          const match = html.match(/<script type="text\/babel">([\s\S]*?)<\/script>/);
+          if (!match) throw new Error('text/babel script not found');
+          babel.transformSync(match[1], { presets: ['@babel/preset-react'], filename: 'index.jsx' });
+          console.log('JSX compile passed');
+          JS
+
+      - name: Commit generated layout
+        run: |
+          git config user.name 'PackMaster CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add index.html
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'No product changes to commit'
+            exit 1
+          fi
+          git commit -m 'Refine layout flow across PackMaster'
+          git push origin HEAD:frontend-layout-cleanup-v4
