@@ -55,6 +55,13 @@ test('rejects generic-only candidates', () => {
   }
 });
 
+test('keeps mixed or Thai fallback windows review-only even without current collisions', () => {
+  const source = 'ทิชชู่เปียก สูตรเย็น 30 แผ่น สำหรับเช็ดทำความสะอาด';
+  const suggestions = assistant.generateKeywordSuggestions({ sourceText: source, batchItemTexts: [source] });
+  assert.ok(suggestions.length > 0, 'mixed fallback should still be available for manual review');
+  assert.ok(suggestions.every(row => row.confidence === 'review'), 'mixed fallback must never receive the recommended badge');
+});
+
 test('downgrades a short candidate when it appears across distinct sibling products', () => {
   const current = 'HOYA BABY PURPLE 5 PACK';
   const sibling = 'HOYA BABY PINK 5 PACK';
