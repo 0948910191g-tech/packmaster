@@ -93,6 +93,12 @@ jobs:
       - name: Review Quick Mapping usability guard
         run: node tests/packmaster-review-quick-mapping.test.mjs
 
+      - name: Keyword Assistant helper guard
+        run: node --test tests/packmaster-keyword-assistant.test.mjs
+
+      - name: Keyword Assistant Quick Mapping UI guard
+        run: node --test tests/packmaster-keyword-assistant-ui.test.mjs
+
       - name: Simplified navigation usability guard
         run: node tests/packmaster-navigation-usability.test.mjs
 
