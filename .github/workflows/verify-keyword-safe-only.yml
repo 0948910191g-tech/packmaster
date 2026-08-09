@@ -1,0 +1,112 @@
+name: Verify Keyword Safe Only
+
+on:
+  push:
+    branches:
+      - verify-keyword-safe-only
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact feature head
+        uses: actions/checkout@v4
+        with:
+          ref: 0a64c9e7f04252cd6cd36f96fd7e85779a1bc313
+          fetch-depth: 1
+      - name: Verify exact head and frozen Batch adapter
+        run: |
+          test "$(git rev-parse HEAD)" = "0a64c9e7f04252cd6cd36f96fd7e85779a1bc313"
+          test "$(git hash-object packmaster-batch.js)" = "941bddd557803aa27e58bd23372b9f51d6ca1605"
+          node --test tests/packmaster-keyword-assistant.test.mjs
+          node --test tests/packmaster-keyword-assistant-ui.test.mjs
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Chromium
+        run: |
+          npm install --no-save --package-lock=false playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Serve exact feature head
+        run: |
+          python3 -m http.server 4173 > /tmp/packmaster-http.log 2>&1 &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4173/ >/dev/null && exit 0; sleep 1; done
+          cat /tmp/packmaster-http.log
+          exit 1
+      - name: Exercise matcher-backed Keyword safety in Chromium
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const assert = require('node:assert/strict');
+          const { chromium } = require('playwright');
+          const html = fs.readFileSync('index.html', 'utf8');
+          const start = html.indexOf('const normalizeMatchText');
+          const end = html.indexOf('const waitForLabelRender');
+          assert.ok(start >= 0 && end > start);
+          const matcherSource = html.slice(start, end);
+
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+            const errors = [];
+            page.on('pageerror', error => errors.push(String(error)));
+            await page.goto('http://127.0.0.1:4173/', { waitUntil: 'domcontentloaded' });
+            await page.waitForFunction(() => window.PackMasterKeywordAssistant && typeof window.PackMasterKeywordAssistant.assessKeywordSafety === 'function');
+
+            const result = await page.evaluate(({ matcherSource }) => {
+              const matcher = new Function(`${matcherSource}; return { normalizeMatchText, matchSkuRule };`)();
+              const api = window.PackMasterKeywordAssistant;
+              const thaiSource = 'ยกลัง 36 ห่อ ใหม่ ทิชชู่เปียก ฮากุ เบบี้ สูตรน้ำแร่ อ่อนโยน ผิวบอบบาง 40 แผ่น QTY TOTAL 36';
+              const excareSource = '1 ห่อ ทิชชู่เปียกสำหรับผู้ใหญ่ EXCARE ADULT WIPES XXL 50 แผ่นใหญ่';
+              const existingExcare = [{ id: 1, keyword: 'EXCARE ADULT WIPES', shortName: 'adult-existing' }];
+              const siblingCurrent = 'HOYA BABY PURPLE 5 PACK';
+              const siblingOther = 'HOYA BABY PINK 5 PACK';
+              return {
+                thai: api.generateKeywordSuggestions({
+                  sourceText: thaiSource,
+                  existingRules: [],
+                  batchItemTexts: [thaiSource],
+                  safeOnly: true,
+                  matchRule: matcher.matchSkuRule,
+                  matchNormalizer: matcher.normalizeMatchText
+                }),
+                excare: api.generateKeywordSuggestions({
+                  sourceText: excareSource,
+                  existingRules: existingExcare,
+                  batchItemTexts: [excareSource],
+                  safeOnly: true,
+                  matchRule: matcher.matchSkuRule,
+                  matchNormalizer: matcher.normalizeMatchText
+                }),
+                unsafeSibling: api.assessKeywordSafety({
+                  candidate: 'HOYA BABY',
+                  sourceText: siblingCurrent,
+                  existingRules: [],
+                  batchItemTexts: [siblingCurrent, siblingOther],
+                  matchRule: matcher.matchSkuRule,
+                  matchNormalizer: matcher.normalizeMatchText
+                }),
+                similarButSpecific: api.assessKeywordSafety({
+                  candidate: 'HOYA BABY PURPLE',
+                  sourceText: siblingCurrent,
+                  existingRules: [{ id: 2, keyword: 'HOYA BABY PINK', shortName: 'pink' }],
+                  batchItemTexts: [siblingCurrent, siblingOther],
+                  matchRule: matcher.matchSkuRule,
+                  matchNormalizer: matcher.normalizeMatchText
+                }),
+                normalize: matcher.normalizeMatchText
+              };
+            }, { matcherSource });
+
+            assert.ok(result.thai.length > 0, 'Thai source should retain at least one verified safe identity');
+            assert.ok(result.thai.every(row => row.confidence === 'recommended'));
+            assert.equal(result.thai.some(row => /\bQTY\b|\bTOTAL\b/i.test(row.value)), false);
+            assert.equal(result.excare.some(row => result.normalize(row.value) === result.normalize('EXCARE ADULT WIPES')), false, 'exact existing keyword must not be suggested');
+            assert.ok(result.excare.every(row => row.confidence === 'recommended'));
+            assert.equal(result.unsafeSibling.safe, false, 'broad sibling-routing candidate must be rejected');
+            assert.equal(result.similarButSpecific.safe, true, 'similar but routing-safe specific keyword should remain allowed');
+            assert.deepEqual(errors, []);
+            await browser.close();
+          })().catch(err => { console.error(err); process.exit(1); });
+          NODE
