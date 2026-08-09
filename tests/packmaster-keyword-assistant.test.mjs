@@ -1,9 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const assistant = require('../packmaster-keyword-assistant.js');
+const here = path.dirname(fileURLToPath(import.meta.url));
+const html = fs.readFileSync(path.join(here, '..', 'index.html'), 'utf8');
+const matcherStart = html.indexOf('const normalizeMatchText');
+const matcherEnd = html.indexOf('const waitForLabelRender');
+assert.ok(matcherStart >= 0 && matcherEnd > matcherStart, 'Smart Matcher helper block is missing from index.html');
+const matcherSource = `${html.slice(matcherStart, matcherEnd)}\n` + `\nglobalThis.__keywordSafetyMatcher = { normalizeMatchText, matchSkuRule };`;
+const matcherContext = {};
+vm.createContext(matcherContext);
+vm.runInContext(matcherSource, matcherContext);
+const { normalizeMatchText, matchSkuRule } = matcherContext.__keywordSafetyMatcher;
 
 const normalizedIncludes = (source, candidate) => assistant
   .normalizeKeywordText(source)
@@ -79,6 +93,16 @@ test('never suggests nickname, order metadata or long identifier fragments from 
   );
 });
 
+test('never suggests Qty Total metadata from marketplace text', () => {
+  const source = 'ยกลัง 36 ห่อ ทิชชู่เปียก ฮากุ เบบี้ สูตรน้ำแร่ 40 แผ่น QTY TOTAL 36';
+  const suggestions = assistant.generateKeywordSuggestions({ sourceText: source, batchItemTexts: [source] });
+  assert.equal(
+    suggestions.some(row => /\bQTY\b|\bTOTAL\b|QUANTITY|จำนวนรวม/i.test(row.value)),
+    false,
+    'Qty Total is order metadata, never product identity'
+  );
+});
+
 test('keeps EXCARE Adult product identity ahead of unrelated nickname metadata even when broad rules exist', () => {
   const source = '1 ห่อ ทิชชู่เปียกสำหรับผู้ใหญ่ EXCARE ADULT Wipes XXL 50 แผ่นใหญ่ ผิวบอบบาง ID 987654321098765432 NICKNAME TESTUSER';
   const suggestions = assistant.generateKeywordSuggestions({
@@ -99,7 +123,59 @@ test('prefers a compact Thai product-anchor phrase over generic adjective window
 
   assert.ok(suggestions.length > 0);
   assert.equal(suggestions[0].value, 'ฮากุ เบบี้ สูตรน้ำแร่');
-  assert.equal(suggestions[0].confidence, 'review', 'Thai heuristic remains human-review only');
+  assert.equal(suggestions[0].confidence, 'review', 'Thai heuristic remains human-review only outside strict safety mode');
+});
+
+test('safe-only mode promotes matcher-verified Thai product identity and hides unverified choices', () => {
+  const source = 'ยกลัง 36 ห่อ ใหม่ ทิชชู่เปียก ฮากุ เบบี้ สูตรน้ำแร่ อ่อนโยน ผิวบอบบาง 40 แผ่น';
+  const suggestions = assistant.generateKeywordSuggestions({
+    sourceText: source,
+    existingRules: [],
+    batchItemTexts: [source],
+    safeOnly: true,
+    matchRule: matchSkuRule,
+    matchNormalizer: normalizeMatchText
+  });
+
+  assert.ok(suggestions.length > 0, 'a matcher-verified Thai identity should remain usable');
+  assert.equal(suggestions[0].value, 'ฮากุ เบบี้ สูตรน้ำแร่');
+  assert.ok(suggestions.every(row => row.confidence === 'recommended'), 'safe-only mode must never expose review-only candidates');
+});
+
+test('safe-only mode never returns an exact keyword already present in the library', () => {
+  const source = 'EXCARE ADULT WIPES XXL 50 แผ่น';
+  const existingRules = [{ id: 1, keyword: 'EXCARE ADULT WIPES', shortName: 'ผู้ใหญ่' }];
+  const suggestions = assistant.generateKeywordSuggestions({
+    sourceText: source,
+    existingRules,
+    batchItemTexts: [source],
+    safeOnly: true,
+    matchRule: matchSkuRule,
+    matchNormalizer: normalizeMatchText
+  });
+
+  assert.equal(
+    suggestions.some(row => normalizeMatchText(row.value) === normalizeMatchText(existingRules[0].keyword)),
+    false,
+    'existing normalized keyword must be omitted, not downgraded'
+  );
+  assert.ok(suggestions.every(row => row.confidence === 'recommended'));
+});
+
+test('matcher-backed safety rejects a keyword that would newly route a sibling SKU', () => {
+  assert.equal(typeof assistant.assessKeywordSafety, 'function', 'Keyword Assistant must expose matcher-backed safety assessment');
+  const current = 'HOYA BABY PURPLE 5 PACK';
+  const sibling = 'HOYA BABY PINK 5 PACK';
+  const safety = assistant.assessKeywordSafety({
+    candidate: 'HOYA BABY',
+    sourceText: current,
+    existingRules: [],
+    batchItemTexts: [current, sibling],
+    matchRule: matchSkuRule,
+    matchNormalizer: normalizeMatchText
+  });
+
+  assert.equal(safety.safe, false, 'a candidate that changes sibling routing must be rejected');
 });
 
 test('downgrades a short candidate when it appears across distinct sibling products', () => {
