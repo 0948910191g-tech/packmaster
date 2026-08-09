@@ -112,10 +112,12 @@ jobs:
           const rules = await page.evaluate(() => JSON.parse(localStorage.getItem('skuMappingRules') || '[]'));
           assert(rules.some(rule => rule.shortName === 'Ex เมคอัพ1'), 'manual shortName should save through existing rule path');
 
-          // Qty exception remains unresolved and must continue to block printing.
-          await page.getByRole('button', { name: /พิมพ์/ }).last().click();
-          const bodyText = await page.locator('body').innerText();
-          assert(/ยังพิมพ์ไม่ได้|แก้ Exception ให้ครบก่อน/.test(bodyText), 'unrelated Qty exception must still block Print');
+          // Qty exception remains unresolved and must continue to lock Print/Save PDF.
+          const printButtons = page.getByRole('button', { name: /พิมพ์/ });
+          const disabledPrintCount = await printButtons.evaluateAll(nodes => nodes.filter(node => node.disabled).length);
+          assert(disabledPrintCount >= 1, 'unrelated Qty exception must keep at least one Print action disabled');
+          const savePdfButton = page.getByRole('button', { name: 'Save PDF', exact: true });
+          assert(await savePdfButton.isDisabled(), 'unrelated Qty exception must keep Save PDF disabled');
 
           const helperCheck = await page.evaluate(({ siblingA, siblingB }) => {
             const api = window.PackMasterKeywordAssistant;
