@@ -1,0 +1,49 @@
+name: Keyword Assistant Full Verify
+
+on:
+  push:
+    branches:
+      - feature-keyword-assistant
+    paths:
+      - .github/workflows/keyword-assistant-full-verify.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature-keyword-assistant
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run all regression tests
+        run: |
+          set -euo pipefail
+          for f in tests/*.test.mjs; do
+            echo "==> $f"
+            node --test "$f"
+          done
+      - name: Compile JSX
+        run: |
+          set -euo pipefail
+          npm install --no-save --no-package-lock @babel/core @babel/preset-react >/dev/null 2>&1
+          python - <<'PY'
+          from pathlib import Path
+          html = Path('index.html').read_text()
+          start = html.index('<script type="text/babel">') + len('<script type="text/babel">')
+          end = html.index('</script>', start)
+          Path('/tmp/packmaster-app.jsx').write_text(html[start:end])
+          PY
+          ./node_modules/.bin/babel /tmp/packmaster-app.jsx --presets @babel/preset-react --out-file /tmp/packmaster-app.js
+      - name: Verify frozen core and print scope
+        run: |
+          set -euo pipefail
+          test "$(git hash-object packmaster-batch.js)" = '941bddd557803aa27e58bd23372b9f51d6ca1605'
+          grep -Fq 'for (let i = 0; i < MappedOrders.length; i++)' index.html
+          grep -Fq 'MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}' index.html
+          ! grep -Eiq 'fetch\(|XMLHttpRequest|WebSocket|supabase|firebase|sentry|axios' packmaster-keyword-assistant.js
+          grep -Fq 'const DB_VERSION = 1' packmaster-batch.js
