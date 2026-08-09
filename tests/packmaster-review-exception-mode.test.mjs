@@ -11,12 +11,12 @@ assert.match(html, /ReviewDisplayOrders/, 'Review must expose a presentation-onl
 assert.match(html, /\.sort\(\(a, b\) =>/, 'Exception Mode display list must sort by exception priority without mutating MappedOrders');
 assert.match(html, /data-pm-exception-mode/, 'Exception Mode banner/marker must exist');
 assert.match(html, /ออกจากโหมดตรวจปัญหา/, 'Exception Mode must be explicitly dismissible');
-assert.match(html, /data-pm-review-action-bar/, 'Review persistent completion action bar must exist');
-assert.match(html, /\.pm-review-action-wrap \{ position: fixed;/, 'Review action bar must stay visible while scrolling, not only at the end of the page');
-assert.match(html, /\.pm-review-bottom-space \{[^}]*animation: none;/, 'Review workspace must disable transform animation so the fixed action bar remains viewport-fixed');
-assert.match(html, /pm-review-bottom-space/, 'Review workspace must reserve space so the fixed action bar cannot cover the last cards');
-assert.match(html, /แก้ .*รายการ/, 'Persistent Review action must guide unresolved work');
-assert.match(html, /พร้อมพิมพ์/, 'Persistent Review action must expose ready state');
+assert.match(html, /data-pm-review-action-bar/, 'Review completion action bar must exist');
+assert.match(html, /data-pm-review-action-dock/, 'Review completion action must expose a stable dock marker');
+assert.match(html, /\.pm-review-action-wrap \{ position: static;/, 'Review completion action must stay in normal flow and never cover labels');
+assert.doesNotMatch(html, /\.pm-review-action-wrap \{ position: fixed;/, 'Review action dock must not overlay content');
+assert.match(html, /แก้ .*รายการ/, 'Review action must guide unresolved work');
+assert.match(html, /พร้อมพิมพ์/, 'Review action must expose ready state');
 assert.match(html, /<option value="REVIEW_QTY">Qty<\/option>/, 'Qty Exception filter must use the real exception type emitted by packmaster-exceptions.js');
 assert.match(html, /<option value="REVIEW_SKU">SKU<\/option>/, 'SKU Exception filter must use the real exception type emitted by packmaster-exceptions.js');
 
