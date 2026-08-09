@@ -25,6 +25,15 @@ test('Quick Mapping keeps the exact safe seed as source identity and never guess
   assert.match(html, /ไม่มี Keyword ที่ผ่าน Safety Check กับคลังและ Batch ปัจจุบัน/);
 });
 
+test('Quick Mapping auto-selects the first verified suggestion and never defaults to the unsafe source seed', () => {
+  assert.match(html, /const initialKeyword = suggestions\.length > 0 \? suggestions\[0\]\.value : '';/,
+    'Quick Mapping must default to a verified suggestion only');
+  assert.match(html, /setQuickMapState\(\{\s*open:\s*true,\s*row,\s*sourceText:\s*seed,\s*keyword:\s*initialKeyword,\s*shortName:\s*'',\s*suggestions\s*\}\);/s,
+    'the selected Keyword must be the verified initial suggestion');
+  assert.doesNotMatch(html, /setQuickMapState\(\{\s*open:\s*true,\s*row,\s*sourceText:\s*seed,\s*keyword:\s*seed,\s*shortName:\s*'',\s*suggestions\s*\}\);/s,
+    'unsafe source text must not remain the default save candidate');
+});
+
 test('Quick Mapping generates fail-closed suggestions with the actual Smart Matcher', () => {
   assert.match(html, /generateKeywordSuggestions\(/);
   assert.match(html, /existingRules:\s*skuRules/);

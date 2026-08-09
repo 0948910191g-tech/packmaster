@@ -26,7 +26,8 @@ test('SKU/unmapped exception uses only safely resolved identity for inline Quick
   mustInclude("types.some(type => type === 'REVIEW_SKU' || type === 'UNMAPPED')");
   mustInclude('const seed = pilotSafetyApi.getSkuFixSeed(row, getMatchResult);');
   mustInclude('sourceText: seed');
-  mustInclude("setQuickMapState({ open: true, row, sourceText: seed, keyword: seed, shortName: '', suggestions });");
+  mustInclude("const initialKeyword = suggestions.length > 0 ? suggestions[0].value : '';");
+  mustInclude("setQuickMapState({ open: true, row, sourceText: seed, keyword: initialKeyword, shortName: '', suggestions });");
   mustInclude('data-pm-quick-mapping');
   mustInclude('เปิดคลังคำศัพท์');
   mustInclude("setNewRule({ keyword: seed, shortName: String(quickMapState.shortName || '') });");
