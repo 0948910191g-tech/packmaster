@@ -62,23 +62,26 @@ jobs:
               const existingExcare = [{ id: 1, keyword: 'EXCARE ADULT WIPES', shortName: 'adult-existing' }];
               const siblingCurrent = 'HOYA BABY PURPLE 5 PACK';
               const siblingOther = 'HOYA BABY PINK 5 PACK';
+              const thai = api.generateKeywordSuggestions({
+                sourceText: thaiSource,
+                existingRules: [],
+                batchItemTexts: [thaiSource],
+                safeOnly: true,
+                matchRule: matcher.matchSkuRule,
+                matchNormalizer: matcher.normalizeMatchText
+              });
+              const excare = api.generateKeywordSuggestions({
+                sourceText: excareSource,
+                existingRules: existingExcare,
+                batchItemTexts: [excareSource],
+                safeOnly: true,
+                matchRule: matcher.matchSkuRule,
+                matchNormalizer: matcher.normalizeMatchText
+              });
               return {
-                thai: api.generateKeywordSuggestions({
-                  sourceText: thaiSource,
-                  existingRules: [],
-                  batchItemTexts: [thaiSource],
-                  safeOnly: true,
-                  matchRule: matcher.matchSkuRule,
-                  matchNormalizer: matcher.normalizeMatchText
-                }),
-                excare: api.generateKeywordSuggestions({
-                  sourceText: excareSource,
-                  existingRules: existingExcare,
-                  batchItemTexts: [excareSource],
-                  safeOnly: true,
-                  matchRule: matcher.matchSkuRule,
-                  matchNormalizer: matcher.normalizeMatchText
-                }),
+                thai,
+                excare,
+                excareHasExactDuplicate: excare.some(row => matcher.normalizeMatchText(row.value) === matcher.normalizeMatchText('EXCARE ADULT WIPES')),
                 unsafeSibling: api.assessKeywordSafety({
                   candidate: 'HOYA BABY',
                   sourceText: siblingCurrent,
@@ -94,15 +97,14 @@ jobs:
                   batchItemTexts: [siblingCurrent, siblingOther],
                   matchRule: matcher.matchSkuRule,
                   matchNormalizer: matcher.normalizeMatchText
-                }),
-                normalize: matcher.normalizeMatchText
+                })
               };
             }, { matcherSource });
 
             assert.ok(result.thai.length > 0, 'Thai source should retain at least one verified safe identity');
             assert.ok(result.thai.every(row => row.confidence === 'recommended'));
             assert.equal(result.thai.some(row => /\bQTY\b|\bTOTAL\b/i.test(row.value)), false);
-            assert.equal(result.excare.some(row => result.normalize(row.value) === result.normalize('EXCARE ADULT WIPES')), false, 'exact existing keyword must not be suggested');
+            assert.equal(result.excareHasExactDuplicate, false, 'exact existing keyword must not be suggested');
             assert.ok(result.excare.every(row => row.confidence === 'recommended'));
             assert.equal(result.unsafeSibling.safe, false, 'broad sibling-routing candidate must be rejected');
             assert.equal(result.similarButSpecific.safe, true, 'similar but routing-safe specific keyword should remain allowed');
