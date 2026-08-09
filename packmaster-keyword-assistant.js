@@ -200,6 +200,12 @@
     };
   };
 
+  const reasonRank = (row) => {
+    if (row.reason === 'identity-run' || row.reason === 'product-anchor-window') return 3;
+    if (row.reason === 'identity-window') return 2;
+    return 1;
+  };
+
   const generateKeywordSuggestions = (input) => {
     const value = input && typeof input === 'object' ? input : {};
     const sourceText = String(value.sourceText == null ? '' : value.sourceText).trim();
@@ -221,6 +227,8 @@
       .filter(row => !isGenericCandidate(row.value));
 
     evaluated.sort((a, b) => {
+      const byReason = reasonRank(b) - reasonRank(a);
+      if (byReason !== 0) return byReason;
       const byRelevance = (b.relevance || 0) - (a.relevance || 0);
       if (byRelevance !== 0) return byRelevance;
       const confidenceRank = (row) => row.confidence === 'recommended' ? 1 : 0;
