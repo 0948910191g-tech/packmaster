@@ -1,0 +1,193 @@
+name: Verify Layout V4 Branch Temp
+
+on:
+  push:
+    branches:
+      - frontend-layout-cleanup-v4
+    paths:
+      - .github/workflows/verify-layout-v4-branch-temp.yml
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: frontend-layout-cleanup-v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Chromium
+        run: |
+          npm install --no-save --no-package-lock playwright
+          npx playwright install --with-deps chromium
+
+      - name: Exercise all V4 workspaces
+        run: |
+          python3 -m http.server 4173 >/tmp/pm-layout-server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID || true' EXIT
+          for i in $(seq 1 20); do curl -fsS http://127.0.0.1:4173/ >/dev/null && break; sleep 1; done
+
+          cat > verify-layout-v4.mjs <<'JS'
+          import { chromium } from 'playwright';
+
+          const browser = await chromium.launch({ headless: true });
+          const context = await browser.newContext({ viewport: { width: 1536, height: 900 } });
+          const page = await context.newPage();
+          const pageErrors = [];
+          const consoleErrors = [];
+          page.on('pageerror', error => pageErrors.push(String(error)));
+          page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+          const assert = (condition, message) => { if (!condition) throw new Error(message); };
+          const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+          const rect = async locator => locator.boundingBox();
+          const assertNoVerticalOverlap = (a, b, label) => {
+            assert(a && b, `${label}: missing bounding box`);
+            assert(a.y + a.height <= b.y + 1, `${label}: overlap ${JSON.stringify(a)} -> ${JSON.stringify(b)}`);
+          };
+
+          await page.goto('http://127.0.0.1:4173/', { waitUntil: 'networkidle' });
+          await page.locator('[data-pm-shell="v3"]').waitFor({ state: 'visible' });
+          await page.evaluate(async () => {
+            localStorage.removeItem('packmasterSidebarCollapsedV1');
+            localStorage.removeItem('skuMappingRules');
+            const api = window.PackMasterBatch;
+            if (api) for (const batch of await api.listBatches()) await api.deleteBatch(batch.id);
+          });
+          await page.reload({ waitUntil: 'networkidle' });
+
+          // Create a real local Batch through the UI, then seed sanitized synthetic orders through the existing adapter.
+          await page.getByRole('button', { name: 'เริ่มงานแพ็กใหม่', exact: true }).click();
+          await page.locator('[data-pm-view="upload"]').waitFor({ state: 'visible' });
+          const seeded = await page.evaluate(async () => {
+            const api = window.PackMasterBatch;
+            const batches = await api.listBatches();
+            const batch = batches[0];
+            const pixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlF1VQAAAAASUVORK5CYII=';
+            const orders = Array.from({ length: 24 }, (_, i) => ({
+              id: `layout-${i + 1}`,
+              tracking: `LAYOUT${String(i + 1).padStart(4, '0')}`,
+              orderId: `SYNTH-${String(i + 1).padStart(4, '0')}`,
+              platform: i % 4 === 0 ? 'TIKTOK' : 'SHOPEE',
+              pdfImage: pixel,
+              parsedItems: [{ text: `LAYOUT TEST ITEM ${i + 1}`, qty: 1 }],
+              qtyWarning: false
+            }));
+            const meta = api.buildBatchMeta(batch, { total: 24, ready: 0, reviewSku: 0, reviewQty: 0, unmapped: 24 }, { now: new Date() });
+            await api.saveBatch(meta, orders);
+            return { id: meta.id, name: meta.name };
+          });
+          assert(seeded.id, 'Synthetic Batch was not saved');
+
+          // Re-open the saved Batch through the UI so React state uses the real adapter data.
+          await page.getByRole('button', { name: 'งานแพ็ก', exact: true }).click();
+          await page.locator('[data-pm-view="batches"]').waitFor({ state: 'visible' });
+          await page.getByRole('button', { name: 'เปิดงาน', exact: true }).first().click();
+          await page.locator('[data-pm-view="upload"]').waitFor({ state: 'visible' });
+
+          const validateContextFlow = async (view, navName) => {
+            await page.getByRole('button', { name: navName, exact: true }).click();
+            const section = page.locator(`[data-pm-view="${view}"]`);
+            await section.waitFor({ state: 'visible' });
+            await sleep(80);
+            const bar = page.locator('[data-pm-active-batch-bar]');
+            const barRect = await rect(bar);
+            const sectionRect = await rect(section);
+            assertNoVerticalOverlap(barRect, sectionRect, `${view} active batch context`);
+            const position = await bar.evaluate(el => getComputedStyle(el).position);
+            assert(position === 'static', `${view}: Active Batch bar must be static, got ${position}`);
+            const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+            assert(overflow <= 2, `${view}: desktop horizontal overflow ${overflow}px`);
+          };
+
+          // Upload is already open. Validate it before primary-nav views.
+          {
+            const bar = page.locator('[data-pm-active-batch-bar]');
+            const section = page.locator('[data-pm-view="upload"]');
+            assertNoVerticalOverlap(await rect(bar), await rect(section), 'upload active batch context');
+          }
+
+          await validateContextFlow('sku', 'คลังคำศัพท์');
+          const skuGrid = page.locator('[data-pm-sku-layout]');
+          const skuCols = await skuGrid.evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length);
+          assert(skuCols === 2, `SKU desktop layout must be 2 columns, got ${skuCols}`);
+          const skuEditor = skuGrid.locator('> div').first();
+          const skuEditorPosition = await skuEditor.evaluate(el => getComputedStyle(el).position);
+          assert(skuEditorPosition !== 'sticky', `SKU editor must not be sticky, got ${skuEditorPosition}`);
+
+          await validateContextFlow('review', 'รีวิว & พิมพ์');
+          const reviewDock = page.locator('[data-pm-review-action-dock]');
+          await reviewDock.waitFor({ state: 'visible' });
+          const dockPosition = await reviewDock.evaluate(el => getComputedStyle(el).position);
+          assert(dockPosition === 'static', `Review dock must be static, got ${dockPosition}`);
+          const cards = page.locator('.pm-review-grid-card');
+          assert(await cards.count() === 24, `Expected 24 review cards, got ${await cards.count()}`);
+          const lastCard = cards.last();
+          assertNoVerticalOverlap(await rect(lastCard), await rect(reviewDock), 'last review card -> action dock');
+          await lastCard.scrollIntoViewIfNeeded();
+          await sleep(80);
+          const dockAfterScroll = await rect(reviewDock);
+          assert(dockAfterScroll && dockAfterScroll.y >= (await rect(lastCard)).y + (await rect(lastCard)).height - 1, 'Review dock must remain after content, not cover cards');
+
+          // Safety is secondary navigation but must use the same layout flow.
+          await page.getByRole('button', { name: 'เครื่องมือ / ความปลอดภัย', exact: true }).click();
+          await page.locator('[data-pm-view="safety"]').waitFor({ state: 'visible' });
+          assertNoVerticalOverlap(await rect(page.locator('[data-pm-active-batch-bar]')), await rect(page.locator('[data-pm-view="safety"]')), 'safety active batch context');
+
+          // Sidebar collapse must still recover horizontal workspace.
+          await page.getByRole('button', { name: 'รีวิว & พิมพ์', exact: true }).click();
+          const sidebar = page.locator('[data-pm-sidebar]');
+          const main = page.locator('.pm-main');
+          const before = await rect(main);
+          await page.locator('[data-pm-sidebar-toggle]').click();
+          await sleep(220);
+          const after = await rect(main);
+          assert(before && after && after.width > before.width + 120, `Collapsed sidebar did not recover workspace: ${before?.width} -> ${after?.width}`);
+
+          // Mobile: drawer + all pages must not create horizontal overflow.
+          await page.setViewportSize({ width: 390, height: 844 });
+          await page.reload({ waitUntil: 'networkidle' });
+          const mobileMenu = page.locator('[data-pm-mobile-menu]');
+          await mobileMenu.waitFor({ state: 'visible' });
+          for (const nav of [
+            ['งานแพ็ก', 'batches'],
+            ['คลังคำศัพท์', 'sku'],
+            ['รีวิว & พิมพ์', 'review'],
+            ['เครื่องมือ / ความปลอดภัย', 'safety']
+          ]) {
+            await mobileMenu.click();
+            await sleep(100);
+            await page.locator('[data-pm-sidebar]').getByRole('button', { name: nav[0], exact: true }).click();
+            await page.locator(`[data-pm-view="${nav[1]}"]`).waitFor({ state: 'visible' });
+            const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+            assert(overflow <= 2, `${nav[1]} mobile horizontal overflow ${overflow}px`);
+          }
+
+          assert(pageErrors.length === 0, `Page errors: ${pageErrors.join(' | ')}`);
+          const relevantConsoleErrors = consoleErrors.filter(text => !/favicon|ERR_BLOCKED_BY_CLIENT/i.test(text));
+          assert(relevantConsoleErrors.length === 0, `Console errors: ${relevantConsoleErrors.join(' | ')}`);
+
+          await page.evaluate(async () => {
+            localStorage.removeItem('packmasterSidebarCollapsedV1');
+            const api = window.PackMasterBatch;
+            if (api) for (const batch of await api.listBatches()) await api.deleteBatch(batch.id);
+          });
+          await browser.close();
+          console.log('PackMaster Layout V4 Chromium verification passed');
+          JS
+          node verify-layout-v4.mjs
+
+      - name: Verify full regression suite
+        run: |
+          for test in tests/*.test.mjs; do echo "==> $test"; node "$test"; done
+
+      - name: Verify frozen core and full-Batch print scope
+        run: |
+          test "$(git hash-object packmaster-batch.js)" = '941bddd557803aa27e58bd23372b9f51d6ca1605'
+          grep -Fq 'for (let i = 0; i < MappedOrders.length; i++)' index.html
+          grep -Fq 'MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}' index.html
