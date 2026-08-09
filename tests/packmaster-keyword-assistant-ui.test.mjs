@@ -12,8 +12,9 @@ test('loads the local Keyword Assistant helper before the app uses it', () => {
   assert.match(html, /const keywordAssistantApi = window\.PackMasterKeywordAssistant;/);
 });
 
-test('Quick Mapping keeps safe seed/manual shortName behavior and only offers selectable suggestions', () => {
+test('Quick Mapping keeps the exact safe seed as source identity and never guesses shortName', () => {
   assert.match(html, /getSkuFixSeed\(row, getMatchResult\)/, 'safe seed must remain the source for Quick Mapping');
+  assert.match(html, /sourceText:\s*seed/, 'Quick Mapping must preserve the exact unresolved SKU seed for later safety checks');
   assert.match(html, /shortName:\s*''/, 'Quick Mapping shortName must remain blank initially');
   assert.match(html, /Keyword แนะนำที่ผ่าน Safety Check/);
   assert.match(html, /data-pm-keyword-suggestion/);
@@ -34,10 +35,11 @@ test('Quick Mapping generates fail-closed suggestions with the actual Smart Matc
   assert.doesNotMatch(html, /localStorage\.setItem\([^\n]*keywordSuggestions/i);
 });
 
-test('manual Quick Mapping save repeats matcher safety before creating a rule', () => {
+test('manual Quick Mapping save rechecks the same source identity before creating a rule', () => {
   assert.match(html, /handleSaveQuickMapping/);
   assert.match(html, /assessKeywordSafety\(\{/);
   assert.match(html, /candidate:\s*keyword/);
+  assert.match(html, /sourceText:\s*String\(quickMapState\.sourceText\s*\|\|\s*''\)/);
   assert.match(html, /matchRule:\s*matchSkuRule/);
   assert.match(html, /matchNormalizer:\s*normalizeMatchText/);
   assert.match(html, /if\s*\(!safety\.safe\)/);
