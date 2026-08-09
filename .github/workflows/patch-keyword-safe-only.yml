@@ -10,19 +10,22 @@ permissions:
 
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: fix-keyword-assistant-safe-only
-      - name: Patch Quick Mapping safety integration
+      - name: Patch Quick Mapping safety integration once
         run: |
           python3 <<'PY'
           from pathlib import Path
 
           path = Path('index.html')
           text = path.read_text()
+
+          if 'safeOnly: true' in text and 'Keyword แนะนำที่ผ่าน Safety Check' in text:
+              print('Quick Mapping safety integration already present')
+              raise SystemExit(0)
 
           def replace_once(old, new, label):
               global text
@@ -37,6 +40,12 @@ jobs:
               'safe-only generation'
           )
 
+          replace_once(
+              """        setQuickMapState({ open: true, row, keyword: seed, shortName: '', suggestions });""",
+              """        setQuickMapState({ open: true, row, sourceText: seed, keyword: seed, shortName: '', suggestions });""",
+              'preserve source identity'
+          )
+
           old_save = """        const saved = saveSkuRule({ keyword, shortName }, { successMessage: 'บันทึกชื่อภายในแล้ว — Review จะอัปเดตจากกฎเดียวกับคลังคำศัพท์' });"""
           safety_block = """        const batchItemTexts = orders.flatMap(order => (Array.isArray(order && order.parsedItems) ? order.parsedItems : []))
           .map(item => String(item && item.text || '').trim())
@@ -44,7 +53,7 @@ jobs:
         const safety = keywordAssistantApi && typeof keywordAssistantApi.assessKeywordSafety === 'function'
           ? keywordAssistantApi.assessKeywordSafety({
               candidate: keyword,
-              sourceText: String(quickMapState.row?.order?.parsedItems?.find(item => String(item && item.text || '').trim())?.text || keyword),
+              sourceText: String(quickMapState.sourceText || ''),
               existingRules: skuRules,
               batchItemTexts,
               matchRule: matchSkuRule,
@@ -85,7 +94,7 @@ jobs:
               """                              {suggestion.confidence === 'recommended' ? <span className=\"shrink-0 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[9px] font-black text-emerald-700\">แนะนำ</span> : <span className=\"shrink-0 rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[9px] font-black text-amber-700\">ตรวจเพิ่ม</span>}
                             </div>
                             {suggestion.confidence !== 'recommended' && <div className=\"mt-1 text-[10px] font-semibold text-amber-700\">คำนี้อาจซ้ำกับสินค้า/กฎอื่น กรุณาตรวจชื่อสินค้าก่อนเลือก</div>}""",
-              """                              <span className=\"shrink-0 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[9px] font-black text-emerald-700\">ปลอดภัย</span>
+              """                              {suggestion.confidence === 'recommended' && <span className=\"shrink-0 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[9px] font-black text-emerald-700\">ปลอดภัย</span>}
                             </div>
                             <div className=\"mt-1 text-[10px] font-semibold text-emerald-700\">ผ่าน Smart Matcher กับคลังและ Batch ปัจจุบัน</div>""",
               'safe badge'
@@ -105,10 +114,14 @@ jobs:
           node --test tests/packmaster-keyword-assistant.test.mjs
           node --test tests/packmaster-keyword-assistant-ui.test.mjs
           git diff --check
-      - name: Commit patch
+      - name: Commit patch when needed
         run: |
+          if git diff --quiet -- index.html; then
+            echo "No index patch to commit"
+            exit 0
+          fi
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add index.html
-          git commit -m "Integrate fail-closed Keyword safety" || exit 0
+          git commit -m "Integrate fail-closed Keyword safety"
           git push origin HEAD:fix-keyword-assistant-safe-only
