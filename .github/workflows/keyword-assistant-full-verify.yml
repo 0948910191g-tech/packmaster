@@ -47,3 +47,5 @@ jobs:
           grep -Fq 'MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}' index.html
           ! grep -Eiq 'fetch\(|XMLHttpRequest|WebSocket|supabase|firebase|sentry|axios' packmaster-keyword-assistant.js
           grep -Fq 'const DB_VERSION = 1' packmaster-batch.js
+      - name: Verification checkpoint
+        run: echo 'Keyword Assistant full regression, JSX and frozen-core checks complete'
