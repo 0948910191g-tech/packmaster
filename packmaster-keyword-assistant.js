@@ -22,7 +22,8 @@
 
   const METADATA_TOKENS = new Set([
     'NICKNAME', 'ID', 'ORDER', 'ORDERID', 'ORDERNO', 'ORDER-NO', 'TRACKING', 'TRACKINGNO', 'TRACKING-NO',
-    'RECEIVER', 'RECIPIENT', 'CUSTOMER', 'USER', 'UID', 'ADDRESS', 'PHONE', 'TEL', 'COD', 'PICK-UP', 'PICKUP'
+    'RECEIVER', 'RECIPIENT', 'CUSTOMER', 'USER', 'UID', 'ADDRESS', 'PHONE', 'TEL', 'COD', 'PICK-UP', 'PICKUP',
+    'QTY', 'QTYTOTAL', 'TOTALQTY', 'QUANTITY', 'TOTAL', 'จำนวน', 'จำนวนรวม', 'รวมจำนวน'
   ]);
 
   const normalizeKeywordText = (value) => String(value == null ? '' : value)
@@ -102,7 +103,6 @@
     const pool = new Map();
     if (tokens.length === 0) return [];
 
-    // Strong Latin / alphanumeric runs are useful, but metadata-like runs are rejected at add time.
     let cursor = 0;
     while (cursor < tokens.length) {
       if (!isStrongToken(tokens[cursor])) {
@@ -131,14 +131,12 @@
       cursor = end;
     }
 
-    // Thai brand anchors produce compact, readable product phrases. They remain review-only later.
     tokens.forEach((token, index) => {
       if (!isBrandAnchor(token) || /[A-Z]/.test(token)) return;
       if (index + 3 <= tokens.length) addPoolCandidate(pool, tokens, index, index + 3, 'product-anchor-window', 86);
       if (index + 2 <= tokens.length) addPoolCandidate(pool, tokens, index, index + 2, 'product-anchor-window', 82);
     });
 
-    // Conservative mixed/Thai windows. If a Thai brand exists, keep fallback windows attached to that brand.
     const hasThaiBrandAnchor = tokens.some(token => isBrandAnchor(token) && !/[A-Z]/.test(token));
     const maxThaiWindow = Math.min(3, tokens.length);
     for (let size = maxThaiWindow; size >= 2; size -= 1) {
@@ -200,6 +198,99 @@
     };
   };
 
+  const getMatchStatus = (result) => String(result && result.status || 'unmatched');
+  const getRuleIdentity = (rule, normalizer) => {
+    if (!rule) return '';
+    return [
+      String(rule.id == null ? '' : rule.id),
+      normalizer(rule.keyword || ''),
+      normalizer(rule.shortName || '')
+    ].join('::');
+  };
+
+  const assessKeywordSafety = (input) => {
+    const value = input && typeof input === 'object' ? input : {};
+    const candidate = String(value.candidate == null ? '' : value.candidate).trim();
+    const sourceText = String(value.sourceText == null ? '' : value.sourceText).trim();
+    const existingRules = Array.isArray(value.existingRules) ? value.existingRules : [];
+    const batchItemTexts = Array.isArray(value.batchItemTexts) ? value.batchItemTexts : [];
+    const matchRule = value.matchRule;
+    const matchNormalizer = typeof value.matchNormalizer === 'function' ? value.matchNormalizer : normalizeKeywordText;
+
+    if (!candidate || !sourceText) return { safe: false, reason: 'empty' };
+    if (typeof matchRule !== 'function') return { safe: false, reason: 'matcher-unavailable' };
+    if (isGenericCandidate(candidate) || hasMetadataNoise(tokenize(candidate))) {
+      return { safe: false, reason: 'metadata-or-generic' };
+    }
+
+    const candidateNormalized = matchNormalizer(candidate);
+    const sourceNormalized = matchNormalizer(sourceText);
+    if (!candidateNormalized || !sourceNormalized || !sourceNormalized.includes(candidateNormalized)) {
+      return { safe: false, reason: 'not-source-identity' };
+    }
+
+    const duplicateKeywordRule = existingRules.find(rule =>
+      matchNormalizer(rule && rule.keyword || '') === candidateNormalized
+    );
+    if (duplicateKeywordRule) {
+      return { safe: false, reason: 'duplicate-keyword', rule: duplicateKeywordRule };
+    }
+
+    const candidateRule = {
+      id: '__PACKMASTER_KEYWORD_SAFETY_CANDIDATE__',
+      keyword: candidate,
+      shortName: '__PACKMASTER_KEYWORD_SAFETY_CANDIDATE__'
+    };
+    const candidateIdentity = getRuleIdentity(candidateRule, matchNormalizer);
+    const rulesWithCandidate = [...existingRules, candidateRule];
+
+    const isCandidateResult = (result) =>
+      getRuleIdentity(result && result.rule, matchNormalizer) === candidateIdentity;
+
+    try {
+      const sourceResult = matchRule(sourceText, rulesWithCandidate) || {};
+      if (getMatchStatus(sourceResult) !== 'matched' || !isCandidateResult(sourceResult)) {
+        return { safe: false, reason: 'source-not-unique' };
+      }
+
+      const probeMap = new Map();
+      existingRules.forEach(rule => {
+        const text = String(rule && rule.keyword || '').trim();
+        const normalized = matchNormalizer(text);
+        if (text && normalized && normalized !== sourceNormalized) probeMap.set(normalized, text);
+      });
+      batchItemTexts.forEach(textValue => {
+        const text = String(textValue || '').trim();
+        const normalized = matchNormalizer(text);
+        if (text && normalized && normalized !== sourceNormalized) probeMap.set(normalized, text);
+      });
+
+      for (const probeText of probeMap.values()) {
+        const before = matchRule(probeText, existingRules) || {};
+        const after = matchRule(probeText, rulesWithCandidate) || {};
+        const beforeStatus = getMatchStatus(before);
+        const afterStatus = getMatchStatus(after);
+        const beforeRule = getRuleIdentity(before.rule, matchNormalizer);
+        const afterRule = getRuleIdentity(after.rule, matchNormalizer);
+
+        if (beforeStatus !== afterStatus || beforeRule !== afterRule) {
+          return { safe: false, reason: 'routing-change', probe: probeText };
+        }
+
+        if (beforeStatus !== 'matched') {
+          const candidateOnly = matchRule(probeText, [candidateRule]) || {};
+          if (getMatchStatus(candidateOnly) === 'matched' && isCandidateResult(candidateOnly)) {
+            return { safe: false, reason: 'cross-match', probe: probeText };
+          }
+        }
+      }
+    } catch (error) {
+      return { safe: false, reason: 'matcher-error' };
+    }
+
+    return { safe: true, reason: 'verified-current-context' };
+  };
+
   const reasonRank = (row) => {
     if (row.reason === 'identity-run' || row.reason === 'product-anchor-window') return 3;
     if (row.reason === 'identity-window') return 2;
@@ -216,7 +307,7 @@
 
     const maxSuggestions = Math.max(1, Math.min(3, parseInt(value.maxSuggestions, 10) || 3));
     const pool = buildCandidatePool(sourceText);
-    const evaluated = pool
+    let evaluated = pool
       .map(candidate => evaluateCandidate(
         candidate,
         sourceNormalized,
@@ -225,6 +316,23 @@
       ))
       .filter(Boolean)
       .filter(row => !isGenericCandidate(row.value));
+
+    if (value.safeOnly) {
+      evaluated = evaluated
+        .map(row => {
+          const safety = assessKeywordSafety({
+            candidate: row.value,
+            sourceText,
+            existingRules: value.existingRules,
+            batchItemTexts: value.batchItemTexts,
+            matchRule: value.matchRule,
+            matchNormalizer: value.matchNormalizer
+          });
+          if (!safety.safe) return null;
+          return { ...row, confidence: 'recommended', safety: safety.reason };
+        })
+        .filter(Boolean);
+    }
 
     evaluated.sort((a, b) => {
       const byReason = reasonRank(b) - reasonRank(a);
@@ -251,7 +359,8 @@
         value: row.value,
         confidence: row.confidence,
         reason: row.reason,
-        collisions: row.collisions
+        collisions: row.collisions,
+        safety: row.safety || null
       });
       if (output.length >= maxSuggestions) break;
     }
@@ -261,6 +370,7 @@
   return {
     normalizeKeywordText,
     isGenericCandidate,
+    assessKeywordSafety,
     generateKeywordSuggestions
   };
 });
