@@ -1627,7 +1627,8 @@
             suggestions = [];
           }
         }
-        setQuickMapState({ open: true, row, sourceText: seed, keyword: seed, shortName: '', suggestions });
+        const initialKeyword = suggestions.length > 0 ? suggestions[0].value : '';
+        setQuickMapState({ open: true, row, sourceText: seed, keyword: initialKeyword, shortName: '', suggestions });
       };
 
       const handleSaveQuickMapping = () => {
