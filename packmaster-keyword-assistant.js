@@ -10,6 +10,21 @@
     'สูตร', 'กลิ่น', 'ห่อ', 'แผ่น', 'ชิ้น', 'ลัง', 'สินค้า', 'ทิชชู่', 'ทิชชู่เปียก'
   ]);
 
+  const BRAND_ANCHORS = new Set([
+    'HOYA', 'HAKU', 'EXCARE', 'NONO', 'SOULSI',
+    'โฮย่า', 'ฮากุ', 'เอ็กซ์แคร์', 'นอนโน่', 'โซลซี่'
+  ]);
+
+  const PRODUCT_IDENTITY_TOKENS = new Set([
+    'BABY', 'ADULT', 'MAKEUP', 'REMOVER', 'WIPES', 'WIPE', 'XXL', 'COOLING', 'MENTHOL', 'JASMINE',
+    'เบบี้', 'ผู้ใหญ่', 'เมคอัพ', 'รีมูฟเวอร์', 'เครื่องสำอาง', 'คูลลิ่ง', 'เย็น', 'น้ำแร่'
+  ]);
+
+  const METADATA_TOKENS = new Set([
+    'NICKNAME', 'ID', 'ORDER', 'ORDERID', 'ORDERNO', 'ORDER-NO', 'TRACKING', 'TRACKINGNO', 'TRACKING-NO',
+    'RECEIVER', 'RECIPIENT', 'CUSTOMER', 'USER', 'UID', 'ADDRESS', 'PHONE', 'TEL', 'COD', 'PICK-UP', 'PICKUP'
+  ]);
+
   const normalizeKeywordText = (value) => String(value == null ? '' : value)
     .replace(/[\u200B-\u200F\uFEFF\u00A0]/g, ' ')
     .replace(/[“”"'`]/g, ' ')
@@ -28,12 +43,24 @@
   const isLatinIdentityToken = (token) => /[A-Z]/i.test(token) && /[A-Z0-9%]/i.test(token) && token.length >= 2;
   const isModelOrVariantToken = (token) => /\d/.test(token) || token.includes('%') || isBundleToken(token);
   const isStrongToken = (token) => isLatinIdentityToken(token) || isBundleToken(token);
+  const isBrandAnchor = (token) => BRAND_ANCHORS.has(normalizeKeywordText(token));
+  const isThaiProductIdentityToken = (token) => {
+    const normalized = normalizeKeywordText(token);
+    return PRODUCT_IDENTITY_TOKENS.has(normalized) || normalized.startsWith('สูตร');
+  };
+  const hasLongIdentifier = (token) => /\d{8,}/.test(String(token || ''));
+  const isMetadataToken = (token) => {
+    const normalized = normalizeKeywordText(token);
+    return METADATA_TOKENS.has(normalized) || normalized.startsWith('NICKNAME') || hasLongIdentifier(normalized);
+  };
+  const hasMetadataNoise = (tokens) => (Array.isArray(tokens) ? tokens : []).some(isMetadataToken);
 
   const isGenericCandidate = (value) => {
     const normalized = normalizeKeywordText(value);
     if (!normalized) return true;
     const tokens = tokenize(normalized);
     if (tokens.length === 0) return true;
+    if (hasMetadataNoise(tokens)) return true;
     if (tokens.length === 1) {
       const token = tokens[0];
       if (GENERIC_SINGLE_TOKENS.has(token)) return true;
@@ -42,10 +69,20 @@
     return false;
   };
 
+  const getProductRelevance = (tokens) => {
+    const values = Array.isArray(tokens) ? tokens : [];
+    let score = 0;
+    if (values.some(isBrandAnchor)) score += 60;
+    if (values.some(token => PRODUCT_IDENTITY_TOKENS.has(normalizeKeywordText(token)) || isThaiProductIdentityToken(token))) score += 30;
+    if (values.some(isModelOrVariantToken)) score += 12;
+    if (values.some(token => normalizeKeywordText(token) === 'ทิชชู่เปียก')) score += 12;
+    return score;
+  };
+
   const addPoolCandidate = (pool, tokens, start, end, reason, baseScore) => {
     if (start < 0 || end > tokens.length || start >= end) return;
     const windowTokens = tokens.slice(start, end);
-    if (windowTokens.length === 0) return;
+    if (windowTokens.length === 0 || hasMetadataNoise(windowTokens)) return;
     const value = windowTokens.join(' ').trim();
     const normalized = normalizeKeywordText(value);
     if (!normalized || isGenericCandidate(value)) return;
@@ -53,9 +90,10 @@
 
     const existing = pool.get(normalized);
     const modelBonus = windowTokens.some(isModelOrVariantToken) ? 10 : 0;
-    const score = baseScore + (windowTokens.length * 8) + modelBonus;
+    const relevance = getProductRelevance(windowTokens);
+    const score = baseScore + (windowTokens.length * 8) + modelBonus + relevance;
     if (!existing || score > existing.score) {
-      pool.set(normalized, { value, normalized, reason, score });
+      pool.set(normalized, { value, normalized, reason, score, relevance });
     }
   };
 
@@ -64,7 +102,7 @@
     const pool = new Map();
     if (tokens.length === 0) return [];
 
-    // Strong Latin / alphanumeric runs are the safest source of compact exact-match keywords.
+    // Strong Latin / alphanumeric runs are useful, but metadata-like runs are rejected at add time.
     let cursor = 0;
     while (cursor < tokens.length) {
       if (!isStrongToken(tokens[cursor])) {
@@ -83,25 +121,33 @@
           }
         }
 
-        // Include one immediate non-generic neighbor when it adds product identity.
         if (end < tokens.length && !GENERIC_SINGLE_TOKENS.has(tokens[end]) && !/^\d+$/.test(tokens[end])) {
           addPoolCandidate(pool, tokens, cursor, Math.min(tokens.length, end + 1), 'identity-window', 64);
         }
       } else {
-        // A single strong token needs local context; never suggest a lone generic brand.
         if (cursor > 0) addPoolCandidate(pool, tokens, cursor - 1, cursor + 1, 'identity-window', 48);
         if (cursor + 1 < tokens.length) addPoolCandidate(pool, tokens, cursor, cursor + 2, 'identity-window', 50);
       }
       cursor = end;
     }
 
-    // Conservative mixed/Thai windows. These remain review-only even when no current collision exists.
-    const maxThaiWindow = Math.min(4, tokens.length);
+    // Thai brand anchors produce compact, readable product phrases. They remain review-only later.
+    tokens.forEach((token, index) => {
+      if (!isBrandAnchor(token) || /[A-Z]/.test(token)) return;
+      if (index + 3 <= tokens.length) addPoolCandidate(pool, tokens, index, index + 3, 'product-anchor-window', 86);
+      if (index + 2 <= tokens.length) addPoolCandidate(pool, tokens, index, index + 2, 'product-anchor-window', 82);
+    });
+
+    // Conservative mixed/Thai windows. If a Thai brand exists, keep fallback windows attached to that brand.
+    const hasThaiBrandAnchor = tokens.some(token => isBrandAnchor(token) && !/[A-Z]/.test(token));
+    const maxThaiWindow = Math.min(3, tokens.length);
     for (let size = maxThaiWindow; size >= 2; size -= 1) {
       for (let start = 0; start + size <= tokens.length; start += 1) {
         const windowTokens = tokens.slice(start, start + size);
+        if (hasMetadataNoise(windowTokens)) continue;
+        if (hasThaiBrandAnchor && !windowTokens.some(isBrandAnchor)) continue;
         const hasUsefulToken = windowTokens.some(token =>
-          isStrongToken(token) || isModelOrVariantToken(token) || (token.length >= 5 && !GENERIC_SINGLE_TOKENS.has(token))
+          isStrongToken(token) || isModelOrVariantToken(token) || isThaiProductIdentityToken(token) || isBrandAnchor(token)
         );
         if (!hasUsefulToken) continue;
         addPoolCandidate(pool, tokens, start, start + size, 'mixed-window', 28);
@@ -119,6 +165,7 @@
 
   const evaluateCandidate = (candidate, sourceNormalized, existingRules, batchItemTexts) => {
     if (!sourceNormalized.includes(candidate.normalized)) return null;
+    if (isGenericCandidate(candidate.value) || hasMetadataNoise(tokenize(candidate.value))) return null;
 
     const normalizedBatchTexts = uniqueNormalizedTexts(batchItemTexts);
     const matchingBatchTexts = normalizedBatchTexts.filter(text => text.includes(candidate.normalized));
@@ -148,8 +195,15 @@
       confidence,
       reason: candidate.reason,
       collisions,
+      relevance: candidate.relevance || 0,
       _score: adjustedScore
     };
+  };
+
+  const reasonRank = (row) => {
+    if (row.reason === 'identity-run' || row.reason === 'product-anchor-window') return 3;
+    if (row.reason === 'identity-window') return 2;
+    return 1;
   };
 
   const generateKeywordSuggestions = (input) => {
@@ -173,6 +227,10 @@
       .filter(row => !isGenericCandidate(row.value));
 
     evaluated.sort((a, b) => {
+      const byReason = reasonRank(b) - reasonRank(a);
+      if (byReason !== 0) return byReason;
+      const byRelevance = (b.relevance || 0) - (a.relevance || 0);
+      if (byRelevance !== 0) return byRelevance;
       const confidenceRank = (row) => row.confidence === 'recommended' ? 1 : 0;
       const byConfidence = confidenceRank(b) - confidenceRank(a);
       if (byConfidence !== 0) return byConfidence;

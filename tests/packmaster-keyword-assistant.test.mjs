@@ -62,6 +62,46 @@ test('keeps mixed or Thai fallback windows review-only even without current coll
   assert.ok(suggestions.every(row => row.confidence === 'review'), 'mixed fallback must never receive the recommended badge');
 });
 
+test('never suggests nickname, order metadata or long identifier fragments from contaminated item text', () => {
+  const source = '(ยกลัง36ห่อ) ใหม่ ทิชชู่เปียก ฮากุ เบบี้ สูตรน้ำแร่ อ่อนโยน ผิวบอบบางชุ่มชื้น 40 แผ่น/ห่อ ID 123456789012345678 NICKNAME ลูกค้าทดสอบ';
+  const suggestions = assistant.generateKeywordSuggestions({
+    sourceText: source,
+    existingRules: [],
+    batchItemTexts: [source]
+  });
+
+  assert.ok(suggestions.length > 0, 'product-aligned suggestions should remain available');
+  assert.equal(suggestions.some(row => /NICKNAME|\bID\b/i.test(row.value)), false, 'metadata labels must never be suggested');
+  assert.equal(suggestions.some(row => /\d{8,}/.test(row.value)), false, 'long identifiers must never be suggested');
+  assert.ok(
+    suggestions.some(row => /ฮากุ|ทิชชู่เปียก|สูตรน้ำแร่/.test(row.value)),
+    'at least one suggestion should stay aligned with the product text'
+  );
+});
+
+test('keeps EXCARE Adult product identity ahead of unrelated nickname metadata even when broad rules exist', () => {
+  const source = '1 ห่อ ทิชชู่เปียกสำหรับผู้ใหญ่ EXCARE ADULT Wipes XXL 50 แผ่นใหญ่ ผิวบอบบาง ID 987654321098765432 NICKNAME TESTUSER';
+  const suggestions = assistant.generateKeywordSuggestions({
+    sourceText: source,
+    existingRules: [{ id: 1, keyword: 'EXCARE', shortName: 'existing broad rule' }],
+    batchItemTexts: [source]
+  });
+
+  assert.ok(suggestions.length > 0);
+  assert.match(suggestions[0].value, /EXCARE|ADULT|XXL/i, 'top suggestion should describe the product, not customer metadata');
+  assert.equal(suggestions.some(row => /NICKNAME|TESTUSER|\bID\b/i.test(row.value)), false);
+  assert.equal(suggestions.some(row => /\d{8,}/.test(row.value)), false);
+});
+
+test('prefers a compact Thai product-anchor phrase over generic adjective windows', () => {
+  const source = 'ยกลัง 36 ห่อ ใหม่ ทิชชู่เปียก ฮากุ เบบี้ สูตรน้ำแร่ อ่อนโยน ผิวบอบบาง 40 แผ่น';
+  const suggestions = assistant.generateKeywordSuggestions({ sourceText: source, batchItemTexts: [source] });
+
+  assert.ok(suggestions.length > 0);
+  assert.equal(suggestions[0].value, 'ฮากุ เบบี้ สูตรน้ำแร่');
+  assert.equal(suggestions[0].confidence, 'review', 'Thai heuristic remains human-review only');
+});
+
 test('downgrades a short candidate when it appears across distinct sibling products', () => {
   const current = 'HOYA BABY PURPLE 5 PACK';
   const sibling = 'HOYA BABY PINK 5 PACK';
