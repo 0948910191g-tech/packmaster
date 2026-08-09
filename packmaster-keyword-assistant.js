@@ -95,7 +95,7 @@
       cursor = end;
     }
 
-    // Conservative mixed/Thai windows. These rank below strong identity runs and must pass collision checks.
+    // Conservative mixed/Thai windows. These remain review-only even when no current collision exists.
     const maxThaiWindow = Math.min(4, tokens.length);
     for (let size = maxThaiWindow; size >= 2; size -= 1) {
       for (let start = 0; start + size <= tokens.length; start += 1) {
@@ -139,7 +139,8 @@
 
     const collisions = sourceBatchCollisions + ruleCollisions;
     const tokenCount = tokenize(candidate.value).length;
-    const confidence = collisions === 0 && tokenCount >= 2 ? 'recommended' : 'review';
+    const strongReason = candidate.reason === 'identity-run' || candidate.reason === 'identity-window';
+    const confidence = collisions === 0 && tokenCount >= 2 && strongReason ? 'recommended' : 'review';
     const adjustedScore = candidate.score - (sourceBatchCollisions * 25) - (ruleCollisions * 18);
 
     return {
