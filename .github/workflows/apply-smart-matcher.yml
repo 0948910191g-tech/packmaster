@@ -99,6 +99,9 @@ jobs:
       - name: Collapsible sidebar UI guard
         run: node tests/packmaster-collapsible-sidebar.test.mjs
 
+      - name: Layout V4 no-overlap guard
+        run: node tests/packmaster-layout-v4.test.mjs
+
       - name: Production smoke workflow regression guard
         run: node tests/packmaster-production-smoke-workflow.test.mjs
 
