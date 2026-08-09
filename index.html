@@ -60,16 +60,27 @@
       --pm-border: #dfe7f1;
       --pm-text: #172033;
       --pm-muted: #708096;
+      --pm-header-h: 82px;
+      --pm-header-h-mobile: 68px;
+      --pm-page-pad-x: 24px;
+      --pm-page-pad-y: 20px;
+      --pm-section-gap: 16px;
+      --pm-card-gap: 14px;
+      --pm-control-h: 40px;
+      --pm-content-max: 1240px;
+      --pm-content-wide: 1520px;
+      --pm-z-header: 80;
+      --pm-z-sidebar: 60;
     }
     .pm-shell { min-height: 100vh; background: var(--pm-canvas); color: var(--pm-text); }
-    .pm-command-header { height: 82px; background: linear-gradient(135deg, #061a34 0%, #08274c 60%, #071f3d 100%); border-bottom: 1px solid rgba(255,255,255,.08); display: flex; align-items: center; gap: 18px; padding: 0 22px; position: sticky; top: 0; z-index: 50; box-shadow: 0 8px 28px rgba(7,31,61,.16); }
+    .pm-command-header { height: var(--pm-header-h); background: linear-gradient(135deg, #061a34 0%, #08274c 60%, #071f3d 100%); border-bottom: 1px solid rgba(255,255,255,.08); display: flex; align-items: center; gap: 18px; padding: 0 22px; position: sticky; top: 0; z-index: var(--pm-z-header); box-shadow: 0 8px 28px rgba(7,31,61,.16); }
     .pm-brand-wrap { display: flex; align-items: center; gap: 13px; min-width: 350px; }
     .pm-logo-mark { width: 46px; height: 46px; border-radius: 13px; display: flex; align-items: center; justify-content: center; color: white; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16); }
     .pm-command-btn { height: 44px; padding: 0 13px; border-radius: 11px; border: 1px solid rgba(191,219,254,.22); background: rgba(255,255,255,.055); color: #e8f2ff; display: inline-flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 800; white-space: nowrap; transition: .18s ease; }
     .pm-command-btn:hover { background: rgba(255,255,255,.11); border-color: rgba(191,219,254,.36); transform: translateY(-1px); }
     .pm-command-safe { margin-left: 8px; border-color: rgba(110,231,183,.22); color: #d1fae5; }
-    .pm-app-frame { min-height: calc(100vh - 82px); display: flex; }
-    .pm-sidebar { width: 205px; flex: 0 0 205px; background: #082548; border-right: 1px solid rgba(255,255,255,.06); display: flex; flex-direction: column; min-height: calc(100vh - 82px); position: sticky; top: 82px; align-self: flex-start; height: calc(100vh - 82px); transition: width .18s ease, flex-basis .18s ease, transform .18s ease; z-index: 40; }
+    .pm-app-frame { min-height: calc(100vh - var(--pm-header-h)); display: flex; }
+    .pm-sidebar { width: 205px; flex: 0 0 205px; background: #082548; border-right: 1px solid rgba(255,255,255,.06); display: flex; flex-direction: column; min-height: calc(100vh - var(--pm-header-h)); position: sticky; top: var(--pm-header-h); align-self: flex-start; height: calc(100vh - var(--pm-header-h)); transition: width .18s ease, flex-basis .18s ease, transform .18s ease; z-index: 40; }
     .pm-nav-btn { width: 100%; min-height: 44px; border-radius: 10px; padding: 0 12px; color: rgba(219,234,254,.65); display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 800; text-align: left; transition: .18s ease; border: 1px solid transparent; }
     .pm-nav-btn:hover { color: white; background: rgba(255,255,255,.06); }
     .pm-nav-btn-active { color: white; background: #0b63ce; border-color: rgba(147,197,253,.28); box-shadow: 0 8px 18px rgba(0,0,0,.15); }
@@ -84,15 +95,17 @@
     .pm-sidebar-backdrop { display: none; }
     .pm-mobile-menu { display: none; width: 38px; height: 38px; border-radius: 10px; align-items: center; justify-content: center; color: white; border: 1px solid rgba(191,219,254,.18); background: rgba(255,255,255,.06); font-size: 20px; font-weight: 900; flex: 0 0 auto; }
     .pm-main { flex: 1; min-width: 0; background: var(--pm-canvas); overflow-x: hidden; transition: width .18s ease; }
-    .pm-page { max-width: 1240px; margin: 0 auto; padding: 24px 26px 44px; animation: pmFade .22s ease; }
-    .pm-page-wide { max-width: 1520px; }
-    @keyframes pmFade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-    .pm-page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-bottom: 18px; }
+    .pm-page { max-width: var(--pm-content-max); margin: 0 auto; padding: var(--pm-page-pad-y) var(--pm-page-pad-x) 48px; animation: pmFade .18s ease; }
+    .pm-page-wide { max-width: var(--pm-content-wide); }
+    @keyframes pmFade { from { opacity: 0; } to { opacity: 1; } }
+    .pm-page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--pm-section-gap); margin-bottom: var(--pm-section-gap); }
+    .pm-page-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+    .pm-section-stack { display: flex; flex-direction: column; gap: var(--pm-section-gap); }
     .pm-eyebrow, .pm-section-kicker { color: var(--pm-blue); font-size: 9px; line-height: 1.2; text-transform: uppercase; letter-spacing: .16em; font-weight: 900; }
     .pm-page-title { color: #14213a; font-size: clamp(24px, 2.2vw, 32px); line-height: 1.1; font-weight: 900; letter-spacing: -.025em; margin-top: 5px; }
     .pm-page-subtitle { color: #718096; font-size: 12px; line-height: 1.65; font-weight: 600; margin-top: 6px; max-width: 760px; }
     .pm-card { background: white; border: 1px solid var(--pm-border); border-radius: 16px; box-shadow: 0 5px 16px rgba(26,54,93,.045); }
-    .pm-primary-btn, .pm-secondary-btn, .pm-ghost-btn, .pm-danger-btn, .pm-success-btn, .pm-warning-btn { min-height: 38px; padding: 0 14px; border-radius: 10px; display: inline-flex; align-items: center; gap: 7px; justify-content: center; font-size: 11px; font-weight: 900; transition: .16s ease; white-space: nowrap; }
+    .pm-primary-btn, .pm-secondary-btn, .pm-ghost-btn, .pm-danger-btn, .pm-success-btn, .pm-warning-btn { min-height: var(--pm-control-h); padding: 0 14px; border-radius: 10px; display: inline-flex; align-items: center; gap: 7px; justify-content: center; font-size: 11px; font-weight: 900; transition: .16s ease; white-space: nowrap; }
     .pm-primary-btn { background: var(--pm-blue); color: white; border: 1px solid var(--pm-blue); box-shadow: 0 5px 12px rgba(11,99,206,.18); }
     .pm-primary-btn:hover:not(:disabled) { background: #0958b7; transform: translateY(-1px); }
     .pm-secondary-btn { background: white; color: #225487; border: 1px solid #cfdbea; }
@@ -151,17 +164,20 @@
     .pm-review-grid-stage { background: linear-gradient(180deg, #f8fafc 0%, #eef4fa 100%); border-top: 1px solid #edf1f6; border-bottom: 1px solid #edf1f6; padding: 10px; display: flex; align-items: flex-start; justify-content: center; overflow: auto; }
     .pm-review-grid-details { padding: 12px; background: #fff; }
     .pm-review-grid-output { min-height: 36px; }
-    .pm-active-batch-bar { position: sticky; top: 82px; z-index: 42; margin: 0; border-bottom: 1px solid #d9e5f2; background: rgba(255,255,255,.97); backdrop-filter: blur(12px); box-shadow: 0 5px 16px rgba(26,54,93,.06); padding: 9px 18px; }
+    .pm-sku-layout { display: grid; grid-template-columns: minmax(320px, 360px) minmax(0, 1fr); gap: var(--pm-section-gap); align-items: start; }
+    .pm-sku-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .pm-active-batch-bar { position: static; margin: 0; border-bottom: 1px solid #d9e5f2; background: #ffffff; box-shadow: 0 2px 8px rgba(26,54,93,.035); padding: 10px var(--pm-page-pad-x); }
     .pm-active-batch-inner { max-width: 1520px; margin: 0 auto; display: flex; align-items: center; gap: 12px; }
     .pm-active-batch-progress { width: 110px; height: 6px; border-radius: 999px; background: #e7edf5; overflow: hidden; }
     .pm-active-batch-progress > span { display: block; height: 100%; border-radius: inherit; background: #10b981; }
     .pm-exception-mode-banner { border: 1px solid #f3d49a; background: #fff9ed; border-radius: 13px; padding: 11px 13px; display: flex; align-items: center; gap: 10px; }
-    .pm-review-action-wrap { position: fixed; left: 225px; right: 20px; bottom: 12px; z-index: 45; margin-top: 0; pointer-events: none; }
-    .pm-review-action-bar { max-width: 1470px; margin: 0 auto; pointer-events: auto; border: 1px solid #cfdeee; background: rgba(255,255,255,.97); backdrop-filter: blur(12px); border-radius: 15px; box-shadow: 0 14px 35px rgba(7,31,61,.16); padding: 11px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .pm-review-action-wrap { position: static; margin-top: var(--pm-section-gap); pointer-events: auto; }
+    .pm-review-action-bar { max-width: 1470px; margin: 0 auto; pointer-events: auto; border: 1px solid #cfdeee; background: rgba(255,255,255,.97); backdrop-filter: blur(12px); border-radius: 15px; box-shadow: 0 6px 18px rgba(7,31,61,.08); padding: 11px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .pm-quick-map-backdrop { position: fixed; inset: 0; z-index: 10020; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(7,31,61,.32); backdrop-filter: blur(4px); }
     .pm-quick-map-panel { width: min(560px, 100%); max-height: calc(100vh - 40px); overflow: auto; background: #fff; border: 1px solid #dce6f1; border-radius: 18px; box-shadow: 0 24px 70px rgba(7,31,61,.28); padding: 20px; }
-    .pm-review-bottom-space { padding-bottom: 118px; animation: none; }
-    @media (max-width: 1023px) { .pm-active-batch-bar { position: static; padding: 8px 10px; } .pm-active-batch-inner { align-items: flex-start; flex-direction: column; } .pm-review-action-wrap { left: 10px; right: 10px; bottom: 10px; } .pm-review-action-bar { align-items: stretch; flex-direction: column; } .pm-review-bottom-space { padding-bottom: 168px; } }
+    .pm-review-bottom-space { padding-bottom: 48px; }
+    @media (max-width: 1180px) { .pm-sku-layout { grid-template-columns: minmax(0, 1fr); } }
+    @media (max-width: 1023px) { .pm-active-batch-bar { padding: 9px 14px; } .pm-active-batch-inner { align-items: flex-start; flex-direction: column; } .pm-review-action-bar { align-items: stretch; flex-direction: column; } .pm-page-actions { width: 100%; justify-content: flex-start; } }
     @media (min-width: 1024px) { .pm-review-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (min-width: 1536px) { .pm-review-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
     .pm-full-preview-stage { min-height: 610px; border: 1px solid #e1e8f0; border-radius: 14px; background: linear-gradient(180deg, #f8fafc 0%, #eef4fa 100%); padding: 20px; display: flex; align-items: flex-start; justify-content: center; overflow: auto; }
@@ -193,29 +209,29 @@
     .pm-metric-blue .pm-metric-value { color: #0b63ce; }
     .pm-metric-slate { background: #fff; }
     @media (max-width: 1023px) {
-      .pm-command-header { height: 68px; padding: 0 14px; }
+      .pm-command-header { height: var(--pm-header-h-mobile); padding: 0 14px; }
       .pm-brand-wrap { min-width: 0; }
       .pm-logo-mark { width: 40px; height: 40px; }
-      .pm-app-frame { min-height: calc(100vh - 68px); }
-      .pm-sidebar { top: 68px; min-height: calc(100vh - 68px); height: calc(100vh - 68px); }
+      .pm-app-frame { min-height: calc(100vh - var(--pm-header-h-mobile)); }
+      .pm-sidebar { top: var(--pm-header-h-mobile); min-height: calc(100vh - var(--pm-header-h-mobile)); height: calc(100vh - var(--pm-header-h-mobile)); }
       .pm-page { padding: 18px 14px 36px; }
       .pm-page-head { align-items: flex-start; flex-direction: column; }
     }
     @media (max-width: 900px) {
       .pm-mobile-menu { display: inline-flex; }
-      .pm-sidebar, .pm-sidebar.pm-sidebar-collapsed { position: fixed; top: 68px; left: 0; width: 205px; flex-basis: 205px; height: calc(100vh - 68px); min-height: calc(100vh - 68px); transform: translateX(-105%); z-index: 70; box-shadow: 14px 0 36px rgba(3,18,36,.22); }
+      .pm-sidebar, .pm-sidebar.pm-sidebar-collapsed { position: fixed; top: var(--pm-header-h-mobile); left: 0; width: 205px; flex-basis: 205px; height: calc(100vh - var(--pm-header-h-mobile)); min-height: calc(100vh - var(--pm-header-h-mobile)); transform: translateX(-105%); z-index: 70; box-shadow: 14px 0 36px rgba(3,18,36,.22); }
       .pm-sidebar.pm-sidebar-mobile-open { transform: translateX(0); }
       .pm-sidebar-toggle-wrap { display: none; }
       .pm-sidebar-collapsed .pm-nav-label, .pm-sidebar-collapsed .pm-sidebar-section-label, .pm-sidebar-collapsed .pm-local-workspace-copy { display: inline; }
       .pm-sidebar-collapsed .pm-nav-btn { justify-content: flex-start; padding-left: 12px; padding-right: 12px; }
       .pm-sidebar-collapsed .pm-nav-badge { position: static; margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; font-size: 9px; }
       .pm-sidebar-collapsed .pm-local-workspace-card { padding: 12px; display: block; }
-      .pm-sidebar-backdrop { display: block; position: fixed; inset: 68px 0 0; z-index: 60; border: 0; background: rgba(4,18,36,.46); }
+      .pm-sidebar-backdrop { display: block; position: fixed; inset: var(--pm-header-h-mobile) 0 0; z-index: 60; border: 0; background: rgba(4,18,36,.46); }
       .pm-main { width: 100%; }
     }
     @media (max-width: 639px) {
-      .pm-command-header { position: relative; }
-      .pm-page { padding-left: 10px; padding-right: 10px; }
+      .pm-page { --pm-page-pad-x: 10px; padding-left: var(--pm-page-pad-x); padding-right: var(--pm-page-pad-x); }
+      .pm-page-actions > * { flex: 1 1 auto; }
       .pm-metric-value { font-size: 20px; }
     }
   </style>
@@ -2498,7 +2514,7 @@
                 )}
 
                 {activeView === 'batches' && (
-                  <section data-pm-view="batches" className="pm-page">
+                  <section data-pm-view="batches" data-pm-layout-v4 className="pm-page">
                     <div className="pm-page-head">
                       <div>
                         <div className="pm-eyebrow">Packing Jobs</div>
@@ -2664,17 +2680,17 @@
                 )}
 
                 {activeView === 'sku' && (
-                  <section data-pm-view="sku" className="pm-page">
+                  <section data-pm-view="sku" data-pm-layout-v4 className="pm-page">
                     <div className="pm-page-head">
                       <div><div className="pm-eyebrow">SKU Dictionary</div><h2 className="pm-page-title">คลังคำศัพท์</h2><p className="pm-page-subtitle">จัดการ Keyword → ชื่อภายในที่ทีมแพ็กเข้าใจ โดยไม่เปลี่ยน Data Shape เดิม</p></div>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="pm-page-actions">
                         <label className="pm-secondary-btn cursor-pointer"><PMIcon name="upload" /> นำเข้า<input type="file" accept=".json" className="hidden" onChange={handleImportRules} /></label>
                         <button onClick={handleExportRules} className="pm-secondary-btn"><PMIcon name="download" /> ส่งออก</button>
                       </div>
                     </div>
 
-                    <div className="grid xl:grid-cols-[340px_minmax(0,1fr)] gap-4 items-start">
-                      <div className="space-y-4 xl:sticky xl:top-4">
+                    <div data-pm-sku-layout className="pm-sku-layout">
+                      <div className="space-y-4">
                         <div className="pm-card p-5">
                           <div className="pm-section-kicker">เพิ่ม / แก้ไขกฎ</div>
                           <h3 className="text-base font-black text-slate-900 mb-4">{editingId ? 'แก้ไข Mapping' : 'เพิ่ม Mapping ใหม่'}</h3>
@@ -2697,7 +2713,7 @@
                         <div className="p-4 border-b border-slate-200">
                           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                             <div><div className="pm-section-kicker">ค้นหา / กรองกฎ</div><div className="text-xs font-bold text-slate-500 mt-1">{filteredSkuRules.length} จาก {skuRules.length} กฎ</div></div>
-                            <div className="flex flex-wrap gap-2">
+                            <div className="pm-sku-toolbar">
                               <div className="relative min-w-[230px] flex-1"><PMIcon name="search" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="search" value={skuSearch} onChange={(e)=>setSkuSearch(e.target.value)} placeholder="ค้นหา Keyword / ชื่อภายใน" className="pm-input !py-2.5 !pl-9"/></div>
                               <select value={skuSort} onChange={(e)=>setSkuSort(e.target.value)} className="pm-select"><option value="keyword">เรียง Keyword</option><option value="internal">เรียงชื่อภายใน</option></select>
                             </div>
@@ -2717,10 +2733,10 @@
                 )}
 
                 {activeView === 'review' && (
-                  <section data-pm-view="review" className="pm-page pm-page-wide pm-review-bottom-space">
+                  <section data-pm-view="review" data-pm-review-layout className="pm-page pm-page-wide">
                     <div className="pm-page-head">
                       <div><div className="pm-eyebrow">Exceptions-first QC</div><h2 className="pm-page-title">รีวิว & พิมพ์</h2><p className="pm-page-subtitle">{activeBatch ? `${activeBatch.name} • ` : ''}ตรวจเฉพาะรายการที่ระบบไม่มั่นใจ แล้วพิมพ์เมื่อ Batch พร้อม</p></div>
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="pm-page-actions">
                         <button onClick={()=>setThermalMode(!thermalMode)} className={`pm-secondary-btn ${thermalMode?'!border-emerald-200 !text-emerald-700':''}`}><PMIcon name="printer"/> Thermal {thermalMode?'ON':'OFF'}</button>
                         <button onClick={handleClearActiveBatch} disabled={orders.length===0} className="pm-ghost-btn"><PMIcon name="refresh"/> ล้างออเดอร์</button>
                         <button data-pm-action="save-pdf" onClick={handleExportPDF} disabled={exportStatus.active || orders.length === 0 || printBlocked} title={printBlocked?`ยังมี Exception ${exceptionRows.length} รายการ`:'Save PDF'} className="pm-secondary-btn"><PMIcon name="download"/> Save PDF</button>
@@ -2784,12 +2800,12 @@
                     )}
 
                     {previewMode==='table'&&ReviewDisplayOrders.length>0&&<div className="pm-pagination mt-4"><div className="text-[11px] font-bold text-slate-400">หน้า {reviewPage} / {reviewDisplayPageCount} • แสดง {visibleReviewDisplayOrders.length} รายการ</div><div className="flex items-center gap-2"><select value={reviewPageSize} onChange={(e)=>{setReviewPageSize(Number(e.target.value));setReviewPage(1);}} className="pm-select !py-1.5"><option value="12">12/หน้า</option><option value="24">24/หน้า</option><option value="48">48/หน้า</option></select><button disabled={reviewPage<=1} onClick={()=>setReviewPage(p=>Math.max(1,p-1))} className="pm-page-btn">‹</button><button disabled={reviewPage>=reviewDisplayPageCount} onClick={()=>setReviewPage(p=>Math.min(reviewDisplayPageCount,p+1))} className="pm-page-btn">›</button></div></div>}
-                    {orders.length>0&&<div className="pm-review-action-wrap no-print"><div data-pm-review-action-bar className="pm-review-action-bar"><div className="min-w-0"><div className={`text-sm font-black ${printBlocked?'text-amber-800':'text-emerald-700'}`}>{printBlocked?`พร้อม ${reviewSummary.ready}/${reviewSummary.total} • ต้องตรวจ ${exceptionRows.length}`:`พร้อมพิมพ์ ${reviewSummary.ready}/${reviewSummary.total}`}</div><div className="text-[10px] font-semibold text-slate-400 mt-0.5">{printBlocked?'แก้รายการที่ต้องตรวจให้ครบก่อน Print / Save PDF':'Batch นี้ไม่มี Exception ที่บล็อกการพิมพ์'}</div></div><div className="flex flex-wrap gap-2">{printBlocked?<><button onClick={openExceptionMode} className="pm-warning-btn"><PMIcon name="alert"/> แก้ {exceptionRows.length} รายการ</button><button disabled className="pm-ghost-btn"><PMIcon name="lock"/> พิมพ์ถูกล็อก</button></>:<><button onClick={handleExportPDF} disabled={exportStatus.active||orders.length===0} className="pm-secondary-btn"><PMIcon name="download"/> Save PDF</button><button onClick={handlePrint} disabled={orders.length===0} className="pm-primary-btn"><PMIcon name="printer"/> พิมพ์ {reviewSummary.total} ใบ</button></>}</div></div></div>}
+                    {orders.length>0&&<div data-pm-review-action-dock className="pm-review-action-wrap no-print"><div data-pm-review-action-bar className="pm-review-action-bar"><div className="min-w-0"><div className={`text-sm font-black ${printBlocked?'text-amber-800':'text-emerald-700'}`}>{printBlocked?`พร้อม ${reviewSummary.ready}/${reviewSummary.total} • ต้องตรวจ ${exceptionRows.length}`:`พร้อมพิมพ์ ${reviewSummary.ready}/${reviewSummary.total}`}</div><div className="text-[10px] font-semibold text-slate-400 mt-0.5">{printBlocked?'แก้รายการที่ต้องตรวจให้ครบก่อน Print / Save PDF':'Batch นี้ไม่มี Exception ที่บล็อกการพิมพ์'}</div></div><div className="flex flex-wrap gap-2">{printBlocked?<><button onClick={openExceptionMode} className="pm-warning-btn"><PMIcon name="alert"/> แก้ {exceptionRows.length} รายการ</button><button disabled className="pm-ghost-btn"><PMIcon name="lock"/> พิมพ์ถูกล็อก</button></>:<><button onClick={handleExportPDF} disabled={exportStatus.active||orders.length===0} className="pm-secondary-btn"><PMIcon name="download"/> Save PDF</button><button onClick={handlePrint} disabled={orders.length===0} className="pm-primary-btn"><PMIcon name="printer"/> พิมพ์ {reviewSummary.total} ใบ</button></>}</div></div></div>}
                   </section>
                 )}
 
                 {activeView === 'safety' && (
-                  <section data-pm-view="safety" className="pm-page">
+                  <section data-pm-view="safety" data-pm-layout-v4 className="pm-page">
                     <div className="pm-page-head"><div><div className="pm-eyebrow">Local Safety</div><h2 className="pm-page-title">สำรองข้อมูล & ความปลอดภัย</h2><p className="pm-page-subtitle">สำรอง Workspace, ตรวจพื้นที่ และสร้าง Diagnostics โดยข้อมูลไม่ถูกส่งขึ้น Server</p></div><div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-black"><PMIcon name="shield"/> Local-only</div></div>
 
                     <div className="grid xl:grid-cols-2 gap-4">
