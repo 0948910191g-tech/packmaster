@@ -1,0 +1,122 @@
+name: Apply Keyword Assistant UI
+
+on:
+  push:
+    branches:
+      - feature-keyword-assistant
+    paths:
+      - .github/workflows/keyword-assistant-apply.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature-keyword-assistant
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Patch Quick Mapping UI
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text()
+
+          def replace_once(old, new, label):
+              global s
+              if old not in s:
+                  raise SystemExit(f'missing patch anchor: {label}')
+              s = s.replace(old, new, 1)
+
+          replace_once(
+              '  <script src="./packmaster-pilot-safety.js"></script>\n  <script src="./packmaster-archive.js"></script>',
+              '  <script src="./packmaster-pilot-safety.js"></script>\n  <script src="./packmaster-keyword-assistant.js"></script>\n  <script src="./packmaster-archive.js"></script>',
+              'helper script include'
+          )
+
+          replace_once(
+              '      const pilotSafetyApi = window.PackMasterPilotSafety;\n      const archiveApi = window.PackMasterArchive;',
+              '      const pilotSafetyApi = window.PackMasterPilotSafety;\n      const keywordAssistantApi = window.PackMasterKeywordAssistant;\n      const archiveApi = window.PackMasterArchive;',
+              'helper api binding'
+          )
+
+          replace_once(
+              "        setQuickMapState({ open: true, row, keyword: seed, shortName: '' });",
+              """        let suggestions = [];
+        if (keywordAssistantApi && typeof keywordAssistantApi.generateKeywordSuggestions === 'function') {
+          try {
+            const batchItemTexts = orders.flatMap(order => (Array.isArray(order && order.parsedItems) ? order.parsedItems : []))
+              .map(item => String(item && item.text || '').trim())
+              .filter(Boolean);
+            suggestions = keywordAssistantApi.generateKeywordSuggestions({
+              sourceText: seed,
+              existingRules: skuRules,
+              batchItemTexts,
+              maxSuggestions: 3
+            });
+          } catch (suggestionError) {
+            console.warn('Keyword Assistant unavailable for this SKU', suggestionError);
+            suggestions = [];
+          }
+        }
+        setQuickMapState({ open: true, row, keyword: seed, shortName: '', suggestions });""",
+              'quick mapping generation'
+          )
+
+          old_ui = '''                <div className="mt-4"><label className="pm-label">Keyword ที่ใช้จับคู่</label><input value={quickMapState.keyword} onChange={(e)=>setQuickMapState(prev=>({ ...prev, keyword:e.target.value }))} className="pm-input" /></div>
+                <div className="mt-3"><label className="pm-label">ชื่อภายใน / ผลลัพธ์ที่จะพิมพ์</label><input autoFocus value={quickMapState.shortName} onChange={(e)=>setQuickMapState(prev=>({ ...prev, shortName:e.target.value }))} placeholder="เช่น เด้งม่วง5" className="pm-input text-base font-black" /></div>'''
+          new_ui = '''                <div className="mt-4"><label className="pm-label">Keyword ที่ใช้จับคู่</label><input value={quickMapState.keyword} onChange={(e)=>setQuickMapState(prev=>({ ...prev, keyword:e.target.value }))} className="pm-input" /></div>
+                <div data-pm-keyword-suggestions className="mt-3">
+                  <div className="flex items-center justify-between gap-2"><label className="pm-label mb-0">Keyword แนะนำ</label><span className="text-[10px] font-semibold text-slate-400">กดเลือกเอง • แก้ต่อได้</span></div>
+                  {(quickMapState.suggestions || []).length > 0 ? (
+                    <div className="mt-2 grid gap-2">
+                      {(quickMapState.suggestions || []).map((suggestion, index) => {
+                        const selected = quickMapState.keyword === suggestion.value;
+                        return (
+                          <button
+                            key={`${suggestion.value}-${index}`}
+                            type="button"
+                            data-pm-keyword-suggestion
+                            onClick={()=>setQuickMapState(prev => ({ ...prev, keyword: suggestion.value }))}
+                            className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${selected ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-100' : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-blue-50/40'}`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <span className="text-xs font-black text-slate-800 break-words">{suggestion.value}</span>
+                              {suggestion.confidence === 'recommended' ? <span className="shrink-0 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[9px] font-black text-emerald-700">แนะนำ</span> : <span className="shrink-0 rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[9px] font-black text-amber-700">ตรวจเพิ่ม</span>}
+                            </div>
+                            {suggestion.confidence !== 'recommended' && <div className="mt-1 text-[10px] font-semibold text-amber-700">คำนี้อาจซ้ำกับสินค้า/กฎอื่น กรุณาตรวจชื่อสินค้าก่อนเลือก</div>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-500">ยังไม่มี Keyword สั้นที่ระบบแนะนำได้อย่างปลอดภัย — ใช้ชื่อเดิมหรือแก้ Keyword เอง</div>
+                  )}
+                </div>
+                <div className="mt-3"><label className="pm-label">ชื่อภายใน / ผลลัพธ์ที่จะพิมพ์</label><input autoFocus value={quickMapState.shortName} onChange={(e)=>setQuickMapState(prev=>({ ...prev, shortName:e.target.value }))} placeholder="เช่น เด้งม่วง5" className="pm-input text-base font-black" /></div>'''
+          replace_once(old_ui, new_ui, 'quick mapping suggestion UI')
+
+          p.write_text(s)
+          PY
+
+      - name: Run keyword assistant focused tests
+        run: |
+          node --test tests/packmaster-keyword-assistant.test.mjs
+          node --test tests/packmaster-keyword-assistant-ui.test.mjs
+          node --test tests/packmaster-pilot-safety.test.mjs
+          node --test tests/packmaster-review-exception-mode.test.mjs
+
+      - name: Commit UI integration
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          git diff --cached --quiet && exit 0
+          git commit -m 'feat: add keyword suggestions to Quick Mapping'
+          git push origin HEAD:feature-keyword-assistant
