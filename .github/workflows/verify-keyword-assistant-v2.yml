@@ -1,0 +1,66 @@
+name: Verify Keyword Assistant v2
+
+on:
+  push:
+    branches:
+      - verify-keyword-assistant-v2
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact feature head
+        uses: actions/checkout@v4
+        with:
+          ref: a6203b8abd005926575677df263cd538664e6b37
+          fetch-depth: 1
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify exact feature head
+        run: |
+          test "$(git rev-parse HEAD)" = "a6203b8abd005926575677df263cd538664e6b37"
+          node --test tests/packmaster-keyword-assistant.test.mjs
+      - name: Install Chromium
+        run: |
+          npm install --no-save --package-lock=false playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Serve app
+        run: |
+          python3 -m http.server 4173 > /tmp/packmaster-http.log 2>&1 &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4173/ >/dev/null && exit 0; sleep 1; done
+          cat /tmp/packmaster-http.log
+          exit 1
+      - name: Exercise Keyword Assistant v2 in browser
+        run: |
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const { chromium } = require('playwright');
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+            const errors = [];
+            page.on('pageerror', error => errors.push(String(error)));
+            await page.goto('http://127.0.0.1:4173/', { waitUntil: 'domcontentloaded' });
+            await page.waitForFunction(() => window.PackMasterKeywordAssistant && typeof window.PackMasterKeywordAssistant.generateKeywordSuggestions === 'function');
+
+            const result = await page.evaluate(() => {
+              const api = window.PackMasterKeywordAssistant;
+              const thaiSource = '(ยกลัง36ห่อ) ใหม่ ทิชชู่เปียก ฮากุ เบบี้ สูตรน้ำแร่ อ่อนโยน ผิวบอบบางชุ่มชื้น 40 แผ่น/ห่อ ID 123456789012345678 NICKNAME ลูกค้าทดสอบ';
+              const excareSource = '1 ห่อ ทิชชู่เปียกสำหรับผู้ใหญ่ EXCARE ADULT Wipes XXL 50 แผ่นใหญ่ ผิวบอบบาง ID 987654321098765432 NICKNAME TESTUSER';
+              return {
+                thai: api.generateKeywordSuggestions({ sourceText: thaiSource, batchItemTexts: [thaiSource] }),
+                excare: api.generateKeywordSuggestions({ sourceText: excareSource, existingRules: [{ id: 1, keyword: 'EXCARE', shortName: 'existing' }], batchItemTexts: [excareSource] })
+              };
+            });
+
+            assert.equal(result.thai[0]?.value, 'ฮากุ เบบี้ สูตรน้ำแร่');
+            assert.ok(result.excare.length > 0);
+            assert.match(result.excare[0].value, /EXCARE|ADULT|XXL/i);
+            const all = [...result.thai, ...result.excare];
+            assert.equal(all.some(row => /NICKNAME|\bID\b|\d{8,}/i.test(row.value)), false);
+            assert.deepEqual(errors, []);
+            await browser.close();
+          })().catch(err => { console.error(err); process.exit(1); });
+          NODE
