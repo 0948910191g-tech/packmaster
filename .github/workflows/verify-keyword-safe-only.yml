@@ -6,53 +6,66 @@ on:
       - verify-keyword-safe-only
 
 jobs:
-  browser:
+  production-browser:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout exact feature head
+      - name: Checkout verification branch
         uses: actions/checkout@v4
-        with:
-          ref: 0a64c9e7f04252cd6cd36f96fd7e85779a1bc313
-          fetch-depth: 1
-      - name: Verify exact head and frozen Batch adapter
-        run: |
-          test "$(git rev-parse HEAD)" = "0a64c9e7f04252cd6cd36f96fd7e85779a1bc313"
-          test "$(git hash-object packmaster-batch.js)" = "941bddd557803aa27e58bd23372b9f51d6ca1605"
-          node --test tests/packmaster-keyword-assistant.test.mjs
-          node --test tests/packmaster-keyword-assistant-ui.test.mjs
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Wait for production deployment and verify live files
+        run: |
+          set -euo pipefail
+          LIVE_BASE="https://0948910191g-tech.github.io/packmaster"
+          MAIN_RAW="https://raw.githubusercontent.com/0948910191g-tech/packmaster/4ab111495c8bc17619b4f719c2c955db8b6d4532"
+          matched=0
+          for i in $(seq 1 30); do
+            if curl -fsS "$LIVE_BASE/packmaster-keyword-assistant.js?verify=$i" -o /tmp/live-keyword.js \
+              && curl -fsS "$MAIN_RAW/packmaster-keyword-assistant.js" -o /tmp/main-keyword.js \
+              && cmp -s /tmp/live-keyword.js /tmp/main-keyword.js \
+              && grep -Fq "assessKeywordSafety" /tmp/live-keyword.js \
+              && curl -fsS "$LIVE_BASE/?verify=$i" -o /tmp/live-index.html \
+              && grep -Fq "Keyword แนะนำที่ผ่าน Safety Check" /tmp/live-index.html; then
+              matched=1
+              break
+            fi
+            sleep 4
+          done
+          test "$matched" = "1"
+          curl -fsS "$LIVE_BASE/packmaster-batch.js?verify=batch" | git hash-object --stdin | grep -Fx "941bddd557803aa27e58bd23372b9f51d6ca1605"
       - name: Install Chromium
         run: |
           npm install --no-save --package-lock=false playwright@1.55.0
           npx playwright install --with-deps chromium
-      - name: Serve exact feature head
-        run: |
-          python3 -m http.server 4173 > /tmp/packmaster-http.log 2>&1 &
-          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4173/ >/dev/null && exit 0; sleep 1; done
-          cat /tmp/packmaster-http.log
-          exit 1
-      - name: Exercise matcher-backed Keyword safety in Chromium
+      - name: Exercise live matcher-backed Keyword safety
         run: |
           node <<'NODE'
-          const fs = require('node:fs');
           const assert = require('node:assert/strict');
           const { chromium } = require('playwright');
-          const html = fs.readFileSync('index.html', 'utf8');
-          const start = html.indexOf('const normalizeMatchText');
-          const end = html.indexOf('const waitForLabelRender');
-          assert.ok(start >= 0 && end > start);
-          const matcherSource = html.slice(start, end);
+          const LIVE = 'https://0948910191g-tech.github.io/packmaster/';
 
           (async () => {
             const browser = await chromium.launch({ headless: true });
             const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-            const errors = [];
-            page.on('pageerror', error => errors.push(String(error)));
-            await page.goto('http://127.0.0.1:4173/', { waitUntil: 'domcontentloaded' });
-            await page.waitForFunction(() => window.PackMasterKeywordAssistant && typeof window.PackMasterKeywordAssistant.assessKeywordSafety === 'function');
+            const pageErrors = [];
+            page.on('pageerror', error => pageErrors.push(String(error)));
+            await page.goto(`${LIVE}?keyword-safe-only=${Date.now()}`, { waitUntil: 'domcontentloaded' });
+            await page.waitForFunction(() =>
+              window.PackMasterKeywordAssistant &&
+              typeof window.PackMasterKeywordAssistant.assessKeywordSafety === 'function',
+              null,
+              { timeout: 30000 }
+            );
+            const headingPresent = await page.locator('body').evaluate(body => body.innerText.includes('PackMaster'));
+            assert.equal(headingPresent, true);
+
+            const liveHtml = await (await page.request.get(`${LIVE}?matcher-source=${Date.now()}`)).text();
+            const start = liveHtml.indexOf('const normalizeMatchText');
+            const end = liveHtml.indexOf('const waitForLabelRender');
+            assert.ok(start >= 0 && end > start, 'live Smart Matcher helper block must be present');
+            const matcherSource = liveHtml.slice(start, end);
 
             const result = await page.evaluate(({ matcherSource }) => {
               const matcher = new Function(`${matcherSource}; return { normalizeMatchText, matchSkuRule };`)();
@@ -62,6 +75,7 @@ jobs:
               const existingExcare = [{ id: 1, keyword: 'EXCARE ADULT WIPES', shortName: 'adult-existing' }];
               const siblingCurrent = 'HOYA BABY PURPLE 5 PACK';
               const siblingOther = 'HOYA BABY PINK 5 PACK';
+
               const thai = api.generateKeywordSuggestions({
                 sourceText: thaiSource,
                 existingRules: [],
@@ -78,6 +92,7 @@ jobs:
                 matchRule: matcher.matchSkuRule,
                 matchNormalizer: matcher.normalizeMatchText
               });
+
               return {
                 thai,
                 excare,
@@ -101,14 +116,17 @@ jobs:
               };
             }, { matcherSource });
 
-            assert.ok(result.thai.length > 0, 'Thai source should retain at least one verified safe identity');
+            assert.ok(result.thai.length > 0, 'Thai product must retain at least one matcher-verified candidate');
             assert.ok(result.thai.every(row => row.confidence === 'recommended'));
-            assert.equal(result.thai.some(row => /\bQTY\b|\bTOTAL\b/i.test(row.value)), false);
-            assert.equal(result.excareHasExactDuplicate, false, 'exact existing keyword must not be suggested');
+            assert.equal(result.thai.some(row => /\bQTY\b|\bTOTAL\b|QUANTITY/i.test(row.value)), false, 'Qty Total metadata must not be suggested');
+            assert.equal(result.excareHasExactDuplicate, false, 'exact existing Library keyword must not be suggested');
             assert.ok(result.excare.every(row => row.confidence === 'recommended'));
-            assert.equal(result.unsafeSibling.safe, false, 'broad sibling-routing candidate must be rejected');
-            assert.equal(result.similarButSpecific.safe, true, 'similar but routing-safe specific keyword should remain allowed');
-            assert.deepEqual(errors, []);
+            assert.equal(result.unsafeSibling.safe, false, 'candidate that could reroute a sibling SKU must be rejected');
+            assert.equal(result.similarButSpecific.safe, true, 'similar but routing-safe specific keyword must remain allowed');
+            assert.deepEqual(pageErrors, []);
             await browser.close();
-          })().catch(err => { console.error(err); process.exit(1); });
+          })().catch(error => {
+            console.error(error);
+            process.exit(1);
+          });
           NODE
