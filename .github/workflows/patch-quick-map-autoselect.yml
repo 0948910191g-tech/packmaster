@@ -1,0 +1,42 @@
+name: Patch Quick Mapping Auto Select
+
+on:
+  push:
+    branches:
+      - fix-quick-map-auto-select-safe
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'chore: run Quick Mapping auto-select patch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix-quick-map-auto-select-safe
+          fetch-depth: 0
+      - name: Patch Quick Mapping default Keyword
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('index.html')
+          text = path.read_text()
+          old = "        setQuickMapState({ open: true, row, sourceText: seed, keyword: seed, shortName: '', suggestions });"
+          new = "        const initialKeyword = suggestions.length > 0 ? suggestions[0].value : '';\n        setQuickMapState({ open: true, row, sourceText: seed, keyword: initialKeyword, shortName: '', suggestions });"
+          if old not in text:
+              raise SystemExit('target Quick Mapping initialization not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Focused regression
+        run: |
+          node --test tests/packmaster-keyword-assistant-ui.test.mjs
+          node --test tests/packmaster-keyword-assistant.test.mjs
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          git commit -m 'Fix Quick Mapping safe suggestion selection'
+          git push origin HEAD:fix-quick-map-auto-select-safe
