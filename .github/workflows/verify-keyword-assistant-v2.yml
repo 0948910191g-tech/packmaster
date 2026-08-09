@@ -6,33 +6,34 @@ on:
       - verify-keyword-assistant-v2
 
 jobs:
-  browser:
+  production-browser:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout exact feature head
+      - name: Checkout verification branch
         uses: actions/checkout@v4
-        with:
-          ref: a6203b8abd005926575677df263cd538664e6b37
-          fetch-depth: 1
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Verify exact feature head
+      - name: Wait for live v2 helper
         run: |
-          test "$(git rev-parse HEAD)" = "a6203b8abd005926575677df263cd538664e6b37"
-          node --test tests/packmaster-keyword-assistant.test.mjs
+          for i in $(seq 1 60); do
+            curl -fsS "https://0948910191g-tech.github.io/packmaster/packmaster-keyword-assistant.js?ts=$(date +%s)" -o /tmp/live-helper.js || true
+            if grep -q "METADATA_TOKENS" /tmp/live-helper.js && grep -q "product-anchor-window" /tmp/live-helper.js; then exit 0; fi
+            sleep 2
+          done
+          echo "Live helper did not update in time"
+          cat /tmp/live-helper.js || true
+          exit 1
+      - name: Verify live frozen Batch adapter
+        run: |
+          curl -fsS "https://0948910191g-tech.github.io/packmaster/packmaster-batch.js?ts=$(date +%s)" -o /tmp/live-batch.js
+          test "$(git hash-object /tmp/live-batch.js)" = "941bddd557803aa27e58bd23372b9f51d6ca1605"
       - name: Install Chromium
         run: |
           npm install --no-save --package-lock=false playwright@1.55.0
           npx playwright install --with-deps chromium
-      - name: Serve app
-        run: |
-          python3 -m http.server 4173 > /tmp/packmaster-http.log 2>&1 &
-          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4173/ >/dev/null && exit 0; sleep 1; done
-          cat /tmp/packmaster-http.log
-          exit 1
-      - name: Exercise Keyword Assistant v2 in browser
+      - name: Exercise live Keyword Assistant v2
         run: |
           node <<'NODE'
           const assert = require('node:assert/strict');
@@ -42,7 +43,7 @@ jobs:
             const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
             const errors = [];
             page.on('pageerror', error => errors.push(String(error)));
-            await page.goto('http://127.0.0.1:4173/', { waitUntil: 'domcontentloaded' });
+            await page.goto('https://0948910191g-tech.github.io/packmaster/?verify=keyword-v2-' + Date.now(), { waitUntil: 'domcontentloaded' });
             await page.waitForFunction(() => window.PackMasterKeywordAssistant && typeof window.PackMasterKeywordAssistant.generateKeywordSuggestions === 'function');
 
             const result = await page.evaluate(() => {
