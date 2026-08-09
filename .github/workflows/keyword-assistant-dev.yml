@@ -18,3 +18,5 @@ jobs:
           node-version: '22'
       - name: Run keyword assistant unit tests
         run: node --test tests/packmaster-keyword-assistant.test.mjs
+      - name: Run keyword assistant UI contract
+        run: node --test tests/packmaster-keyword-assistant-ui.test.mjs
