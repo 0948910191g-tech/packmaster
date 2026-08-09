@@ -25,12 +25,13 @@ test('SKU/unmapped exception uses only safely resolved identity for inline Quick
   mustInclude('const handleFixSkuException = (row) => {');
   mustInclude("types.some(type => type === 'REVIEW_SKU' || type === 'UNMAPPED')");
   mustInclude('const seed = pilotSafetyApi.getSkuFixSeed(row, getMatchResult);');
-  mustInclude("setQuickMapState({ open: true, row, keyword: seed, shortName: '' });");
+  mustInclude('sourceText: seed');
+  mustInclude("setQuickMapState({ open: true, row, keyword: seed, shortName: '', suggestions });");
   mustInclude('data-pm-quick-mapping');
   mustInclude('เปิดคลังคำศัพท์');
   mustInclude("setNewRule({ keyword: seed, shortName: String(quickMapState.shortName || '') });");
   mustInclude('ตั้งชื่อ SKU');
-  assert.equal(/setQuickMapState\(\{ open: true, row, keyword: seed, shortName: ['"][^'"]+['"] \}\)/.test(html), false, 'Pilot Safety must never auto-generate the internal short name');
+  assert.equal(/setQuickMapState\(\{[^}]*open:\s*true[^}]*shortName:\s*['"][^'"]+['"][^}]*\}\)/s.test(html), false, 'Pilot Safety must never auto-generate the internal short name');
 });
 
 test('batch status UI uses exception-first effective status and invalidates stale completed state', () => {
