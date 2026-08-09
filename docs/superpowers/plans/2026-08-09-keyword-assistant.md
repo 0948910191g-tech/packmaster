@@ -4,23 +4,23 @@
 
 **Goal:** เพิ่ม Keyword Assistant แบบ local deterministic ที่เสนอ Keyword สั้น 2–3 ตัวเลือกจาก safe source text ของสินค้าใหม่ โดยผู้ใช้ต้องกดเลือกเองและชื่อภายในยังต้องกรอกเอง
 
-**Architecture:** เพิ่ม helper แยก `packmaster-keyword-assistant.js` ที่ไม่มี side effect และไม่แตะ Parser/Matcher/Qty จากนั้นให้ `index.html` เรียก helper เฉพาะตอนเปิด Quick Mapping จาก Review โดยส่ง safe seed เดิม, SKU rules ปัจจุบัน และ raw item texts ใน Active Batch เพื่อทำ conservative collision checks. Suggestions เป็น ephemeral UI state เท่านั้นและไม่เปลี่ยน data shape `{ id, keyword, shortName }`.
+**Architecture:** เพิ่ม helper แยก `packmaster-keyword-assistant.js` ที่ไม่มี side effect และไม่แตะ Parser/Matcher/Qty. Helper สร้างเฉพาะ candidate ที่เป็น contiguous substring ของ normalized source เพื่อให้เข้ากับ exact matcher path ปัจจุบัน (`searchArea.includes(keyword)`), แล้วตรวจ collision กับ SKU rules และ raw item texts ใน Active Batch. `index.html` ใช้ helper เฉพาะ Quick Mapping; suggestions เป็น ephemeral UI state และ data shape `{ id, keyword, shortName }` ไม่เปลี่ยน
 
-**Tech Stack:** Vanilla JS UMD helper, React 18 UMD, Babel standalone, Node `node:test`, GitHub Actions, Playwright/Chromium verification.
+**Tech Stack:** Vanilla JS UMD helper, React 18 UMD, Babel standalone, Node `node:test`, GitHub Actions, Playwright/Chromium.
 
 ## Global Constraints
 
-- ระบบไม่ตั้งชื่อภายในให้เอง
-- ระบบไม่เลือกหรือบันทึก Keyword อัตโนมัติ
-- ผู้ใช้ต้องกด suggestion เอง
-- SKU rule data shape เดิม `{ id, keyword, shortName }` ต้องไม่เปลี่ยน
-- Preserve ตัวเลข, model/version, `%`, bundle/pack/variant identity ใน source; ห้ามคูณหรือแก้ค่า
+- ไม่ตั้งชื่อภายในให้อัตโนมัติ
+- ไม่เลือก/บันทึก Keyword อัตโนมัติ
+- Recommended candidate ต้องเป็น contiguous normalized substring ของ source
+- ห้ามเอาคำจากคนละตำแหน่งมาต่อเป็น candidate แล้วติดป้าย `แนะนำ`
+- Preserve ตัวเลข, model/version, `%`, bundle/pack/variant identity; ห้ามคูณหรือแก้ค่า
+- SKU rule data shape เดิม `{ id, keyword, shortName }`
 - No Parser / Matcher / Qty / Bundle / Aggregation behavior changes
-- No Print / Save PDF engine or scope changes
-- No `packmaster-batch.js` changes
-- No IndexedDB schema / DB_VERSION changes
+- No Print / Save PDF engine/scope changes
+- No `packmaster-batch.js`, IndexedDB schema, DB_VERSION changes
 - No Database / Backend / Auth / AI API / Cloud / Paid service / telemetry
-- Helper failure ต้องไม่ block Quick Mapping; safe seed เดิมยังใช้งานได้
+- Helper failure ต้องไม่ block Quick Mapping; safe seed เดิมยังใช้ได้
 
 ---
 
@@ -33,60 +33,57 @@
 **Interfaces:**
 - Consumes: `{ sourceText, existingRules, batchItemTexts, maxSuggestions }`
 - Produces: `generateKeywordSuggestions(input) -> Array<{ value, confidence, reason, collisions }>`
-- Produces helper exports for testability: `normalizeKeywordText`, `isGenericCandidate`
+- Test exports: `normalizeKeywordText`, `isGenericCandidate`
 
-- [ ] **Step 1: Write failing unit tests**
+- [ ] **Step 1: Write failing tests**
 
-Cover at minimum:
+Minimum assertions:
 
 ```js
 const source = '(1 แถม 1) ทิชชู่เปียกเครื่องสำอาง EXCARE MAKEUP REMOVER ช่วยขจัดเมคอัพและทำความสะอาดผิว 30 แผ่นใหญ่';
 const suggestions = api.generateKeywordSuggestions({ sourceText: source, existingRules: [], batchItemTexts: [source], maxSuggestions: 3 });
 assert.equal(suggestions.length > 0, true);
+assert.equal(suggestions.some(row => row.value === 'EXCARE MAKEUP REMOVER' && row.confidence === 'recommended'), true);
 assert.equal(suggestions.some(row => row.value === 'EXCARE'), false);
-assert.equal(suggestions.some(row => /30/.test(row.value)), true);
-assert.equal(suggestions.some(row => /EXCARE MAKEUP REMOVER/.test(row.value)), true);
+assert.equal(suggestions.every(row => api.normalizeKeywordText(source).includes(api.normalizeKeywordText(row.value))), true);
+assert.equal(suggestions.some(row => row.value === 'EXCARE MAKEUP REMOVER 30' && row.confidence === 'recommended'), false);
 ```
 
 Also test:
-- preserves `V2`, `95%`, bundle token like `5แถม5`
-- does not mutate source text
-- rejects generic-only candidates (`HOYA`, `HAKU`, `Baby`, `EXCARE`)
-- downgrades/rejects candidate that appears across distinct sibling product texts
-- returns `[]` for empty/unsafe source
-- `maxSuggestions` caps output at 3
+- `V2`, `95%`, `5แถม5` are preserved when present in generated windows
+- source text is not mutated
+- generic-only candidates (`HOYA`, `HAKU`, `Baby`, `EXCARE`) are rejected
+- distinct sibling item collision downgrades/rejects a shorter candidate
+- existing rule overlap downgrades/rejects
+- empty/unsafe source returns `[]`
+- deterministic ordering and `maxSuggestions <= 3`
 
-- [ ] **Step 2: Run unit test and verify RED**
-
-Run:
+- [ ] **Step 2: Run test RED**
 
 ```bash
 node --test tests/packmaster-keyword-assistant.test.mjs
 ```
 
-Expected: FAIL because helper module does not exist.
+Expected: FAIL because helper does not exist.
 
-- [ ] **Step 3: Implement minimal pure helper**
+- [ ] **Step 3: Implement pure UMD helper**
 
-Create UMD-style `packmaster-keyword-assistant.js` matching existing helper modules. Implementation rules:
-- normalize whitespace/punctuation for analysis only
-- derive English/alphanumeric identity runs and meaningful numeric/model tokens
-- remove only narrowly-scoped descriptive/promotional noise
-- do not remove bundle identity such as `5แถม5`
-- candidate generation is deterministic and deduplicated
-- collision check uses existing rules + batch item texts conservatively
-- generic single-token candidates are never `recommended`
-- no persistence/network/DOM access
+Implementation requirements:
+- normalize whitespace/zero-width/punctuation for analysis only
+- tokenize source preserving source order
+- generate contiguous windows only
+- prioritize 2–5 token Latin/alphanumeric runs and windows containing model/version/bundle identity
+- cautiously allow mixed/Thai windows only if collision checks are clean
+- reject generic single-token candidates
+- score/dedupe deterministically
+- recommended only when source-contiguous + no current collision
+- no DOM, persistence, network, parser, matcher invocation, or mutation
 
 - [ ] **Step 4: Run unit tests GREEN**
 
-Run:
-
 ```bash
 node --test tests/packmaster-keyword-assistant.test.mjs
 ```
-
-Expected: PASS.
 
 - [ ] **Step 5: Commit helper + tests**
 
@@ -97,7 +94,7 @@ git commit -m "Add local keyword suggestion helper"
 
 ---
 
-### Task 2: Wire Keyword Assistant Into Quick Mapping
+### Task 2: Wire Suggestions Into Quick Mapping
 
 **Files:**
 - Modify: `index.html`
@@ -105,55 +102,50 @@ git commit -m "Add local keyword suggestion helper"
 
 **Interfaces:**
 - Consumes `window.PackMasterKeywordAssistant.generateKeywordSuggestions(...)`
-- Reuses existing `pilotSafetyApi.getSkuFixSeed(...)`
-- Reuses `quickMapState.keyword` and existing `handleSaveQuickMapping`
-- Does not change `saveSkuRule` or matcher interfaces
+- Reuses `pilotSafetyApi.getSkuFixSeed(...)`
+- Reuses existing `quickMapState.keyword`, `handleSaveQuickMapping`, `saveSkuRule`
 
-- [ ] **Step 1: Write failing UI contract test**
+- [ ] **Step 1: Write UI contract RED test**
 
-Assert static/runtime contract markers:
+Assert:
 - `<script src="./packmaster-keyword-assistant.js"></script>` exists
-- App reads `window.PackMasterKeywordAssistant`
-- Quick Mapping renders `Keyword แนะนำ`
-- suggestions are clickable and only set `quickMapState.keyword`
-- `shortName` initializes as empty string
-- original safe seed remains current keyword before a suggestion is clicked
-- manual editing remains possible
-- fallback copy exists when helper unavailable or returns no suggestions
+- app reads `window.PackMasterKeywordAssistant`
+- modal renders `Keyword แนะนำ`
+- suggestion click only changes `quickMapState.keyword`
+- `shortName` starts `''`
+- safe seed remains initial keyword until user clicks/edits
+- no auto-save / no auto-shortName
+- fallback copy exists for no helper/no safe suggestion
 
-- [ ] **Step 2: Run UI contract test RED**
+- [ ] **Step 2: Run RED**
 
 ```bash
 node --test tests/packmaster-keyword-assistant-ui.test.mjs
 ```
 
-Expected: FAIL because UI is not wired yet.
-
-- [ ] **Step 3: Add helper script and ephemeral suggestion state**
+- [ ] **Step 3: Add helper script + ephemeral suggestions**
 
 In `index.html`:
-- load helper after `packmaster-pilot-safety.js`
-- create `const keywordAssistantApi = window.PackMasterKeywordAssistant;`
-- extend Quick Mapping ephemeral state only if needed, e.g. `suggestions: []`
-- build batch item context from existing `orders[].parsedItems[].text`
-- call helper only after safe seed is produced by `getSkuFixSeed`
-- on helper error, keep seed and suggestions `[]`
+- load helper after Pilot Safety
+- `const keywordAssistantApi = window.PackMasterKeywordAssistant;`
+- when `handleFixSkuException` gets a non-empty safe seed, call helper with `skuRules` and flattened `orders[].parsedItems[].text`
+- catch helper failures and preserve original seed + empty suggestions
+- no persistence of suggestion metadata
 
 - [ ] **Step 4: Render selectable suggestions**
 
-Under Keyword input render up to 3 compact chips/cards:
-- candidate value
+Under Keyword input:
+- max 3 compact buttons/cards
 - `แนะนำ` badge only for `confidence === 'recommended'`
-- click sets `quickMapState.keyword` only
-- selected suggestion gets visual selected state
-- no suggestion is auto-clicked or auto-saved
-- if none: `ยังไม่มี Keyword สั้นที่ระบบแนะนำได้อย่างปลอดภัย — ใช้ชื่อเดิมหรือแก้ Keyword เอง`
+- selected state based on current `quickMapState.keyword`
+- click updates keyword only
+- no safe suggestion → manual fallback copy
 
-- [ ] **Step 5: Verify existing handoff and save path remain unchanged**
+- [ ] **Step 5: Preserve existing save/handoff path**
 
-`เปิดคลังคำศัพท์` must forward the latest `quickMapState.keyword` and `shortName`; `handleSaveQuickMapping` must still require both keyword + shortName and save through the existing SKU rule path.
+`handleSaveQuickMapping` still requires keyword + manual shortName and saves ordinary rule. `เปิดคลังคำศัพท์` carries latest selected/manual keyword.
 
-- [ ] **Step 6: Run UI contract + existing Quick Mapping/Pilot Safety tests**
+- [ ] **Step 6: Run UI + Pilot Safety + Review tests**
 
 ```bash
 node --test tests/packmaster-keyword-assistant-ui.test.mjs
@@ -161,9 +153,7 @@ node --test tests/packmaster-pilot-safety.test.mjs
 node --test tests/packmaster-review-exception-mode.test.mjs
 ```
 
-Expected: PASS.
-
-- [ ] **Step 7: Commit UI integration**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add index.html tests/packmaster-keyword-assistant-ui.test.mjs
@@ -172,140 +162,69 @@ git commit -m "Add keyword suggestions to Quick Mapping"
 
 ---
 
-### Task 3: Permanent Safety / Regression Guard
+### Task 3: Permanent Regression Guard
 
 **Files:**
 - Modify: `.github/workflows/apply-smart-matcher.yml`
-- Optionally modify: `tests/packmaster-guardrails.test.mjs` only if required for a stable helper guard
 
-**Interfaces:**
-- CI runs new helper + UI tests alongside existing suite
-
-- [ ] **Step 1: Add CI steps for both new tests**
-
-Commands:
+- [ ] Add CI commands:
 
 ```bash
 node --test tests/packmaster-keyword-assistant.test.mjs
 node --test tests/packmaster-keyword-assistant-ui.test.mjs
 ```
 
-- [ ] **Step 2: Run full regression**
-
-```bash
-for f in tests/*.test.mjs; do node --test "$f"; done
-```
-
-Expected: all PASS.
-
-- [ ] **Step 3: Verify JSX compile and frozen invariants**
-
-Compile `index.html` JSX with the project’s existing Babel CI method. Verify:
-- `packmaster-batch.js` Git blob remains `941bddd557803aa27e58bd23372b9f51d6ca1605`
-- Print/Save PDF still iterate/render full `MappedOrders`
-- no IndexedDB/DB_VERSION changes
-- new helper contains no network primitives
-
-- [ ] **Step 4: Commit permanent CI guard**
-
-```bash
-git add .github/workflows/apply-smart-matcher.yml
-git commit -m "Test keyword assistant in regression CI"
-```
+- [ ] Run every `tests/*.test.mjs`
+- [ ] Compile JSX with existing Babel CI method
+- [ ] Verify frozen `packmaster-batch.js` blob `941bddd557803aa27e58bd23372b9f51d6ca1605`
+- [ ] Verify Print/Save PDF still use full `MappedOrders`
+- [ ] Verify helper contains no network primitives and DB_VERSION/schema unchanged
+- [ ] Commit CI guard
 
 ---
 
-### Task 4: Chromium Workflow Verification
+### Task 4: Chromium Verification
 
-**Files:**
-- Temporary workflow/script only; remove before final PR diff
+Use temporary branch workflow only; remove before final diff.
 
-**Interfaces:**
-- Uses live app behavior on feature branch build/static serve
+- [ ] Seed sanitized synthetic sources:
+  - long EXCARE MAKEUP REMOVER title
+  - HOYA/HAKU sibling titles sharing generic terms
+  - `Hoya V2 ...`
+  - `95%` variant
+  - `5แถม5` bundle identity
 
-- [ ] **Step 1: Seed sanitized synthetic Orders**
-
-Include source examples:
-- EXCARE MAKEUP REMOVER descriptive long title
-- HOYA/HAKU siblings sharing generic brand terms
-- model/version case `Hoya V2 ...`
-- bundle identity case `5แถม5`
-
-No real customer PII.
-
-- [ ] **Step 2: Exercise Quick Mapping**
-
-Browser assertions:
-- Quick Mapping opens with long safe seed still in Keyword field
-- 1–3 suggestion choices appear when safe
-- generic `EXCARE`/`HOYA` alone is not suggested as recommended
-- clicking a candidate updates Keyword only
-- shortName remains blank until user types it
-- Save disabled/rejected until shortName is entered
-- after manual shortName + save, Review updates through existing matcher/rule path
-- helper unavailable/no-suggestion fallback still permits manual workflow
-
-- [ ] **Step 3: Verify collision behavior**
-
-Create sibling items where dropping variant/model token would collide. Assert shorter ambiguous candidate is not labeled `แนะนำ` or is omitted.
-
-- [ ] **Step 4: Verify no regression around print safety**
-
-Unresolved Qty/other exception must still block Print/Save PDF; resolving only SKU mapping must not bypass unrelated exceptions.
-
-- [ ] **Step 5: Remove temporary workflow/script**
-
-Final PR must contain no temporary verification workflow.
+- [ ] Verify Quick Mapping opens with long safe seed untouched
+- [ ] Verify 1–3 suggestions appear when safe
+- [ ] Verify recommended suggestions are contiguous in source and generic brand-only keywords are not recommended
+- [ ] Click suggestion → Keyword changes; shortName stays blank; no rule saved
+- [ ] Enter shortName manually + save → Review updates through existing rule/matcher path
+- [ ] Collision sibling → ambiguous short candidate omitted or `review`, never `recommended`
+- [ ] Helper unavailable/no suggestions → manual workflow still works
+- [ ] Unrelated Qty exception still blocks Print/Save PDF
+- [ ] Remove temporary workflow
 
 ---
 
-### Task 5: PR, Merge, Deploy, Production Verification
+### Task 5: PR / Merge / Production
 
-**Files:**
-- Permanent diff expected: helper, `index.html`, two tests, CI, spec, plan
-
-- [ ] **Step 1: Review final diff**
-
-Reject merge if any of these changed unexpectedly:
-- parser sections
-- matcher scoring/identity logic
-- Qty parsing/aggregation
-- `packmaster-batch.js`
-- Print/Save PDF loops
-- IndexedDB schema/DB_VERSION
-
-- [ ] **Step 2: Open/refresh PR and wait for clean-head CI**
-
-Expected: all regression checks PASS.
-
-- [ ] **Step 3: Squash merge only tested head**
-
-No force merge; refresh `main` immediately before merge.
-
-- [ ] **Step 4: Verify main release gates**
-
-Require:
-- Main Regression PASS
-- Production Smoke PASS
-- GitHub Pages PASS
-
-- [ ] **Step 5: Run Production Chromium**
-
-On live GitHub Pages verify:
-- long unmapped source opens Quick Mapping
-- suggestions render and are user-selectable
-- no auto-name/auto-save
-- saved rule updates Review normally
-- no page/console errors
-- frozen Batch adapter + full-Batch Print/Save scope remain intact
+- [ ] Final diff review: reject if parser/matcher/qty/batch/print/schema changed unexpectedly
+- [ ] Clean-head PR CI PASS
+- [ ] Refresh latest `main`; squash merge only tested head
+- [ ] Main Regression PASS
+- [ ] Production Smoke PASS
+- [ ] GitHub Pages PASS
+- [ ] Production Chromium validates live suggestions, manual shortName, no auto-save, no runtime errors
+- [ ] Live frozen Batch adapter and full-Batch Print/Save scope unchanged
 
 ## Definition of Done
 
-- Quick Mapping retains the original long safe seed as editable fallback
-- Up to 3 deterministic local Keyword suggestions are shown when safe
-- User must click a suggestion; nothing is selected/saved automatically
+- Long safe source shows up to 3 shorter local suggestions when safe
+- Recommended suggestion stays on exact contiguous matcher path
+- User must click; nothing auto-selected/saved
 - Internal Short Name remains manual
-- Generic/colliding candidates are downgraded or omitted
-- Model/version/numeric/bundle identity is preserved conservatively
-- No matcher/parser/qty/print/batch/database behavior changes
+- Original long seed remains fallback
+- Generic/collision-prone candidates are omitted/downgraded
+- Model/version/%/bundle identity is preserved conservatively
+- Data shape and Core behavior unchanged
 - Full regression + Chromium + Production verification PASS
