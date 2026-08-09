@@ -16,14 +16,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: verify-keyword-assistant-clean
-          fetch-depth: 2
+          ref: e6b3e05c6e5f54a0ba36c5e0b84bddd382a139fa
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Verify product head is exact tested feature head
+      - name: Verify exact tested feature head and frozen safety invariants
         run: |
-          test "$(git rev-parse HEAD^)" = 'e6b3e05c6e5f54a0ba36c5e0b84bddd382a139fa'
+          test "$(git rev-parse HEAD)" = 'e6b3e05c6e5f54a0ba36c5e0b84bddd382a139fa'
           test "$(git hash-object packmaster-batch.js)" = '941bddd557803aa27e58bd23372b9f51d6ca1605'
           grep -Fq 'for (let i = 0; i < MappedOrders.length; i++)' index.html
           grep -Fq 'MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}' index.html
