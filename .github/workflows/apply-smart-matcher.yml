@@ -24,7 +24,10 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Print override regression first
+      - name: Production smoke workflow contract first
+        run: node tests/packmaster-production-smoke-workflow.test.mjs
+
+      - name: Print override UI contract
         run: node tests/packmaster-print-override-ui.test.mjs
 
       - name: Smart matcher regression tests
@@ -119,9 +122,6 @@ jobs:
 
       - name: Layout V4 no-overlap guard
         run: node tests/packmaster-layout-v4.test.mjs
-
-      - name: Production smoke workflow regression guard
-        run: node tests/packmaster-production-smoke-workflow.test.mjs
 
       - name: Existing guardrail tests when present
         run: |
