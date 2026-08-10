@@ -24,6 +24,9 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Print override regression first
+        run: node tests/packmaster-print-override-ui.test.mjs
+
       - name: Smart matcher regression tests
         run: node tests/packmaster-smart-matcher.test.mjs
 
@@ -101,9 +104,6 @@ jobs:
 
       - name: Source reference contract
         run: node tests/packmaster-source-reference.test.mjs
-
-      - name: Print override UI contract
-        run: node tests/packmaster-print-override-ui.test.mjs
 
       - name: Keyword Assistant helper guard
         run: node --test tests/packmaster-keyword-assistant.test.mjs
