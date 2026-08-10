@@ -143,7 +143,8 @@ for (const marker of requiredUiMarkers) {
   assert.ok(html.includes(marker), `index.html must include Workspace Safety marker: ${marker}`);
 }
 
-assert.ok(html.includes('for (let i = 0; i < MappedOrders.length; i++)'), 'Save PDF must keep full MappedOrders export loop');
-assert.ok(html.includes('{MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}'), 'Print area must keep full MappedOrders rendering');
+assert.ok(html.includes('for (let i = 0; i < ordersToExport.length; i++)'), 'Save PDF must export only the explicitly selected output scope');
+assert.ok(html.includes('{PrintScopedOrders.map((order) => (<LabelCard key={`print-${order.id}`}'), 'Print area must render only the explicitly selected output scope');
+assert.ok(html.includes("mode === 'FULL_BATCH' && !printBlocked"), 'Workspace completion state must only be written after a clean full-batch output');
 
-console.log('PackMaster workspace backup/restore helper and UI integration tests passed');
+console.log('PackMaster workspace backup/restore helper and scoped UI integration tests passed');
