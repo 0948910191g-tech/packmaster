@@ -77,7 +77,7 @@ const requiredUiMarkers = [
   'const handleBackToBatchList = async () => {',
   'const handleDeleteBatch = async (batch) => {',
   'const markActiveBatchPrinted = async () => {',
-  'const handlePrint = async () => {',
+  "const handlePrint = async (mode = 'FULL_BATCH', override = false) => {",
   'เริ่มงานแพ็กใหม่',
   'กลับรายการ Batch'
 ];
@@ -86,7 +86,8 @@ requiredUiMarkers.forEach((marker) => {
   assert.ok(html.includes(marker), `index.html must include Phase 2 marker: ${marker}`);
 });
 
-assert.ok(html.includes('for (let i = 0; i < MappedOrders.length; i++)'), 'Save PDF must keep full MappedOrders export loop');
-assert.ok(html.includes('{MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}'), 'Print area must keep full MappedOrders rendering');
+assert.ok(html.includes('for (let i = 0; i < ordersToExport.length; i++)'), 'Save PDF must iterate the explicitly selected print/export scope');
+assert.ok(html.includes('{PrintScopedOrders.map((order) => (<LabelCard key={`print-${order.id}`}'), 'Browser print area must render the explicitly selected scope');
+assert.ok(html.includes("mode === 'FULL_BATCH' && !printBlocked"), 'only a clean full-batch output may mark the Batch completed');
 
-console.log('PackMaster local batch helper and UI integration tests passed');
+console.log('PackMaster local batch helper and scoped UI integration tests passed');
