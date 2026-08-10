@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const api = require('../packmaster-batch.js');
+const api = require('../packmaster-batch-source-files.js');
 
 test('summarizes source PDF filenames case-insensitively and preserves first casing', () => {
   const summary = api.summarizeBatchSourceFiles([
