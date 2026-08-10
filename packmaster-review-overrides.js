@@ -11,6 +11,11 @@
     .trim()
     .toLowerCase();
 
+  const normalizeReviewType = (value) => {
+    const type = String(value == null ? '' : value).trim().toLowerCase();
+    return type === 'sku' || type === 'qty' ? type : '';
+  };
+
   const getManualSkuOverride = (order, sourceText) => {
     const key = normalizeOverrideKey(sourceText);
     if (!key) return null;
@@ -38,6 +43,80 @@
     return { ...order, manualSkuOverrides: nextOverrides };
   };
 
+  const getReviewAcknowledgement = (order, type) => {
+    const key = normalizeReviewType(type);
+    if (!key) return false;
+    const acknowledgement = order && order.reviewAcknowledgements && order.reviewAcknowledgements[key];
+    return Boolean(acknowledgement && acknowledgement.confirmed === true);
+  };
+
+  const confirmReview = (order, type, nowValue) => {
+    const key = normalizeReviewType(type);
+    if (!order || !key) return order;
+    const existing = order.reviewAcknowledgements && typeof order.reviewAcknowledgements === 'object'
+      ? order.reviewAcknowledgements
+      : {};
+    const date = nowValue == null ? new Date() : new Date(nowValue);
+    if (Number.isNaN(date.getTime())) throw new Error('Invalid confirmation timestamp');
+    return {
+      ...order,
+      reviewAcknowledgements: {
+        ...existing,
+        [key]: {
+          confirmed: true,
+          confirmedAt: date.toISOString()
+        }
+      }
+    };
+  };
+
+  const clearReviewConfirmation = (order, type) => {
+    const key = normalizeReviewType(type);
+    if (!order || !key) return order;
+    const existing = order.reviewAcknowledgements && typeof order.reviewAcknowledgements === 'object'
+      ? order.reviewAcknowledgements
+      : {};
+    const next = { ...existing };
+    delete next[key];
+    return { ...order, reviewAcknowledgements: next };
+  };
+
+  const getQtyOverride = (order, sourceText) => {
+    const key = normalizeOverrideKey(sourceText);
+    if (!key) return null;
+    const overrides = Array.isArray(order && order.reviewQtyOverrides) ? order.reviewQtyOverrides : [];
+    const match = overrides.find((row) => normalizeOverrideKey(row && row.sourceText) === key);
+    const qty = Number(match && match.qty);
+    if (!match || !Number.isInteger(qty) || qty < 1) return null;
+    return {
+      sourceText: String(match.sourceText || '').trim(),
+      qty
+    };
+  };
+
+  const upsertQtyOverride = (order, sourceText, qtyValue) => {
+    const source = String(sourceText == null ? '' : sourceText).trim();
+    const key = normalizeOverrideKey(source);
+    const qty = Number(qtyValue);
+    if (!order || !key) return order;
+    if (!Number.isInteger(qty) || qty < 1) throw new Error('Qty override must be a positive integer');
+
+    const existing = Array.isArray(order.reviewQtyOverrides) ? order.reviewQtyOverrides : [];
+    const nextOverrides = existing
+      .filter((row) => normalizeOverrideKey(row && row.sourceText) !== key)
+      .map((row) => ({ ...row }));
+    nextOverrides.push({ sourceText: source, qty });
+
+    return { ...order, reviewQtyOverrides: nextOverrides };
+  };
+
+  const getEffectiveItemQty = (order, item) => {
+    const override = getQtyOverride(order, item && item.text);
+    if (override) return override.qty;
+    const qty = Number(item && item.qty);
+    return Number.isFinite(qty) ? qty : 0;
+  };
+
   const getUniqueInternalNames = (rules) => {
     const seen = new Set();
     const names = [];
@@ -56,6 +135,12 @@
     normalizeOverrideKey,
     getManualSkuOverride,
     upsertManualSkuOverride,
+    getReviewAcknowledgement,
+    confirmReview,
+    clearReviewConfirmation,
+    getQtyOverride,
+    upsertQtyOverride,
+    getEffectiveItemQty,
     getUniqueInternalNames
   };
 });
