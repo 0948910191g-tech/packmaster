@@ -30,8 +30,9 @@ assert.match(html, /\.pm-sku-layout\s*\{[^}]*grid-template-columns:\s*minmax\(32
 assert.match(html, /data-pm-review-layout/, 'Review page must expose the V4 layout marker');
 assert.match(html, /data-pm-review-action-dock/, 'Review completion action dock must expose a stable marker');
 
-// Core print safety invariants remain unchanged.
-assert.match(html, /for \(let i = 0; i < MappedOrders\.length; i\+\+\)/, 'Print must still iterate the full MappedOrders set');
-assert.match(html, /MappedOrders\.map\(\(order\) => \(<LabelCard key=\{`print-\$\{order\.id\}`\}/, 'Save/print render scope must remain full MappedOrders');
+// Output safety now uses explicit scope; layout must not collapse back to implicit filtered printing.
+assert.match(html, /for \(let i = 0; i < ordersToExport\.length; i\+\+\)/, 'Save PDF must iterate explicit selected output scope');
+assert.match(html, /PrintScopedOrders\.map\(\(order\) => \(<LabelCard key=\{`print-\$\{order\.id\}`\}/, 'Browser print must render explicit selected output scope');
+assert.match(html, /selectPrintOrders\(MappedOrders, mode/, 'Output scope must derive from full mapped Batch data');
 
 console.log('PackMaster Layout V4 contract passed');
