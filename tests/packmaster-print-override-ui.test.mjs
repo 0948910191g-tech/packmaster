@@ -18,4 +18,13 @@ assert.match(html, /PrintScopedOrders\.map\(/, 'browser print output must follow
 assert.match(html, /ordersToExport/, 'PDF export must iterate an explicit selected scope');
 assert.match(html, /mode === ['"]FULL_BATCH['"] && !printBlocked/, 'only a clean full-batch print may mark the batch completed');
 
+const exportStart = html.indexOf("const handleExportPDF = async (mode = 'FULL_BATCH', override = false) => {");
+const exportEnd = html.indexOf('const handleExportRules = () => {', exportStart);
+assert.ok(exportStart >= 0 && exportEnd > exportStart, 'handleExportPDF block must exist');
+const exportBlock = html.slice(exportStart, exportEnd);
+const declarationIndex = exportBlock.indexOf('const ordersToExport =');
+const firstLengthUseIndex = exportBlock.indexOf('ordersToExport.length');
+assert.ok(declarationIndex >= 0, 'ordersToExport must be declared');
+assert.ok(firstLengthUseIndex > declarationIndex, 'ordersToExport must be declared before any .length read');
+
 console.log('PackMaster print override UI contract passed');
