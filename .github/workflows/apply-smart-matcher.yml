@@ -102,6 +102,9 @@ jobs:
       - name: Review per-order override contract
         run: node --test tests/packmaster-review-overrides.test.mjs
 
+      - name: Review confirmation contract
+        run: node --test tests/packmaster-review-confirmation.test.mjs
+
       - name: Print scope contract
         run: node --test tests/packmaster-print-scope.test.mjs
 
