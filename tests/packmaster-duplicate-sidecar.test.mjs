@@ -71,7 +71,7 @@ const markers = [
 markers.forEach(marker => assert.ok(html.includes(marker), `missing sidecar marker: ${marker}`));
 assert.equal(html.includes('sourceFiles: [...(Array.isArray(activeBatch.sourceFiles)'), false);
 assert.equal(html.includes("console.error('Save source fingerprint failed'"), false);
-assert.ok(html.includes('for (let i = 0; i < MappedOrders.length; i++)'));
-assert.ok(html.includes('{MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}'));
+assert.ok(html.includes('for (let i = 0; i < ordersToExport.length; i++)'), 'duplicate sidecar must coexist with scoped PDF output');
+assert.ok(html.includes('{PrintScopedOrders.map((order) => (<LabelCard key={`print-${order.id}`}'), 'duplicate sidecar must coexist with scoped browser print output');
 
 console.log('PackMaster duplicate LocalStorage sidecar guardrail tests passed');
