@@ -57,6 +57,9 @@ jobs:
       - name: Exception Inbox regression tests
         run: node tests/packmaster-exceptions.test.mjs
 
+      - name: Review acknowledgement status contract
+        run: node --test tests/packmaster-review-acknowledgement-status.test.mjs
+
       - name: Exception Inbox UI guard
         run: node tests/packmaster-phase3c-ui.test.mjs
 
