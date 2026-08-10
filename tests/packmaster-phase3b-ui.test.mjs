@@ -25,8 +25,8 @@ assert.equal(
   false,
   'Phase 3B must not write new fingerprint metadata into IndexedDB Batch metadata'
 );
-assert.ok(html.includes('for (let i = 0; i < MappedOrders.length; i++)'), 'Save PDF must still export full MappedOrders');
-assert.ok(html.includes('{MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}'), 'Print area must still render full MappedOrders');
+assert.ok(html.includes('for (let i = 0; i < ordersToExport.length; i++)'), 'Save PDF must preserve duplicate protection while using an explicit output scope');
+assert.ok(html.includes('{PrintScopedOrders.map((order) => (<LabelCard key={`print-${order.id}`}'), 'Print area must preserve duplicate protection while using an explicit output scope');
 assert.ok(html.includes('parseTikTokPositionedItems(positionedItems, declaredTotalQty)'), 'TikTok parser call must remain');
 assert.ok(html.includes('parseShopeePositionedItems(positionedItems, declaredTotalQty)'), 'Shopee parser call must remain');
 

@@ -13,10 +13,12 @@ assert.equal(html.includes('review-preview-next'), false, 'Hybrid preview must n
 assert.equal(html.includes('onReviewPreviewKey'), false, 'Hybrid preview must not require keyboard paging');
 assert.match(html, /พรีวิวหลายใบ/, 'Multi-card preview must remain the primary review presentation');
 assert.match(html, /data-pm-review-card-details/, 'Hybrid review cards must retain enhanced order details');
-assert.match(html, /Print ยังใช้ข้อมูลเต็ม Batch/, 'Review UI must preserve full-Batch print scope notice');
+assert.match(html, /Print \/ Save PDF ใช้ Scope ที่ผู้ใช้เลือก/, 'Review UI must explain that output scope is explicit');
 
-// Critical safety: export and browser print must still render the complete active Batch.
-assert.match(html, /for \(let i = 0; i < MappedOrders\.length; i\+\+\)/, 'Save PDF must still iterate all MappedOrders');
-assert.match(html, /\{MappedOrders\.map\(\(order\) => \(<LabelCard key=\{`print-\$\{order\.id\}`\}/, 'Print area must still render all MappedOrders');
+// Critical safety: display filters remain presentation-only; output scope must derive from full MappedOrders.
+assert.match(html, /selectPrintOrders\(MappedOrders, mode/, 'Export/print scope must derive from full MappedOrders, not the filtered Review list');
+assert.match(html, /for \(let i = 0; i < ordersToExport\.length; i\+\+\)/, 'Save PDF must iterate the selected output scope');
+assert.match(html, /\{PrintScopedOrders\.map\(\(order\) => \(<LabelCard key=\{`print-\$\{order\.id\}`\}/, 'Print area must render the selected output scope');
+assert.equal(/MappedOrders\s*=\s*ReviewDisplayOrders/.test(html), false, 'Presentation filters must never replace full MappedOrders');
 
 console.log('PackMaster hybrid multi-card review preview contract passed');

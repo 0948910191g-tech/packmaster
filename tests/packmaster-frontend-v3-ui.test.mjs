@@ -54,8 +54,10 @@ for (const safetyText of ['ความปลอดภัย Workspace', 'Storag
 }
 
 assert.ok(html.includes('PackMaster Frontend V3'), 'Frontend V3 build marker missing');
-assert.match(html, /for \(let i = 0; i < MappedOrders\.length; i\+\+\)/, 'Save PDF export must remain scoped to full active Batch');
-assert.ok(html.includes('MappedOrders.map((order) => (<LabelCard'), 'Print area must remain scoped to full active Batch');
+assert.match(html, /for \(let i = 0; i < ordersToExport\.length; i\+\+\)/, 'Save PDF must iterate the explicit user-selected output scope');
+assert.ok(html.includes('PrintScopedOrders.map((order) => (<LabelCard'), 'Print area must render the explicit user-selected output scope');
+assert.ok(html.includes("'READY_ONLY'"), 'Frontend V3 Review must expose ready-only output');
+assert.ok(html.includes("'FULL_BATCH'"), 'Frontend V3 Review must preserve full-batch output');
 assert.ok(html.includes("const DB_VERSION = 1") === false, 'Frontend index must not define or migrate IndexedDB DB_VERSION');
 
 console.log('PackMaster Frontend V3 UI contract passed');

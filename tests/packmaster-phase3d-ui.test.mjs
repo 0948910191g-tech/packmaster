@@ -35,6 +35,6 @@ for (const forbidden of ['archiveBatchMeta', 'restoreBatchMeta', 'archiveBatch =
   assert.equal(batchSource.includes(forbidden), false, `packmaster-batch.js must stay frozen; found ${forbidden}`);
 }
 
-assert.ok(html.includes('for (let i = 0; i < MappedOrders.length; i++)'));
-assert.ok(html.includes('{MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}'));
+assert.ok(html.includes('for (let i = 0; i < ordersToExport.length; i++)'));
+assert.ok(html.includes('{PrintScopedOrders.map((order) => (<LabelCard key={`print-${order.id}`}'));
 console.log('PackMaster Phase 3D archive sidecar UI guard passed');

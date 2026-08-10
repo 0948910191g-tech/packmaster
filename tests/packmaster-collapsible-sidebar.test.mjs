@@ -24,7 +24,7 @@ assert.doesNotMatch(html, /onMouseEnter=.*sidebar/i, 'sidebar must not auto-expa
 
 assert.match(html, /data-pm-primary-nav/, 'primary navigation contract must remain');
 assert.match(html, /data-pm-secondary-nav/, 'secondary navigation contract must remain');
-assert.match(html, /for \(let i = 0; i < MappedOrders\.length; i\+\+\)/, 'Print must still iterate over full MappedOrders');
-assert.match(html, /MappedOrders\.map\(\(order\) => \(<LabelCard key=\{`print-\$\{order\.id\}`\}/, 'Save/print render scope must remain full MappedOrders');
+assert.match(html, /PackMasterPrintScope|printScopeApi/, 'Review print scope must be explicit after adding ready-only/full-batch printing');
+assert.match(html, /READY_ONLY|FULL_BATCH/, 'Review must preserve explicit print modes instead of reverting to an implicit full-batch loop');
 
 console.log('PackMaster collapsible sidebar contract passed');

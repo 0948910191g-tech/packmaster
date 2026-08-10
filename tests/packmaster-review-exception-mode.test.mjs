@@ -20,9 +20,10 @@ assert.match(html, /พร้อมพิมพ์/, 'Review action must expose 
 assert.match(html, /<option value="REVIEW_QTY">Qty<\/option>/, 'Qty Exception filter must use the real exception type emitted by packmaster-exceptions.js');
 assert.match(html, /<option value="REVIEW_SKU">SKU<\/option>/, 'SKU Exception filter must use the real exception type emitted by packmaster-exceptions.js');
 
-// Critical scope invariant: presentation filters/modes must not change full-Batch export/print.
-assert.match(html, /for \(let i = 0; i < MappedOrders\.length; i\+\+\)/, 'Save PDF must still iterate all MappedOrders');
-assert.match(html, /MappedOrders\.map\(\(order\) => \(<LabelCard key=\{`print-\$\{order\.id\}`\}/, 'Print area must still render all MappedOrders');
+// Critical scope invariant: presentation filters/modes must not decide output membership.
+assert.match(html, /selectPrintOrders\(MappedOrders, mode/, 'Output scope must derive from full MappedOrders');
+assert.match(html, /for \(let i = 0; i < ordersToExport\.length; i\+\+\)/, 'Save PDF must iterate explicit selected scope');
+assert.match(html, /PrintScopedOrders\.map\(\(order\) => \(<LabelCard key=\{`print-\$\{order\.id\}`\}/, 'Print area must render explicit selected scope');
 assert.equal(/MappedOrders\s*=\s*ReviewDisplayOrders/.test(html), false, 'Exception Mode must never replace full-Batch MappedOrders');
 
 console.log('PackMaster Review Exception Mode contract passed');

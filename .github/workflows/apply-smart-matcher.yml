@@ -24,6 +24,12 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Production smoke workflow contract first
+        run: node tests/packmaster-production-smoke-workflow.test.mjs
+
+      - name: Print override UI contract
+        run: node tests/packmaster-print-override-ui.test.mjs
+
       - name: Smart matcher regression tests
         run: node tests/packmaster-smart-matcher.test.mjs
 
@@ -93,6 +99,15 @@ jobs:
       - name: Review Quick Mapping usability guard
         run: node tests/packmaster-review-quick-mapping.test.mjs
 
+      - name: Review per-order override contract
+        run: node --test tests/packmaster-review-overrides.test.mjs
+
+      - name: Print scope contract
+        run: node --test tests/packmaster-print-scope.test.mjs
+
+      - name: Source reference contract
+        run: node tests/packmaster-source-reference.test.mjs
+
       - name: Keyword Assistant helper guard
         run: node --test tests/packmaster-keyword-assistant.test.mjs
 
@@ -107,9 +122,6 @@ jobs:
 
       - name: Layout V4 no-overlap guard
         run: node tests/packmaster-layout-v4.test.mjs
-
-      - name: Production smoke workflow regression guard
-        run: node tests/packmaster-production-smoke-workflow.test.mjs
 
       - name: Existing guardrail tests when present
         run: |
