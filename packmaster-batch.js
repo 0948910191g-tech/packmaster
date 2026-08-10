@@ -29,37 +29,6 @@
     return 'READY';
   };
 
-  const summarizeBatchSourceFiles = (orders, visibleLimit = 2) => {
-    const limit = Math.max(1, parseInt(visibleLimit, 10) || 2);
-    const seen = new Set();
-    const allNames = [];
-    (Array.isArray(orders) ? orders : []).forEach((order) => {
-      const name = String(order && order.sourceFileName || '').trim();
-      if (!name) return;
-      const key = name.toLocaleLowerCase('en-US');
-      if (seen.has(key)) return;
-      seen.add(key);
-      allNames.push(name);
-    });
-
-    if (allNames.length === 0) {
-      return { names: [], total: 0, hiddenCount: 0, label: 'ยังไม่มีไฟล์' };
-    }
-
-    const names = allNames.slice(0, limit);
-    const hiddenCount = Math.max(0, allNames.length - names.length);
-    const label = hiddenCount > 0
-      ? `${names.join(' • ')} • +${hiddenCount} ไฟล์`
-      : names.join(' • ');
-
-    return {
-      names,
-      total: allNames.length,
-      hiddenCount,
-      label
-    };
-  };
-
   const createBatchMeta = (existingBatches = [], now = new Date()) => {
     const date = now instanceof Date ? now : new Date(now);
     const existing = Array.isArray(existingBatches) ? existingBatches : [];
@@ -212,7 +181,6 @@
     createBatchMeta,
     deriveBatchStatus,
     buildBatchMeta,
-    summarizeBatchSourceFiles,
     listBatches,
     saveBatch,
     loadBatch,
