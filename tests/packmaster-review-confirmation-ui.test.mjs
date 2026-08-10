@@ -43,6 +43,20 @@ test('SKU and Qty warnings can be confirmed or corrected per Order', () => {
   assert.ok(html.includes('reviewOverridesApi.getEffectiveItemQty'), 'display/aggregation must use effective review qty while raw parsed qty stays untouched');
 });
 
+test('saving a valid Qty correction resolves the Qty review in the same action', () => {
+  const start = html.indexOf('const handleSaveQtyReviewCorrections = () => {');
+  const end = html.indexOf('const handleApplyQuickOrderName = () => {', start);
+  assert.ok(start >= 0 && end > start, 'Qty correction handler must exist');
+  const handler = html.slice(start, end);
+  assert.ok(handler.includes("reviewOverridesApi.confirmReview(next, 'qty')"), 'valid Qty correction must confirm the corrected Qty without a second manual click');
+  assert.doesNotMatch(handler, /ติ๊ก.*Qty ถูกต้อง.*ปิด Exception/s, 'successful Qty correction must not instruct the user to perform a redundant second confirmation');
+});
+
+test('Review card and table show effective Qty after a Review-layer correction', () => {
+  const effectiveFirst = (html.match(/order\.originalQty\|\|\(order\.parsedItems\|\|\[\]\)\.reduce/g) || []).length;
+  assert.ok(effectiveFirst >= 2, 'both Review table and Review cards must prefer effective order.originalQty over raw parsed Qty');
+});
+
 test('Review flow offers a single inspect action for SKU and Qty exceptions', () => {
   assert.ok(html.includes('data-pm-action="review-exception"'));
   assert.ok(html.includes('ตรวจรายการ'));
