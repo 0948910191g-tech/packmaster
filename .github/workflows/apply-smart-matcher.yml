@@ -99,6 +99,12 @@ jobs:
       - name: Print scope contract
         run: node --test tests/packmaster-print-scope.test.mjs
 
+      - name: Source reference contract
+        run: node tests/packmaster-source-reference.test.mjs
+
+      - name: Print override UI contract
+        run: node tests/packmaster-print-override-ui.test.mjs
+
       - name: Keyword Assistant helper guard
         run: node --test tests/packmaster-keyword-assistant.test.mjs
 
