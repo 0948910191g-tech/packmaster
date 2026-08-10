@@ -97,3 +97,30 @@ test('review recommendations are advisory metadata and deterministic', () => {
   assert.deepEqual(first, second);
   assert.ok(first.every(row => row.autoApply !== true && row.autoSave !== true));
 });
+
+test('repairs only known Thai PDF extraction gaps for Review display', () => {
+  assert.equal(typeof reviewKeywords.formatReviewDisplayText, 'function', 'Review display formatter is missing');
+
+  const corrupted = '(6 ห�อ ) ทิชชู�เปียก สูตรเย็น สไตล�ญี่ปุ�น กลิ่น JASMINE 30 แผ�น / ห�อ ผสานคุณค�าจากเมนทอล 100% เย็นสุดขั้ว';
+  const expected = '(6 ห่อ ) ทิชชู่เปียก สูตรเย็น สไตล์ญี่ปุ่น กลิ่น JASMINE 30 แผ่น / ห่อ ผสานคุณค่าจากเมนทอล 100% เย็นสุดขั้ว';
+  assert.equal(reviewKeywords.formatReviewDisplayText(corrupted), expected);
+  assert.equal(reviewKeywords.formatReviewDisplayText(expected), expected, 'clean Thai must remain unchanged');
+});
+
+test('keeps raw Keyword values for matcher safety but exposes repaired Thai displayValue', () => {
+  const source = 'HAKU JASMINE 30 แผ�น ทิชชู�เปียก';
+  const rows = reviewKeywords.generateReviewKeywordSuggestions({
+    sourceText: source,
+    existingRules: [],
+    batchItemTexts: [source],
+    maxSuggestions: 3,
+    keywordAssistant: assistant,
+    matchRule: matchSkuRule,
+    matchNormalizer: normalizeMatchText
+  });
+
+  assert.ok(rows.length >= 1);
+  assert.ok(rows.every(row => typeof row.displayValue === 'string' && row.displayValue.length > 0));
+  assert.ok(rows.every(row => !row.displayValue.includes('�')));
+  assert.ok(rows.every(row => normalizeMatchText(source).includes(normalizeMatchText(row.value))), 'raw matcher value must still come from source text');
+});
