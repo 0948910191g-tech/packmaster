@@ -5,7 +5,7 @@ on:
     branches:
       - feature/review-confirmation-ux-v2
     paths:
-      - scripts/apply-review-confirmation-ux-v2.mjs
+      - scripts/apply-review-confirmation-ux-v2.py
       - .github/workflows/apply-review-confirmation-ux-v2.yml
 
 permissions:
@@ -22,7 +22,7 @@ jobs:
           fetch-depth: 1
 
       - name: Apply guarded index patch
-        run: node scripts/apply-review-confirmation-ux-v2.mjs
+        run: python3 scripts/apply-review-confirmation-ux-v2.py
 
       - name: Verify only expected app file changed
         run: |
