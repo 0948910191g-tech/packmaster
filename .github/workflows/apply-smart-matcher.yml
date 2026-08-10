@@ -93,6 +93,9 @@ jobs:
       - name: Review Quick Mapping usability guard
         run: node tests/packmaster-review-quick-mapping.test.mjs
 
+      - name: Review per-order override contract
+        run: node --test tests/packmaster-review-overrides.test.mjs
+
       - name: Keyword Assistant helper guard
         run: node --test tests/packmaster-keyword-assistant.test.mjs
 
