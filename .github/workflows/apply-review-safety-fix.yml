@@ -1,0 +1,44 @@
+name: Apply Review Safety Fix
+
+on:
+  push:
+    branches:
+      - fix/review-quick-mapping-print-override
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[review-safety-generated]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/review-quick-mapping-print-override
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply deterministic patch
+        run: node scripts/apply-review-safety-fix.mjs
+      - name: Verify feature contracts before commit
+        run: |
+          node tests/packmaster-review-quick-mapping.test.mjs
+          node --test tests/packmaster-keyword-assistant-ui.test.mjs
+          node tests/packmaster-source-reference.test.mjs
+          node tests/packmaster-print-override-ui.test.mjs
+          node tests/packmaster-pilot-safety-ui.test.mjs
+          node --test tests/packmaster-review-overrides.test.mjs
+          node --test tests/packmaster-print-scope.test.mjs
+      - name: Commit generated index update
+        run: |
+          if git diff --quiet -- index.html; then
+            echo "No index changes required"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "feat: safe Review mapping and print override [review-safety-generated]"
+          git push origin HEAD:fix/review-quick-mapping-print-override
