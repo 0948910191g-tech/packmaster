@@ -114,6 +114,9 @@ jobs:
       - name: Keyword Assistant helper guard
         run: node --test tests/packmaster-keyword-assistant.test.mjs
 
+      - name: Review Keyword recommendation contract
+        run: node --test tests/packmaster-review-keyword-suggestions.test.mjs
+
       - name: Keyword Assistant Quick Mapping UI guard
         run: node --test tests/packmaster-keyword-assistant-ui.test.mjs
 
