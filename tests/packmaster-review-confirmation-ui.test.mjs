@@ -34,6 +34,12 @@ test('Review modal exposes advisory Keyword choices without auto-fill', () => {
   assert.match(html, /setQuickMapState\(\{[^}]*keyword:\s*''/s, 'opening Review must keep Keyword blank until user clicks a recommendation');
 });
 
+test('Review modal repairs Thai extraction gaps only for visible text while keeping raw matcher values', () => {
+  assert.ok(html.includes('reviewKeywordSuggestionsApi.formatReviewDisplayText(quickMapState.sourceText)'), 'source text must use Review-only Thai display cleanup');
+  assert.ok(html.includes('suggestion.displayValue || suggestion.value'), 'Keyword suggestion labels must prefer repaired display text');
+  assert.ok(html.includes('reviewKeywordSuggestionsApi.formatReviewDisplayText(quickMapState.keyword)'), 'selected Keyword input must display repaired Thai while raw state remains available for matcher safety');
+});
+
 test('SKU and Qty warnings can be confirmed or corrected per Order', () => {
   assert.ok(html.includes('data-pm-review-confirm-sku'));
   assert.ok(html.includes('data-pm-review-confirm-qty'));
