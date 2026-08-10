@@ -10,6 +10,30 @@
     .replace(/\s+/g, ' ')
     .trim();
 
+  const CORRUPT_THAI_MARK = '[\uFFFD\u25A1\u25A0\u25A2\uE000-\uF8FF]';
+  const THAI_DISPLAY_REPAIRS = [
+    [new RegExp(`ห${CORRUPT_THAI_MARK}อ`, 'g'), 'ห่อ'],
+    [new RegExp(`ทิชชู${CORRUPT_THAI_MARK}เปียก`, 'g'), 'ทิชชู่เปียก'],
+    [new RegExp(`สไตล${CORRUPT_THAI_MARK}`, 'g'), 'สไตล์'],
+    [new RegExp(`ญี่ปุ${CORRUPT_THAI_MARK}น`, 'g'), 'ญี่ปุ่น'],
+    [new RegExp(`แผ${CORRUPT_THAI_MARK}น`, 'g'), 'แผ่น'],
+    [new RegExp(`คุณค${CORRUPT_THAI_MARK}า`, 'g'), 'คุณค่า']
+  ];
+
+  const formatReviewDisplayText = (value) => {
+    let text = normalizeSpaces(value);
+    if (!text) return '';
+    try {
+      text = text.normalize('NFC');
+    } catch (error) {
+      // Older runtimes may not expose String#normalize; Review display can still proceed safely.
+    }
+    THAI_DISPLAY_REPAIRS.forEach(([pattern, replacement]) => {
+      text = text.replace(pattern, replacement);
+    });
+    return text;
+  };
+
   const METADATA_BOUNDARY = /(?:\bNICKNAME\b|\bORDER\s*(?:ID|NO)?\b|\bTRACKING\s*(?:NO)?\b|\bRECEIVER\b|\bRECIPIENT\b|\bCUSTOMER\b|\bUID\b|\bADDRESS\b|\bPHONE\b|\bTEL\b|\bCOD\b|\bQTY\s*TOTAL\b|\bTOTAL\s*QTY\b|\bQUANTITY\b|จำนวนรวม|รวมจำนวน)/i;
 
   const sanitizeSourceIdentity = (sourceText) => {
@@ -30,16 +54,20 @@
     return text;
   };
 
-  const toAdvisory = (row, extra = {}) => ({
-    value: String(row && row.value || '').trim(),
-    confidence: 'recommended',
-    reason: String(row && row.reason || extra.reason || 'review-safe'),
-    collisions: Number(row && row.collisions) || 0,
-    safety: row && row.safety || extra.safety || 'verified-current-context',
-    specificity: extra.specificity || row && row.specificity || 'safe-current-context',
-    autoApply: false,
-    autoSave: false
-  });
+  const toAdvisory = (row, extra = {}) => {
+    const rawValue = String(row && row.value || '').trim();
+    return {
+      value: rawValue,
+      displayValue: formatReviewDisplayText(rawValue),
+      confidence: 'recommended',
+      reason: String(row && row.reason || extra.reason || 'review-safe'),
+      collisions: Number(row && row.collisions) || 0,
+      safety: row && row.safety || extra.safety || 'verified-current-context',
+      specificity: extra.specificity || row && row.specificity || 'safe-current-context',
+      autoApply: false,
+      autoSave: false
+    };
+  };
 
   const generateReviewKeywordSuggestions = (input) => {
     const value = input && typeof input === 'object' ? input : {};
@@ -108,6 +136,7 @@
 
   return {
     sanitizeSourceIdentity,
+    formatReviewDisplayText,
     generateReviewKeywordSuggestions
   };
 });
