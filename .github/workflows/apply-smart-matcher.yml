@@ -36,6 +36,9 @@ jobs:
       - name: Local batch regression tests
         run: node tests/packmaster-batch.test.mjs
 
+      - name: Batch source filename summary contract
+        run: node --test tests/packmaster-batch-source-files.test.mjs
+
       - name: Workspace backup restore regression tests
         run: node tests/packmaster-workspace.test.mjs
 
