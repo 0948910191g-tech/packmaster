@@ -22,23 +22,26 @@ assert.equal(
 assert.ok(batchSource.includes("const DB_VERSION = 1;"));
 
 const html = read('index.html');
-assert.ok(html.includes('for (let i = 0; i < MappedOrders.length; i++)'), 'Save PDF must keep full MappedOrders');
-assert.ok(html.includes('{MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}'), 'Print must keep full MappedOrders');
+assert.ok(html.includes('for (let i = 0; i < ordersToExport.length; i++)'), 'Save PDF must use explicit selected output scope');
+assert.ok(html.includes('{PrintScopedOrders.map((order) => (<LabelCard key={`print-${order.id}`}'), 'Print must use explicit selected output scope');
+assert.ok(html.includes('selectPrintOrders(MappedOrders, mode'), 'Output scope must derive from full mapped Batch data');
 
-// Phase 3 helpers may use LocalStorage / Browser capability APIs, but must not open or migrate IndexedDB directly.
-const phase3Helpers = [
+// Local-first helpers may use LocalStorage / Browser capability APIs, but must not open/migrate IndexedDB or call cloud services.
+const localHelpers = [
   'packmaster-workspace.js',
   'packmaster-duplicate.js',
   'packmaster-exceptions.js',
   'packmaster-archive.js',
   'packmaster-storage-health.js',
-  'packmaster-diagnostics.js'
+  'packmaster-diagnostics.js',
+  'packmaster-review-overrides.js',
+  'packmaster-print-scope.js'
 ];
 
 const forbiddenServicePattern = /(supabase|firebase|firestore|sentry|mixpanel|amplitude|posthog|segment\.io|stripe|cloudinary)/i;
 const networkApiPattern = /\b(fetch\s*\(|XMLHttpRequest\b|WebSocket\b|EventSource\b)/;
 
-for (const file of phase3Helpers) {
+for (const file of localHelpers) {
   const source = read(file);
   assert.equal(/\bindexedDB\b/i.test(source), false, `${file} must not access IndexedDB directly`);
   assert.equal(forbiddenServicePattern.test(source), false, `${file} must not depend on paid/cloud service runtime`);
