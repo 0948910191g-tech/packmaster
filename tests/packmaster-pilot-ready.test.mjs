@@ -27,8 +27,8 @@ const markers = [
 ];
 markers.forEach((marker) => assert.ok(html.includes(marker), `missing pilot-ready UI marker: ${marker}`));
 
-assert.ok(html.includes('for (let i = 0; i < MappedOrders.length; i++)'), 'Save PDF must keep full MappedOrders');
-assert.ok(html.includes('{MappedOrders.map((order) => (<LabelCard key={`print-${order.id}`}'), 'Print area must keep full MappedOrders');
+assert.ok(html.includes('for (let i = 0; i < ordersToExport.length; i++)'), 'Save PDF must use the explicit output scope');
+assert.ok(html.includes('{PrintScopedOrders.map((order) => (<LabelCard key={`print-${order.id}`}'), 'Print area must use the explicit output scope');
 
 for (const relative of requiredDocs.slice(0, 3)) {
   const text = fs.readFileSync(path.join(root, relative), 'utf8');
