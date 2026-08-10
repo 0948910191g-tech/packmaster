@@ -8,16 +8,26 @@
   const includesText = (items, needle) => (Array.isArray(items) ? items : [])
     .some((item) => String(item || '').includes(needle));
 
+  const isAcknowledged = (order, type) => Boolean(
+    order &&
+    order.reviewAcknowledgements &&
+    order.reviewAcknowledgements[type] &&
+    order.reviewAcknowledgements[type].confirmed === true
+  );
+
   const getExceptionFlags = (mappedOrder) => {
     const order = mappedOrder || {};
     const parserWarning = Boolean(order.parserWarning);
-    const reviewQty = Boolean(order.qtyWarning) || includesText(order.displayItems, 'ตรวจสอบ Qty');
-    const reviewSku = parserWarning || includesText(order.displayItems, 'ตรวจสอบ SKU');
+    const rawReviewQty = Boolean(order.qtyWarning) || includesText(order.displayItems, 'ตรวจสอบ Qty');
+    const rawReviewSku = parserWarning || includesText(order.displayItems, 'ตรวจสอบ SKU');
+    const reviewQty = rawReviewQty && !isAcknowledged(order, 'qty');
+    const reviewSku = rawReviewSku && !isAcknowledged(order, 'sku');
     const unmapped = includesText(order.displayItems, 'ยังไม่ตั้งชื่อ');
     return {
       reviewQty,
       reviewSku,
       parserWarning,
+      parserWarningBlocking: parserWarning && reviewSku,
       unmapped,
       ready: !reviewQty && !reviewSku && !unmapped
     };
@@ -26,7 +36,7 @@
   const getPrimaryStatus = (flags) => {
     const value = flags || {};
     if (value.reviewQty) return 'REVIEW_QTY';
-    if (value.reviewSku || value.parserWarning) return 'REVIEW_SKU';
+    if (value.reviewSku) return 'REVIEW_SKU';
     if (value.unmapped) return 'UNMAPPED';
     return 'READY';
   };
@@ -35,7 +45,7 @@
     const types = [];
     if (flags.reviewQty) types.push('REVIEW_QTY');
     if (flags.reviewSku) types.push('REVIEW_SKU');
-    if (flags.parserWarning) types.push('PARSER_WARNING');
+    if (flags.parserWarning && flags.reviewSku) types.push('PARSER_WARNING');
     if (flags.unmapped) types.push('UNMAPPED');
     return types;
   };

@@ -36,6 +36,9 @@ jobs:
       - name: Local batch regression tests
         run: node tests/packmaster-batch.test.mjs
 
+      - name: Batch source filename summary contract
+        run: node --test tests/packmaster-batch-source-files.test.mjs
+
       - name: Workspace backup restore regression tests
         run: node tests/packmaster-workspace.test.mjs
 
@@ -53,6 +56,9 @@ jobs:
 
       - name: Exception Inbox regression tests
         run: node tests/packmaster-exceptions.test.mjs
+
+      - name: Review acknowledgement status contract
+        run: node --test tests/packmaster-review-acknowledgement-status.test.mjs
 
       - name: Exception Inbox UI guard
         run: node tests/packmaster-phase3c-ui.test.mjs
@@ -102,6 +108,12 @@ jobs:
       - name: Review per-order override contract
         run: node --test tests/packmaster-review-overrides.test.mjs
 
+      - name: Review confirmation contract
+        run: node --test tests/packmaster-review-confirmation.test.mjs
+
+      - name: Review Confirmation UX V2 UI contract
+        run: node --test tests/packmaster-review-confirmation-ui.test.mjs
+
       - name: Print scope contract
         run: node --test tests/packmaster-print-scope.test.mjs
 
@@ -110,6 +122,9 @@ jobs:
 
       - name: Keyword Assistant helper guard
         run: node --test tests/packmaster-keyword-assistant.test.mjs
+
+      - name: Review Keyword recommendation contract
+        run: node --test tests/packmaster-review-keyword-suggestions.test.mjs
 
       - name: Keyword Assistant Quick Mapping UI guard
         run: node --test tests/packmaster-keyword-assistant-ui.test.mjs

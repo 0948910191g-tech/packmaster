@@ -22,14 +22,17 @@ test('normal full-batch flow remains safe while override is explicit', () => {
   assert.match(html, /mode === ['"]FULL_BATCH['"] && printBlocked && !override/);
 });
 
-test('SKU/unmapped exception keeps source identity but does not auto-select a Keyword', () => {
+test('SKU/unmapped Review keeps Pilot Safety source identity and never auto-selects a Keyword', () => {
+  mustInclude('const getReviewSourceText = (row) => {');
   mustInclude('const handleFixSkuException = (row) => {');
   mustInclude("types.some(type => type === 'REVIEW_SKU' || type === 'UNMAPPED')");
-  mustInclude('const seed = pilotSafetyApi.getSkuFixSeed(row, getMatchResult);');
+  mustInclude('pilotSafetyApi.getSkuFixSeed(row, getMatchResult)');
+  mustInclude('const seed = getReviewSourceText(row);');
   mustInclude('sourceText: seed');
   assert.match(html, /setQuickMapState\(\{\s*open:\s*true,\s*row,\s*sourceText:\s*seed,\s*keyword:\s*'',\s*shortName:\s*'',\s*suggestions\s*\}\);/s);
   assert.doesNotMatch(html, /const initialKeyword = suggestions\.length > 0 \? suggestions\[0\]\.value : '';/);
-  mustInclude('ตั้งชื่อ SKU');
+  mustInclude('data-pm-action="review-exception"');
+  mustInclude('ตรวจรายการ');
 });
 
 test('batch status UI remains exception-first even after emergency output', () => {

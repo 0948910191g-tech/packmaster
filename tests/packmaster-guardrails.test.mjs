@@ -35,6 +35,8 @@ const localHelpers = [
   'packmaster-storage-health.js',
   'packmaster-diagnostics.js',
   'packmaster-review-overrides.js',
+  'packmaster-review-keyword-suggestions.js',
+  'packmaster-batch-source-files.js',
   'packmaster-print-scope.js'
 ];
 
