@@ -25,15 +25,23 @@ jobs:
               && grep -Fq './packmaster-diagnostics.js' <<< "$html" \
               && grep -Fq './packmaster-pilot-safety.js' <<< "$html" \
               && grep -Fq './packmaster-review-overrides.js' <<< "$html" \
+              && grep -Fq './packmaster-review-keyword-suggestions.js' <<< "$html" \
+              && grep -Fq './packmaster-batch-source-files.js' <<< "$html" \
               && grep -Fq './packmaster-print-scope.js' <<< "$html" \
               && grep -Fq 'ใช้กับ Order นี้' <<< "$html" \
               && grep -Fq 'พิมพ์เฉพาะรายการพร้อม' <<< "$html" \
               && grep -Fq 'data-pm-view="review"' <<< "$html" \
-              && grep -Fq 'data-pm-review-layout="hybrid-grid"' <<< "$html"; then
+              && grep -Fq 'data-pm-review-layout="hybrid-grid"' <<< "$html" \
+              && grep -Fq 'data-pm-batch-source-files' <<< "$html" \
+              && grep -Fq 'data-pm-review-original-pdf' <<< "$html" \
+              && grep -Fq 'data-pm-review-confirm-sku' <<< "$html" \
+              && grep -Fq 'data-pm-review-confirm-qty' <<< "$html" \
+              && grep -Fq 'data-pm-review-qty-override' <<< "$html" \
+              && grep -Fq 'data-pm-keyword-suggestion' <<< "$html"; then
               echo "Production smoke passed"
               exit 0
             fi
             sleep 10
           done
-          echo "Production did not expose the expected PackMaster Review safety build within the retry window" >&2
+          echo "Production did not expose the expected PackMaster Review Confirmation UX V2 build within the retry window" >&2
           exit 1
