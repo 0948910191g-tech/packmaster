@@ -1096,25 +1096,39 @@
       const archivedBatchCount = useMemo(() => batches.filter(batch => Boolean(getBatchArchivedAt(batch))).length, [batches]);
 
       useEffect(() => {
-        if (!batchSourceFilesApi || !batchApi) {
+        if (!batchSourceFilesApi) {
           setBatchSourceSummaries({});
           return;
         }
+
+        if (activeBatchId) {
+          batchSourceFilesApi.rememberBatchSourceFiles(activeBatchId, orders);
+        }
+
         const entries = visibleBatches.map((batch) => {
-          const sourceFileNames = batch.id === activeBatchId
-            ? batchApi.extractSourceFileNames(orders)
-            : (Array.isArray(batch.sourceFileNames) ? batch.sourceFileNames : []);
-          const summary = batchSourceFilesApi.summarizeBatchSourceFiles(
+          if (batch.id === activeBatchId) {
+            return [batch.id, batchSourceFilesApi.summarizeBatchSourceFiles(orders, 2)];
+          }
+
+          const sourceFileNames = batchSourceFilesApi.getBatchSourceFileNames(batch.id);
+          if (sourceFileNames === null) {
+            return [batch.id, {
+              names: [],
+              total: 0,
+              hiddenCount: 0,
+              label: Number(batch.totalOrders) > 0
+                ? 'เปิด Batch ครั้งหนึ่งเพื่ออัปเดตชื่อไฟล์'
+                : 'ยังไม่มีไฟล์'
+            }];
+          }
+
+          return [batch.id, batchSourceFilesApi.summarizeBatchSourceFiles(
             sourceFileNames.map((sourceFileName) => ({ sourceFileName })),
             2
-          );
-          if (batch.id !== activeBatchId && !Array.isArray(batch.sourceFileNames) && Number(batch.totalOrders) > 0) {
-            summary.label = 'เปิด Batch ครั้งหนึ่งเพื่ออัปเดตชื่อไฟล์';
-          }
-          return [batch.id, summary];
+          )];
         });
         setBatchSourceSummaries(Object.fromEntries(entries));
-      }, [visibleBatches, activeBatchId, orders, batchApi, batchSourceFilesApi]);
+      }, [visibleBatches, activeBatchId, orders, batchSourceFilesApi]);
 
       useEffect(() => { localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); }, [skuRules]);
       useEffect(() => { localStorage.setItem('thermalMode', JSON.stringify(thermalMode)); }, [thermalMode]);
@@ -2192,6 +2206,7 @@
 
         try {
           await batchApi.deleteBatch(batch.id);
+          if (batchSourceFilesApi) batchSourceFilesApi.forgetBatchSourceFiles(batch.id);
           if (duplicateApi) {
             try { duplicateApi.clearBatchFingerprints(batch.id); }
             catch (fingerprintError) { console.warn('Clear duplicate fingerprint sidecar failed', fingerprintError); }
