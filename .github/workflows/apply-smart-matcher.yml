@@ -39,6 +39,12 @@ jobs:
       - name: Batch source filename summary contract
         run: node --test tests/packmaster-batch-source-files.test.mjs
 
+      - name: Batch list lightweight hydration guard
+        run: node tests/packmaster-batch-list-lightweight.test.mjs
+
+      - name: Batch memory hardening guard
+        run: node tests/packmaster-batch-memory-hardening.test.mjs
+
       - name: Workspace backup restore regression tests
         run: node tests/packmaster-workspace.test.mjs
 
