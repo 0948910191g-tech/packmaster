@@ -261,6 +261,51 @@
       );
     };
 
+    const thermalImagePromiseCache = new Map();
+
+    const acquireThermalImage = (pdfImage) => {
+      if (!pdfImage) return Promise.resolve('');
+      let entry = thermalImagePromiseCache.get(pdfImage);
+      if (!entry) {
+        const promise = new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => {
+            try {
+              const cvs = document.createElement('canvas');
+              cvs.width = img.width;
+              cvs.height = img.height;
+              const ctx = cvs.getContext('2d');
+              ctx.filter = 'grayscale(100%) brightness(80%) contrast(200%)';
+              ctx.drawImage(img, 0, 0);
+              const thermalImage = cvs.toDataURL('image/jpeg', 0.9);
+              cvs.width = 1;
+              cvs.height = 1;
+              resolve(thermalImage);
+            } catch (error) {
+              thermalImagePromiseCache.delete(pdfImage);
+              reject(error);
+            }
+          };
+          img.onerror = () => {
+            thermalImagePromiseCache.delete(pdfImage);
+            reject(new Error('แปลงภาพ Thermal ไม่สำเร็จ'));
+          };
+          img.src = pdfImage;
+        });
+        entry = { refs: 0, promise };
+        thermalImagePromiseCache.set(pdfImage, entry);
+      }
+      entry.refs += 1;
+      return entry.promise;
+    };
+
+    const releaseThermalImage = (pdfImage) => {
+      const entry = thermalImagePromiseCache.get(pdfImage);
+      if (!entry) return;
+      entry.refs = Math.max(0, (entry.refs || 0) - 1);
+      if (entry.refs === 0) thermalImagePromiseCache.delete(pdfImage);
+    };
+
     const LabelCard = ({ order, isExport = false, thermalMode = true }) => {
       const [displayImg, setDisplayImg] = useState(order.pdfImage);
 
@@ -270,17 +315,22 @@
           setDisplayImg(order.pdfImage);
           return;
         }
-        const img = new Image();
-        img.onload = () => {
-          const cvs = document.createElement('canvas');
-          cvs.width = img.width;
-          cvs.height = img.height;
-          const ctx = cvs.getContext('2d');
-          ctx.filter = 'grayscale(100%) brightness(80%) contrast(200%)';
-          ctx.drawImage(img, 0, 0);
-          setDisplayImg(cvs.toDataURL('image/jpeg', 0.9));
+
+        let cancelled = false;
+        setDisplayImg(order.pdfImage);
+        acquireThermalImage(order.pdfImage)
+          .then((thermalImage) => {
+            if (!cancelled) setDisplayImg(thermalImage);
+          })
+          .catch((error) => {
+            console.warn('Thermal preview fallback to original image', error);
+            if (!cancelled) setDisplayImg(order.pdfImage);
+          });
+
+        return () => {
+          cancelled = true;
+          releaseThermalImage(order.pdfImage);
         };
-        img.src = order.pdfImage;
       }, [order.pdfImage, thermalMode]);
 
       if (!order || !order.pdfImage) return null;
@@ -862,6 +912,26 @@
       }
     };
 
+
+
+    const waitForPrintRender = async (container, scopedOrders, thermalMode, timeoutMs = 15000) => {
+      if (!container) throw new Error('ไม่พบพื้นที่สำหรับพิมพ์');
+      const orders = Array.isArray(scopedOrders) ? scopedOrders : [];
+      const startedAt = Date.now();
+      while (true) {
+        const images = Array.from(container.querySelectorAll('img[alt="Label Base"]'));
+        const ready = images.length === orders.length && images.every((image, index) => {
+          const sourceOrder = orders[index];
+          return image.complete && image.naturalWidth > 0 && (!thermalMode || !sourceOrder || image.src !== sourceOrder.pdfImage);
+        });
+        if (ready) return;
+        if (Date.now() - startedAt > timeoutMs) {
+          throw new Error('รอเตรียมภาพสำหรับพิมพ์ไม่สำเร็จภายในเวลาที่กำหนด');
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    };
+
     // PackMaster Frontend V3 — presentation-only helpers.
     const PMIcon = ({ name = 'box', className = 'w-5 h-5' }) => {
       const common = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.9, strokeLinecap: 'round', strokeLinejoin: 'round' };
@@ -971,6 +1041,8 @@
       const [uploadError, setUploadError] = useState('');
       const [loadingStatus, setLoadingStatus] = useState({ active: false, current: 0, total: 0 });
       const [exportStatus, setExportStatus] = useState({ active: false, current: 0, total: 0 });
+      const [exportRenderOrder, setExportRenderOrder] = useState(null);
+      const [printRenderActive, setPrintRenderActive] = useState(false);
       const [previewMode, setPreviewMode] = useState('labels');
       const [testInput, setTestInput] = useState('');
       const [testQty, setTestQty] = useState('1');
@@ -1024,27 +1096,24 @@
       const archivedBatchCount = useMemo(() => batches.filter(batch => Boolean(getBatchArchivedAt(batch))).length, [batches]);
 
       useEffect(() => {
-        let cancelled = false;
-        const loadBatchSourceSummaries = async () => {
-          if (!batchApi || !batchSourceFilesApi) {
-            if (!cancelled) setBatchSourceSummaries({});
-            return;
+        if (!batchSourceFilesApi || !batchApi) {
+          setBatchSourceSummaries({});
+          return;
+        }
+        const entries = visibleBatches.map((batch) => {
+          const sourceFileNames = batch.id === activeBatchId
+            ? batchApi.extractSourceFileNames(orders)
+            : (Array.isArray(batch.sourceFileNames) ? batch.sourceFileNames : []);
+          const summary = batchSourceFilesApi.summarizeBatchSourceFiles(
+            sourceFileNames.map((sourceFileName) => ({ sourceFileName })),
+            2
+          );
+          if (batch.id !== activeBatchId && !Array.isArray(batch.sourceFileNames) && Number(batch.totalOrders) > 0) {
+            summary.label = 'เปิด Batch ครั้งหนึ่งเพื่ออัปเดตชื่อไฟล์';
           }
-          const entries = await Promise.all(visibleBatches.map(async (batch) => {
-            try {
-              const batchOrders = batch.id === activeBatchId
-                ? orders
-                : ((await batchApi.loadBatch(batch.id)).orders || []);
-              return [batch.id, batchSourceFilesApi.summarizeBatchSourceFiles(batchOrders, 2)];
-            } catch (error) {
-              console.warn('Read Batch source filenames failed', batch.id, error);
-              return [batch.id, { names: [], total: 0, hiddenCount: 0, label: 'ยังไม่มีไฟล์' }];
-            }
-          }));
-          if (!cancelled) setBatchSourceSummaries(Object.fromEntries(entries));
-        };
-        loadBatchSourceSummaries();
-        return () => { cancelled = true; };
+          return [batch.id, summary];
+        });
+        setBatchSourceSummaries(Object.fromEntries(entries));
       }, [visibleBatches, activeBatchId, orders, batchApi, batchSourceFilesApi]);
 
       useEffect(() => { localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); }, [skuRules]);
@@ -1895,7 +1964,8 @@
         if (!batchStorageReady) return false;
 
         try {
-          await batchApi.saveBatch(updated, orders);
+          const storedMeta = await batchApi.saveBatch(updated, orders);
+          upsertBatchMeta(storedMeta);
           return true;
         } catch (err) {
           console.error('Save active batch failed', err);
@@ -2201,13 +2271,26 @@
           return;
         }
         if (mode === 'FULL_BATCH' && printBlocked && override) {
-          const confirmed = window.confirm(`Batch นี้ยังมี ${exceptionRows.length} Exception\n\nต้องการพิมพ์ทั้ง Batch ต่อหรือไม่? รายการที่ยังไม่พร้อมอาจมีชื่อสินค้าไม่สมบูรณ์`);
+          const confirmed = window.confirm(`Batch นี้ยังมี ${exceptionRows.length} Exception
+
+ต้องการพิมพ์ทั้ง Batch ต่อหรือไม่? รายการที่ยังไม่พร้อมอาจมีชื่อสินค้าไม่สมบูรณ์`);
           if (!confirmed) return;
         }
+
         setPrintScopeMode(mode);
+        setPrintRenderActive(true);
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-        if (mode === 'FULL_BATCH' && !printBlocked) await markActiveBatchPrinted();
-        window.print();
+
+        try {
+          await waitForPrintRender(document.querySelector('.print-area'), scopedOrders, thermalMode);
+          if (mode === 'FULL_BATCH' && !printBlocked) await markActiveBatchPrinted();
+          window.print();
+        } catch (err) {
+          console.error('PackMaster print preparation failed:', err);
+          showToast(err.message || 'เตรียมหน้าพิมพ์ไม่สำเร็จ', 'error');
+        } finally {
+          setPrintRenderActive(false);
+        }
       };
 
       const handleEmergencyPrint = () => handlePrint('FULL_BATCH', true);
@@ -2218,8 +2301,8 @@
         const timer = setTimeout(async () => {
           try {
             const updated = batchApi.buildBatchMeta(activeBatch, reviewSummary, { printedAt: printBlocked ? null : activeBatch.printedAt, now: new Date() });
-            await batchApi.saveBatch(updated, orders);
-            upsertBatchMeta(updated);
+            const storedMeta = await batchApi.saveBatch(updated, orders);
+            upsertBatchMeta(storedMeta);
           } catch (err) {
             console.error('Auto-save batch failed', err);
             showToast('Auto-save Batch ไม่สำเร็จ กรุณาอย่าเพิ่งสลับงาน', 'error');
@@ -2443,6 +2526,9 @@
             const order = ordersToExport[i];
             setExportStatus(prev => ({ ...prev, current: i + 1 }));
 
+            setExportRenderOrder(order);
+            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
             const element = document.getElementById(`render-target-${order.id}`);
             if (!element) {
               throw new Error(`ไม่พบหน้าสำหรับ Export ลำดับ ${i + 1}: ${order.id}`);
@@ -2452,7 +2538,10 @@
             const canvas = await window.html2canvas(element, { scale: 3, useCORS: true, logging: false, backgroundColor: '#ffffff' });
 
             if (i > 0) pdf.addPage();
-            pdf.addImage(canvas.toDataURL('image/jpeg', 0.98), 'JPEG', 0, 0, 100, 150);
+            const exportedImage = canvas.toDataURL('image/jpeg', 0.98);
+            pdf.addImage(exportedImage, 'JPEG', 0, 0, 100, 150);
+            canvas.width = 1;
+            canvas.height = 1;
             exportedPages++;
           }
 
@@ -2467,6 +2556,7 @@
           console.error('PackMaster PDF export failed:', err);
           showToast(err.message || 'สร้างไฟล์ PDF ล้มเหลว', 'error');
         } finally {
+          setExportRenderOrder(null);
           setExportStatus({ active: false, current: 0, total: 0 });
         }
       };
@@ -3067,10 +3157,10 @@
                       <div className="pm-card overflow-x-auto"><table className="pm-table min-w-[820px]"><thead><tr><th>Order / Platform</th><th>สถานะ</th><th className="text-center">Qty</th><th>ชื่อภายใน</th><th className="text-right">Action</th></tr></thead><tbody>{visibleReviewDisplayOrders.map(order=>{const flags=getReviewFlags(order);const row=exceptionRows.find(item=>item.order?.id===order.id);return <tr key={order.id}><td><div className="font-mono text-xs font-bold text-slate-700">{order.tracking||order.orderId||order.id}</div><div data-pm-source-reference className="text-[9px] font-semibold text-slate-400 mt-1">{order.sourceFileName ? `${order.sourceFileName}${order.sourcePage ? ` • หน้า ${order.sourcePage}` : ''}` : '-'}</div><PMStatusPill tone={order.platform==='TIKTOK'?'dark':'orange'}>{order.platform==='TIKTOK'?'TikTok':'Shopee'}</PMStatusPill></td><td><div className="flex flex-wrap gap-1">{flags.ready&&<PMStatusPill tone="green">พร้อมพิมพ์</PMStatusPill>}{flags.hasSkuReview&&<PMStatusPill tone="amber">ตรวจสอบ SKU</PMStatusPill>}{flags.hasQtyReview&&<PMStatusPill tone="red">ตรวจสอบ Qty</PMStatusPill>}{flags.hasUnmapped&&<PMStatusPill tone="slate">ยังไม่ตั้งชื่อ</PMStatusPill>}</div></td><td className="text-center font-black text-slate-700">{order.originalQty||(order.parsedItems||[]).reduce((sum,item)=>sum+(Number(item.qty)||0),0)||'-'}</td><td><div className="space-y-1">{(order.displayItems||[]).map((text,idx)=><div key={idx} className={`text-xs font-black ${text.includes('ตรวจสอบ')||text.includes('ยังไม่ตั้งชื่อ')?'text-red-600':'text-blue-700'}`}>{text}</div>)}</div></td><td><div className="flex justify-end gap-1">{row&&<button data-pm-action="review-exception" onClick={()=>handleReviewException(row)} className="pm-secondary-btn !py-2 !px-3">ตรวจรายการ</button>}</div></td></tr>})}</tbody></table></div>
                     ):(
                       <div data-pm-review-preview="grid" data-pm-review-layout="hybrid-grid" className="pm-review-grid">
-                        {ReviewDisplayOrders.map((order,index)=>{const flags=getReviewFlags(order);const row=exceptionRows.find(item=>item.order?.id===order.id);const totalQty=order.originalQty||(order.parsedItems||[]).reduce((sum,item)=>sum+(Number(item.qty)||0),0)||'-';return <article key={order.id} data-pm-review-preview-item className="pm-card pm-review-grid-card">
+                        {visibleReviewDisplayOrders.map((order,index)=>{const displayIndex=(reviewPage-1)*reviewPageSize+index;const flags=getReviewFlags(order);const row=exceptionRows.find(item=>item.order?.id===order.id);const totalQty=order.originalQty||(order.parsedItems||[]).reduce((sum,item)=>sum+(Number(item.qty)||0),0)||'-';return <article key={order.id} data-pm-review-preview-item className="pm-card pm-review-grid-card">
                           <div className="p-3 flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-1.5"><PMStatusPill tone={order.platform==='TIKTOK'?'dark':'orange'}>{order.platform==='TIKTOK'?'TikTok':'Shopee'}</PMStatusPill><span className="text-[9px] font-black text-slate-400">ลำดับ {index+1}/{ReviewDisplayOrders.length}</span></div>
+                              <div className="flex flex-wrap items-center gap-1.5"><PMStatusPill tone={order.platform==='TIKTOK'?'dark':'orange'}>{order.platform==='TIKTOK'?'TikTok':'Shopee'}</PMStatusPill><span className="text-[9px] font-black text-slate-400">ลำดับ {displayIndex+1}/{ReviewDisplayOrders.length}</span></div>
                               <div className="mt-2 text-[9px] uppercase tracking-[.11em] font-black text-slate-400">Order / Tracking</div>
                               <div className="font-mono text-xs font-black text-slate-800 break-all mt-0.5">{order.tracking||order.orderId||order.id}</div><div data-pm-source-reference className="text-[9px] font-semibold text-slate-400 mt-1">{order.sourceFileName ? `${order.sourceFileName}${order.sourcePage ? ` • หน้า ${order.sourcePage}` : ''}` : '-'}</div>
                             </div>
@@ -3078,7 +3168,7 @@
                           </div>
                           <div className="pm-review-grid-stage"><LabelCard order={order} thermalMode={thermalMode} /></div>
                           <div data-pm-review-card-details className="pm-review-grid-details">
-                            <div className="grid grid-cols-2 gap-2"><div className="pm-mini-stat"><span>Qty</span><strong>{totalQty}</strong></div><div className="pm-mini-stat"><span>ลำดับ</span><strong>{index+1}/{ReviewDisplayOrders.length}</strong></div></div>
+                            <div className="grid grid-cols-2 gap-2"><div className="pm-mini-stat"><span>Qty</span><strong>{totalQty}</strong></div><div className="pm-mini-stat"><span>ลำดับ</span><strong>{displayIndex+1}/{ReviewDisplayOrders.length}</strong></div></div>
                             <div className="mt-3"><div className="text-[10px] font-black text-slate-500 mb-2">ชื่อภายใน / ผลลัพธ์ที่จะพิมพ์</div><div className="pm-review-grid-output space-y-1.5">{(order.displayItems||[]).map((text,idx)=><div key={idx} className={`rounded-lg px-2.5 py-2 text-xs font-black ${text.includes('ตรวจสอบ')||text.includes('ยังไม่ตั้งชื่อ')?'bg-red-50 text-red-700 border border-red-100':'bg-blue-50 text-blue-800 border border-blue-100'}`}>{text}</div>)}</div></div>
                             {row&&<button data-pm-action="review-exception" onClick={()=>handleReviewException(row)} className="pm-secondary-btn w-full justify-center mt-3">ตรวจรายการ</button>}
                           </div>
@@ -3086,7 +3176,7 @@
                       </div>
                     )}
 
-                    {previewMode==='table'&&ReviewDisplayOrders.length>0&&<div className="pm-pagination mt-4"><div className="text-[11px] font-bold text-slate-400">หน้า {reviewPage} / {reviewDisplayPageCount} • แสดง {visibleReviewDisplayOrders.length} รายการ</div><div className="flex items-center gap-2"><select value={reviewPageSize} onChange={(e)=>{setReviewPageSize(Number(e.target.value));setReviewPage(1);}} className="pm-select !py-1.5"><option value="12">12/หน้า</option><option value="24">24/หน้า</option><option value="48">48/หน้า</option></select><button disabled={reviewPage<=1} onClick={()=>setReviewPage(p=>Math.max(1,p-1))} className="pm-page-btn">‹</button><button disabled={reviewPage>=reviewDisplayPageCount} onClick={()=>setReviewPage(p=>Math.min(reviewDisplayPageCount,p+1))} className="pm-page-btn">›</button></div></div>}
+                    {ReviewDisplayOrders.length>0&&<div className="pm-pagination mt-4"><div className="text-[11px] font-bold text-slate-400">หน้า {reviewPage} / {reviewDisplayPageCount} • แสดง {visibleReviewDisplayOrders.length} รายการ</div><div className="flex items-center gap-2"><select value={reviewPageSize} onChange={(e)=>{setReviewPageSize(Number(e.target.value));setReviewPage(1);}} className="pm-select !py-1.5"><option value="12">12/หน้า</option><option value="24">24/หน้า</option><option value="48">48/หน้า</option></select><button disabled={reviewPage<=1} onClick={()=>setReviewPage(p=>Math.max(1,p-1))} className="pm-page-btn">‹</button><button disabled={reviewPage>=reviewDisplayPageCount} onClick={()=>setReviewPage(p=>Math.min(reviewDisplayPageCount,p+1))} className="pm-page-btn">›</button></div></div>}
                     {orders.length>0&&<div data-pm-review-action-dock className="pm-review-action-wrap no-print"><div data-pm-review-action-bar className="pm-review-action-bar"><div className="min-w-0"><div className={`text-sm font-black ${printBlocked?'text-amber-800':'text-emerald-700'}`}>{printBlocked?`พร้อม ${reviewSummary.ready}/${reviewSummary.total} • ต้องตรวจ ${exceptionRows.length}`:`พร้อมพิมพ์ ${reviewSummary.ready}/${reviewSummary.total}`}</div><div className="text-[10px] font-semibold text-slate-400 mt-0.5">{printBlocked?'แนะนำให้แก้รายการที่ต้องตรวจให้ครบ หรือเลือกพิมพ์เฉพาะ Ready / Override ทั้ง Batch':'Batch นี้ไม่มี Exception ที่บล็อกการพิมพ์'}</div></div><div className="flex flex-wrap gap-2">{printBlocked?<><button onClick={openExceptionMode} className="pm-warning-btn"><PMIcon name="alert"/> แก้ {exceptionRows.length} รายการ</button><button onClick={()=>handleExportPDF('READY_ONLY')} disabled={exportStatus.active||reviewSummary.ready===0} className="pm-secondary-btn"><PMIcon name="download"/> Save Ready PDF</button><button onClick={()=>handlePrint('READY_ONLY')} disabled={reviewSummary.ready===0} className="pm-primary-btn"><PMIcon name="printer"/> พิมพ์เฉพาะรายการพร้อม</button><button onClick={()=>handleExportPDF('FULL_BATCH', true)} className="pm-warning-btn">Save PDF ทั้ง Batch</button><button onClick={handleEmergencyPrint} className="pm-warning-btn">พิมพ์ทั้ง Batch</button></>:<><button onClick={()=>handleExportPDF('FULL_BATCH')} disabled={exportStatus.active||orders.length===0} className="pm-secondary-btn"><PMIcon name="download"/> Save PDF</button><button onClick={()=>handlePrint('FULL_BATCH')} disabled={orders.length===0} className="pm-primary-btn"><PMIcon name="printer"/> พิมพ์ {reviewSummary.total} ใบ</button></>}</div></div></div>}
                   </section>
                 )}
@@ -3122,16 +3212,14 @@
           </div>
 
 
-          <div className="fixed pointer-events-none opacity-0" style={{ top: 0, left: 0, width: '100mm', height: 0, overflow: 'hidden', zIndex: -100 }}>
-            {MappedOrders.map((order) => (
-              <div key={`render-arena-${order.id}`} id={`render-target-${order.id}`} style={{ position: 'relative', width: '100mm', height: '150mm', backgroundColor: 'white' }}>
-                <LabelCard order={order} thermalMode={thermalMode} isExport={true} />
-              </div>
-            ))}
-          </div>
-          <div className="hidden print-area w-full text-black">
+          {exportRenderOrder && <div className="fixed pointer-events-none opacity-0" style={{ top: 0, left: 0, width: '100mm', height: 0, overflow: 'hidden', zIndex: -100 }}>
+            <div key={`render-arena-${exportRenderOrder.id}`} id={`render-target-${exportRenderOrder.id}`} style={{ position: 'relative', width: '100mm', height: '150mm', backgroundColor: 'white' }}>
+              <LabelCard order={exportRenderOrder} thermalMode={thermalMode} isExport={true} />
+            </div>
+          </div>}
+          {printRenderActive && <div className="hidden print-area w-full text-black">
             {PrintScopedOrders.map((order) => (<LabelCard key={`print-${order.id}`} order={order} thermalMode={thermalMode} isExport={true} />))}
-          </div>
+          </div>}
         </div>
       );
     }
