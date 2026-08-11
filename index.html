@@ -308,10 +308,11 @@
 
     const LabelCard = ({ order, isExport = false, thermalMode = true }) => {
       const [displayImg, setDisplayImg] = useState(order.pdfImage);
+      const shouldBakeThermal = Boolean(thermalMode && isExport);
 
       useEffect(() => {
         if (!order || !order.pdfImage) return;
-        if (!thermalMode) {
+        if (!shouldBakeThermal) {
           setDisplayImg(order.pdfImage);
           return;
         }
@@ -331,7 +332,7 @@
           cancelled = true;
           releaseThermalImage(order.pdfImage);
         };
-      }, [order.pdfImage, thermalMode]);
+      }, [order.pdfImage, shouldBakeThermal]);
 
       if (!order || !order.pdfImage) return null;
       
@@ -357,7 +358,7 @@
 
       return (
         <div className={`shrink-0 box-border ${isExport ? '' : 'border-2 border-blue-50 shadow-xl shadow-blue-900/5 rounded-2xl'}`} style={{ width: '100mm', height: '150mm', backgroundColor: '#ffffff', position: 'relative', overflow: 'hidden', pageBreakAfter: 'always', margin: 0, display: 'block', isolation: 'isolate' }}>
-          <img src={displayImg} alt="Label Base" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'fill', zIndex: 0 }} />
+          <img src={displayImg} alt="Label Base" loading={isExport ? 'eager' : 'lazy'} decoding={isExport ? 'sync' : 'async'} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'fill', zIndex: 0, filter: thermalMode && !isExport ? 'grayscale(100%) brightness(80%) contrast(200%)' : 'none' }} />
           
           {order.displayItems && order.displayItems.length > 0 && (
             <div className="label-overlay" style={{ position: 'absolute', zIndex: 10, boxSizing: 'border-box', bottom: '24px', left: '16px', right: '16px', height: '18%', border: '4px dashed #172554', borderRadius: '14px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '8px', gap: '4px', backgroundColor: 'rgba(255,255,255,0.90)', backdropFilter: 'blur(2px)', overflow: 'hidden' }}>
@@ -1269,14 +1270,19 @@
           if (!pdfjs) throw new Error("โหลดระบบอ่าน PDF ไม่สำเร็จ กรุณารีเฟรชหน้าเว็บ");
 
           let totalNewPages = 0;
-          let pdfDocuments = [];
+          let pdfManifests = [];
           
           for (const file of files) {
             if (!file.name.toLowerCase().endsWith('.pdf')) continue;
-            const arrayBuffer = await file.arrayBuffer();
-            const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
-            totalNewPages += pdf.numPages;
-            pdfDocuments.push({ file, pdf });
+            let pdf = null;
+            try {
+              const arrayBuffer = await file.arrayBuffer();
+              pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+              totalNewPages += pdf.numPages;
+              pdfManifests.push({ file, numPages: pdf.numPages });
+            } finally {
+              if (pdf) await pdf.destroy();
+            }
           }
 
           if (totalNewPages === 0) {
@@ -1298,8 +1304,12 @@
           let allNewOrders = [];
           let currentPageCount = 0;
           
-          for (const { file, pdf } of pdfDocuments) {
-            for (let i = 1; i <= pdf.numPages; i++) {
+          for (const { file, numPages } of pdfManifests) {
+            let pdf = null;
+            try {
+              const arrayBuffer = await file.arrayBuffer();
+              pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+              for (let i = 1; i <= numPages; i++) {
               currentPageCount++;
               
               if (currentPageCount % 5 === 0 || currentPageCount === totalNewPages) {
@@ -1318,6 +1328,9 @@
               canvas.height = viewport.height; canvas.width = viewport.width;
               await page.render({ canvasContext: context, viewport }).promise;
               const pdfImage = canvas.toDataURL('image/jpeg', 0.9);
+              canvas.width = 1;
+              canvas.height = 1;
+              if (typeof page.cleanup === 'function') page.cleanup();
 
               let platform = 'SHOPEE';
               if (fullText.match(/Order\s*ID/i) || fullText.match(/In\s*transit/i) || fullText.match(/TikTok/i)) platform = 'TIKTOK';
@@ -1536,6 +1549,9 @@
                   declaredTotalQty,
                   parserWarning
               });
+              }
+            } finally {
+              if (pdf) await pdf.destroy();
             }
           }
           
