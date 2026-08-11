@@ -45,11 +45,11 @@ jobs:
       - name: Batch memory hardening guard
         run: node tests/packmaster-batch-memory-hardening.test.mjs
 
-      - name: Active Batch preview memory guard
-        run: node tests/packmaster-active-preview-memory.test.mjs
-
       - name: PDF import memory cleanup guard
         run: node tests/packmaster-pdf-import-memory.test.mjs
+
+      - name: Active Batch preview memory guard
+        run: node tests/packmaster-active-preview-memory.test.mjs
 
       - name: Workspace backup restore regression tests
         run: node tests/packmaster-workspace.test.mjs
