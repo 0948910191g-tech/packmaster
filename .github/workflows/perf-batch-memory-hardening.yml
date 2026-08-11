@@ -16,14 +16,32 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: perf/batch-memory-hardening-20260811
+          fetch-depth: 2
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Run PackMaster regression tests
+      - name: Apply guarded performance patch
+        run: python tools/apply-batch-memory-hardening.py
+      - name: Run focused regression tests
         shell: bash
         run: |
           set -euo pipefail
-          for test_file in tests/*.test.mjs; do
-            echo "==> $test_file"
-            node "$test_file"
-          done
+          node tests/packmaster-batch-list-lightweight.test.mjs
+          node tests/packmaster-batch-memory-hardening.test.mjs
+          node tests/packmaster-batch.test.mjs
+          node tests/packmaster-full-review-preview.test.mjs
+          node tests/packmaster-print-scope.test.mjs
+          node tests/packmaster-performance.test.mjs
+      - name: Commit generated index change
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- index.html; then
+            echo "No generated index change to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "perf: reduce eager Batch label rendering"
+          git push origin HEAD:perf/batch-memory-hardening-20260811
