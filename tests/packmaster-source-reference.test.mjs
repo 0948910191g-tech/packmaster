@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 const html = fs.readFileSync('index.html', 'utf8');
 
-assert.match(html, /for \(const \{ file, pdf \} of pdfDocuments\)/, 'PDF processing must retain the source file reference');
+assert.match(html, /for \(const \{ file, numPages \} of pdfManifests\)/, 'PDF processing must retain the source file reference while processing lightweight manifests');
 assert.match(html, /sourceFileName:\s*file\.name/, 'new orders must record the source PDF filename');
 assert.match(html, /sourcePage:\s*i/, 'new orders must record the 1-based PDF page');
 assert.match(html, /data-pm-source-reference/, 'Review/Quick Mapping must expose source traceability');
