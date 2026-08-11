@@ -6,13 +6,18 @@ import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
-const batch = require(path.resolve(__dirname, '../packmaster-batch.js'));
+const sourceFiles = require(path.resolve(__dirname, '../packmaster-batch-source-files.js'));
 const html = fs.readFileSync(path.resolve(__dirname, '../index.html'), 'utf8');
 
 assert.equal(
-  typeof batch.extractSourceFileNames,
+  typeof sourceFiles.getBatchSourceFileNames,
   'function',
-  'Batch metadata should expose a lightweight source-file extractor so cards never need full order loads'
+  'Batch cards need a lightweight LocalStorage sidecar for source filenames'
+);
+assert.equal(
+  typeof sourceFiles.rememberBatchSourceFiles,
+  'function',
+  'Opening/saving the active Batch should be able to refresh the filename sidecar'
 );
 
 assert.doesNotMatch(
@@ -20,11 +25,16 @@ assert.doesNotMatch(
   /Promise\.all\(visibleBatches\.map[\s\S]*?batchApi\.loadBatch\(batch\.id\)/,
   'Batch list must not load every inactive Batch order payload just to show source filenames'
 );
+assert.doesNotMatch(
+  html,
+  /const batchOrders = batch\.id === activeBatchId[\s\S]*?batchApi\.loadBatch\(batch\.id\)/,
+  'Inactive Batch cards must never hydrate full order payloads for filenames'
+);
 
 assert.match(
   html,
-  /batch\.sourceFileNames/,
-  'Inactive Batch cards should read source filenames from lightweight metadata'
+  /batchSourceFilesApi\.getBatchSourceFileNames\(batch\.id\)/,
+  'Inactive Batch cards should read filenames from the lightweight sidecar'
 );
 
 console.log('PackMaster lightweight Batch list regression guard passed');
