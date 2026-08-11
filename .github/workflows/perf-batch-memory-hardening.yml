@@ -1,0 +1,29 @@
+name: PackMaster Batch Memory Hardening
+
+on:
+  push:
+    branches:
+      - perf/batch-memory-hardening-20260811
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/batch-memory-hardening-20260811
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run PackMaster regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for test_file in tests/*.test.mjs; do
+            echo "==> $test_file"
+            node "$test_file"
+          done
