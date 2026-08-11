@@ -21,20 +21,6 @@
     unmapped: toNonNegativeInt(summary && summary.unmapped)
   });
 
-  const extractSourceFileNames = (orders) => {
-    const seen = new Set();
-    const names = [];
-    (Array.isArray(orders) ? orders : []).forEach((order) => {
-      const name = String(order && order.sourceFileName || '').trim();
-      if (!name) return;
-      const key = name.toLocaleLowerCase('en-US');
-      if (seen.has(key)) return;
-      seen.add(key);
-      names.push(name);
-    });
-    return names;
-  };
-
   const deriveBatchStatus = (summary, printedAt = null) => {
     const clean = normalizeSummary(summary);
     if (printedAt) return 'COMPLETED';
@@ -66,8 +52,7 @@
       readyCount: 0,
       reviewSkuCount: 0,
       reviewQtyCount: 0,
-      unmappedCount: 0,
-      sourceFileNames: []
+      unmappedCount: 0
     };
   };
 
@@ -152,21 +137,16 @@
 
   const saveBatch = async (meta, orders) => {
     if (!meta || !meta.id) throw new Error('Batch metadata is required');
-    const safeOrders = Array.isArray(orders) ? orders : [];
-    const storedMeta = {
-      ...meta,
-      sourceFileNames: extractSourceFileNames(safeOrders)
-    };
     const db = await openDb();
     const tx = db.transaction([META_STORE, ORDERS_STORE], 'readwrite');
-    tx.objectStore(META_STORE).put(storedMeta);
+    tx.objectStore(META_STORE).put(meta);
     tx.objectStore(ORDERS_STORE).put({
       batchId: meta.id,
-      orders: safeOrders,
+      orders: Array.isArray(orders) ? orders : [],
       updatedAt: meta.updatedAt || new Date().toISOString()
     });
     await transactionToPromise(tx);
-    return storedMeta;
+    return meta;
   };
 
   const loadBatch = async (batchId) => {
@@ -201,7 +181,6 @@
     createBatchMeta,
     deriveBatchStatus,
     buildBatchMeta,
-    extractSourceFileNames,
     listBatches,
     saveBatch,
     loadBatch,
