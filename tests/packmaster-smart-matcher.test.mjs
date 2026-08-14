@@ -100,6 +100,32 @@ assert.equal(groupedTikTok.parserWarning, false, 'Grouped Product Name / Seller 
 assert.equal(groupedTikTok.items.length, 1, 'Grouped TikTok header must still produce one row');
 assert.equal(groupedTikTok.items[0].qty, 1);
 
+// 2026-08-14 real failure case: a purple HOYA Baby 24-carton label was printed as the pink internal SKU.
+// The TikTok parser preserves Product / SKU / Seller SKU separated by " | ". A stale shared mapping can be a
+// longer exact substring of Product Name, so the current exact-longest matcher bypasses Seller SKU + pack identity.
+const purple24RulesWithStaleSharedMapping = [
+  { id: 'purple-24', keyword: 'Hoya baby 24', shortName: 'เด้งม่วง1ลัง' },
+  { id: 'pink-24', keyword: 'Hoya Plus 24', shortName: 'เด้งชม1ลัง' },
+  {
+    id: 'stale-shared-product-title',
+    keyword: '(ยกลัง24ห่อ) HOYA ทิชชู่เปียก baby Wipes 80แผ่น/ห่อ สูตรอ่อนโยน',
+    shortName: 'เด้งชม1ลัง'
+  }
+];
+const purple24TikTokSource = '(ยกลัง24ห่อ) HOYA ทิชชู่เปียก baby Wipes 80แผ่น/ห่อ สูตรอ่อนโยน สำหรับผิวบอบบาง | ค่าเริ่มต้น | HOYA BB สีม่วง';
+const purple24Result = matchSkuRule(purple24TikTokSource, purple24RulesWithStaleSharedMapping);
+assert.equal(purple24Result.status, 'matched', 'purple TikTok carton should resolve from authoritative structured identity');
+assert.equal(
+  purple24Result.rule?.shortName,
+  'เด้งม่วง1ลัง',
+  'Seller SKU HOYA BB สีม่วง + 24-pack identity must not be overridden by a stale broad Product Name mapping'
+);
+
+const pink24TikTokSource = '(มีกลิ่นหอม ยกลัง24ห่อ) HOYA ทิชชู่เปียก baby Wipes Plus 80แผ่น/ห่อ สูตรมีกลิ่นหอม | ค่าเริ่มต้น | HOYA BB สีชมพู';
+const pink24Result = matchSkuRule(pink24TikTokSource, purple24RulesWithStaleSharedMapping);
+assert.equal(pink24Result.status, 'matched', 'pink TikTok carton should remain confidently matched');
+assert.equal(pink24Result.rule?.shortName, 'เด้งชม1ลัง', 'Plus/pink identity must remain pink');
+
 assert.ok(parseShopeePositionedItems, 'Shopee must have a deterministic positioned-column parser');
 const shopee3 = parseShopeePositionedItems(shopeeThreeSkuPositioned, 3);
 assert.deepEqual([...shopee3.items].map(item => item.qty), [1, 1, 1], 'Shopee row Qty must come from the Qty column, never row numbers/footer total');
