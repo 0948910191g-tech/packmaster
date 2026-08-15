@@ -126,6 +126,32 @@ const pink24Result = matchSkuRule(pink24TikTokSource, purple24RulesWithStaleShar
 assert.equal(pink24Result.status, 'matched', 'pink TikTok carton should remain confidently matched');
 assert.equal(pink24Result.rule?.shortName, 'เด้งชม1ลัง', 'Plus/pink identity must remain pink');
 
+// 2026-08-15 follow-up real failure: production can have only the stale pink shared mapping available.
+// In that case structured matching finds no strong purple alternative and the old exact path fell back to pink.
+// Seller SKU color conflict must fail closed into Review instead of printing the wrong internal SKU.
+const stalePinkOnlyRules = [
+  {
+    id: 'stale-pink-only',
+    keyword: '(ยกลัง24ห่อ) HOYA ทิชชู่เปียก baby Wipes 80แผ่น/ห่อ สูตรอ่อนโยน',
+    shortName: 'เด้งชม1ลัง'
+  }
+];
+const purpleAgainstStalePinkOnly = matchSkuRule(purple24TikTokSource, stalePinkOnlyRules);
+assert.equal(
+  purpleAgainstStalePinkOnly.status,
+  'ambiguous',
+  'Seller SKU สีม่วง conflicting with a pink internal mapping must fail closed into Review when no safe purple rule exists'
+);
+assert.equal(purpleAgainstStalePinkOnly.rule, null, 'conflicting stale pink mapping must never be printed for a purple Seller SKU');
+
+// A genuinely seller-specific pink rule must still work. Do not weaken the existing PLUS guard to rescue broad rules.
+const sellerSpecificPinkRules = [
+  { id: 'pink-seller-specific', keyword: 'HOYA BB สีชมพู', shortName: 'เด้งชม1ลัง' }
+];
+const pinkAgainstSellerSpecificRule = matchSkuRule(pink24TikTokSource, sellerSpecificPinkRules);
+assert.equal(pinkAgainstSellerSpecificRule.status, 'ambiguous', 'Seller-specific color without the product PLUS identity must fail closed instead of weakening the existing PLUS guard');
+assert.equal(pinkAgainstSellerSpecificRule.rule, null);
+
 assert.ok(parseShopeePositionedItems, 'Shopee must have a deterministic positioned-column parser');
 const shopee3 = parseShopeePositionedItems(shopeeThreeSkuPositioned, 3);
 assert.deepEqual([...shopee3.items].map(item => item.qty), [1, 1, 1], 'Shopee row Qty must come from the Qty column, never row numbers/footer total');
