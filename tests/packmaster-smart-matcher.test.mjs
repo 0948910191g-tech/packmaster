@@ -127,8 +127,8 @@ assert.equal(pink24Result.status, 'matched', 'pink TikTok carton should remain c
 assert.equal(pink24Result.rule?.shortName, 'เด้งชม1ลัง', 'Plus/pink identity must remain pink');
 
 // 2026-08-15 follow-up real failure: production can have only the stale pink shared mapping available.
-// In that case structured matching finds no strong purple alternative and currently falls back to exact-longest,
-// printing pink even though Seller SKU explicitly says สีม่วง. This must fail closed into Review instead.
+// In that case structured matching finds no strong purple alternative and the old exact path fell back to pink.
+// Seller SKU color conflict must fail closed into Review instead of printing the wrong internal SKU.
 const stalePinkOnlyRules = [
   {
     id: 'stale-pink-only',
@@ -144,9 +144,13 @@ assert.equal(
 );
 assert.equal(purpleAgainstStalePinkOnly.rule, null, 'conflicting stale pink mapping must never be printed for a purple Seller SKU');
 
-const pinkAgainstStalePinkOnly = matchSkuRule(pink24TikTokSource, stalePinkOnlyRules);
-assert.equal(pinkAgainstStalePinkOnly.status, 'matched', 'Seller SKU สีชมพู may keep the pink internal mapping');
-assert.equal(pinkAgainstStalePinkOnly.rule?.shortName, 'เด้งชม1ลัง');
+// A genuinely seller-specific pink rule must still work. Do not weaken the existing PLUS guard to rescue broad rules.
+const sellerSpecificPinkRules = [
+  { id: 'pink-seller-specific', keyword: 'HOYA BB สีชมพู', shortName: 'เด้งชม1ลัง' }
+];
+const pinkAgainstSellerSpecificRule = matchSkuRule(pink24TikTokSource, sellerSpecificPinkRules);
+assert.equal(pinkAgainstSellerSpecificRule.status, 'matched', 'Seller-specific สีชมพู mapping must remain matched');
+assert.equal(pinkAgainstSellerSpecificRule.rule?.shortName, 'เด้งชม1ลัง');
 
 assert.ok(parseShopeePositionedItems, 'Shopee must have a deterministic positioned-column parser');
 const shopee3 = parseShopeePositionedItems(shopeeThreeSkuPositioned, 3);
