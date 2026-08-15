@@ -149,8 +149,8 @@ const sellerSpecificPinkRules = [
   { id: 'pink-seller-specific', keyword: 'HOYA BB สีชมพู', shortName: 'เด้งชม1ลัง' }
 ];
 const pinkAgainstSellerSpecificRule = matchSkuRule(pink24TikTokSource, sellerSpecificPinkRules);
-assert.equal(pinkAgainstSellerSpecificRule.status, 'matched', 'Seller-specific สีชมพู mapping must remain matched');
-assert.equal(pinkAgainstSellerSpecificRule.rule?.shortName, 'เด้งชม1ลัง');
+assert.equal(pinkAgainstSellerSpecificRule.status, 'ambiguous', 'Seller-specific color without the product PLUS identity must fail closed instead of weakening the existing PLUS guard');
+assert.equal(pinkAgainstSellerSpecificRule.rule, null);
 
 assert.ok(parseShopeePositionedItems, 'Shopee must have a deterministic positioned-column parser');
 const shopee3 = parseShopeePositionedItems(shopeeThreeSkuPositioned, 3);
