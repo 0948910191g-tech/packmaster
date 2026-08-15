@@ -401,7 +401,8 @@
       NONO: ['nono'],
       ALCOHOL: ['alcohol', 'alc', 'แอลกอฮอล']
     };
-    const HARD_VARIANT_CONCEPTS = new Set(['VALUE_PACK', 'PLUS', 'EXTRA', 'MENTHOL', 'LAVENDER', 'JASMINE', 'MIX', 'PURPLE', 'PINK']);
+    const HARD_VARIANT_CONCEPTS = new Set(['VALUE_PACK', 'PLUS', 'EXTRA', 'MENTHOL', 'LAVENDER', 'JASMINE', 'MIX']);
+    const STRUCTURED_COLOR_CONCEPTS = new Set(['PURPLE', 'PINK']);
 
     const getVariantConcepts = (value) => {
       const text = normalizeMatchText(value);
@@ -482,6 +483,16 @@
       }
       const textBundle = extractBundleSignature(searchArea);
       const ruleBundle = extractBundleSignature(cleanKw);
+
+      if (options && options.includeOutputVariantConcepts) {
+        const textColors = [...STRUCTURED_COLOR_CONCEPTS].filter(concept => textConcepts.has(concept));
+        const ruleColors = [...STRUCTURED_COLOR_CONCEPTS].filter(concept => ruleConcepts.has(concept));
+        if (textColors.length > 0 && ruleColors.length > 0 && !ruleColors.some(concept => textConcepts.has(concept))) {
+          score -= 240;
+          hardConflict = true;
+          reasons.push('seller-color-conflict');
+        }
+      }
 
       if (textBundle || ruleBundle) {
         if (textBundle && ruleBundle === textBundle) {
