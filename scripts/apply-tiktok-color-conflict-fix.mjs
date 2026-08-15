@@ -61,7 +61,7 @@ const replacements = [
               rule: null,
               score: exactStructuredScore.score,
               runnerUpScore: structuredMatch ? structuredMatch.runnerUpScore : 0,
-              reason: `structured-exact-conflict:${exactStructuredScore.reason}`
+              reason: 'structured-exact-conflict:' + exactStructuredScore.reason
             };
           }
         }
