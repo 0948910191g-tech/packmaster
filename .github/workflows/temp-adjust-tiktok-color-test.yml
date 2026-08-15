@@ -1,0 +1,34 @@
+name: Temporary Adjust TikTok Color Test
+
+on:
+  push:
+    branches:
+      - fix/tiktok-color-conflict-fail-closed-20260815
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: fix/tiktok-color-conflict-fail-closed-20260815
+          fetch-depth: 0
+
+      - name: Adjust test expectation
+        run: node scripts/adjust-tiktok-color-test.mjs
+
+      - name: Commit changed test
+        run: |
+          if git diff --quiet -- tests/packmaster-smart-matcher.test.mjs; then
+            echo "Test adjustment already applied"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/packmaster-smart-matcher.test.mjs
+          git commit -m "test: preserve Plus guard for seller color rules"
+          git push origin HEAD:fix/tiktok-color-conflict-fail-closed-20260815
