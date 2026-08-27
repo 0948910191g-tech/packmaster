@@ -152,6 +152,41 @@ const pinkAgainstSellerSpecificRule = matchSkuRule(pink24TikTokSource, sellerSpe
 assert.equal(pinkAgainstSellerSpecificRule.status, 'ambiguous', 'Seller-specific color without the product PLUS identity must fail closed instead of weakening the existing PLUS guard');
 assert.equal(pinkAgainstSellerSpecificRule.rule, null);
 
+// 2026-08-27 Matcher Safety Reset: brand identity is authoritative and generic similarity must fail closed.
+const hakuBaby12Rule = { id: 'haku-baby-12', keyword: 'HAKU Baby 12', shortName: 'ฮากุ12' };
+const wrongCrossBrand12 = matchSkuRule(
+  'HOYA Wet Baby Wipes 12 แผ่น 12 ห่อ',
+  [hakuBaby12Rule]
+);
+assert.equal(
+  wrongCrossBrand12.status,
+  'unmatched',
+  'HOYA source must never auto-match a HAKU rule just because Baby + 12 + pack context overlaps'
+);
+assert.equal(wrongCrossBrand12.rule, null, 'cross-brand candidate must never be returned for printing');
+
+const correctHaku12 = matchSkuRule('HAKU Baby Wipes 12 ห่อ', [hakuBaby12Rule]);
+assert.equal(correctHaku12.status, 'matched', 'the brand gate must preserve a correct HAKU Baby 12 mapping');
+assert.equal(correctHaku12.rule?.shortName, 'ฮากุ12');
+
+const sheetOnly12 = matchSkuRule('HAKU Baby 12 แผ่น', [hakuBaby12Rule]);
+assert.equal(sheetOnly12.status, 'unmatched', '12 sheets must never satisfy a 12-pack identity');
+assert.equal(sheetOnly12.rule, null);
+
+const genericBaby12Rule = { id: 'generic-baby-12', keyword: 'Baby 12', shortName: 'generic12' };
+const genericNumberOnly = matchSkuRule('NEWCO Wet Wipes Baby 12 ห่อ', [genericBaby12Rule]);
+assert.equal(
+  genericNumberOnly.status,
+  'unmatched',
+  'generic Baby + number similarity without a brand or strong discriminator must remain unmapped'
+);
+assert.equal(genericNumberOnly.rule, null);
+
+const modelRule = { id: 'hoya-v2', keyword: 'HOYA V2', shortName: 'HOYA V2' };
+const modelResult = matchSkuRule('HOYA V2 5 ห่อ', [modelRule]);
+assert.equal(modelResult.status, 'matched', 'model number V2 is product identity and must not be treated as pack quantity');
+assert.equal(modelResult.rule?.shortName, 'HOYA V2');
+
 assert.ok(parseShopeePositionedItems, 'Shopee must have a deterministic positioned-column parser');
 const shopee3 = parseShopeePositionedItems(shopeeThreeSkuPositioned, 3);
 assert.deepEqual([...shopee3.items].map(item => item.qty), [1, 1, 1], 'Shopee row Qty must come from the Qty column, never row numbers/footer total');

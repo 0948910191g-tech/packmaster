@@ -385,7 +385,17 @@
         .trim()
         .replace(/\bbb\b/g, 'baby');
 
-    const COMMON_MATCH_TERMS = new Set(['hoya', 'haku', 'baby', 'wipes', 'wipe', 'ทชชเปยก', 'ผาเปยก']);
+    const COMMON_MATCH_TERMS = new Set(['baby', 'wipes', 'wipe', 'ทชชเปยก', 'ผาเปยก']);
+    const BRAND_CONCEPTS = {
+      HOYA: ['hoya', 'โฮย่า'],
+      HAKU: ['haku', 'ฮากุ'],
+      EXCARE: ['excare', 'เอ็กซ์แคร์'],
+      NONO: ['nono', 'นอนโน่'],
+      SOULSI: ['soulsi', 'โซลซี่']
+    };
+    const BRAND_MATCH_TERMS = new Set(
+      Object.values(BRAND_CONCEPTS).flat().map(alias => normalizeMatchText(alias)).filter(Boolean)
+    );
     const RULE_UNIT_TOKENS = new Set(['หอ', 'แพค', 'pack', 'packs', 'ลัง', 'case', 'x', 'ชน', 'ชิ้น', 'แผน']);
     const VARIANT_CONCEPTS = {
       VALUE_PACK: ['value pack', 'valuepack', 'แวลู', 'แวล'],
@@ -425,6 +435,18 @@
       return tokens;
     };
 
+    const extractSheetNumbers = (value) => {
+      const text = normalizeMatchText(value);
+      const numbers = new Set();
+      const regex = /(\d{1,3})\s*(แผน|sheets?)/g;
+      let match;
+      while ((match = regex.exec(text)) !== null) {
+        const amount = parseInt(match[1], 10);
+        if (Number.isFinite(amount)) numbers.add(amount);
+      }
+      return numbers;
+    };
+
     const tokenMatchesSearch = (token, searchArea) => {
       if (!token) return false;
       if (/^\d{1,4}$/.test(token)) {
@@ -438,13 +460,22 @@
       return searchArea.includes(token);
     };
 
+    const getBrandConcepts = (value) => {
+      const text = normalizeMatchText(value);
+      const brands = new Set();
+      Object.entries(BRAND_CONCEPTS).forEach(([brand, aliases]) => {
+        if (aliases.some(alias => tokenMatchesSearch(normalizeMatchText(alias), text))) brands.add(brand);
+      });
+      return brands;
+    };
+
     const extractRulePackNumbers = (value) => {
       const clean = normalizeMatchText(value);
       const explicit = extractPackTokens(clean);
       if (explicit.size > 0) {
         return new Set([...explicit].map(token => parseInt(token.split(':')[0], 10)).filter(Number.isFinite));
       }
-      const trailing = clean.match(/(?:^|\D)(\d{1,3})\s*$/);
+      const trailing = clean.match(/(?:^|\s)(\d{1,3})\s*$/);
       return trailing ? new Set([parseInt(trailing[1], 10)]) : new Set();
     };
 
@@ -481,8 +512,18 @@
       if (options && options.includeOutputVariantConcepts) {
         getVariantConcepts(rule && rule.shortName).forEach(concept => ruleConcepts.add(concept));
       }
+      const textBrands = getBrandConcepts(searchArea);
+      const ruleBrands = getBrandConcepts(cleanKw);
+      const sharedBrand = [...ruleBrands].some(brand => textBrands.has(brand));
+      const hasBrandIdentity = ruleBrands.size > 0 && textBrands.size > 0 && sharedBrand;
       const textBundle = extractBundleSignature(searchArea);
       const ruleBundle = extractBundleSignature(cleanKw);
+
+      if (ruleBrands.size > 0 && textBrands.size > 0 && !sharedBrand) {
+        score -= 320;
+        hardConflict = true;
+        reasons.push('brand-conflict');
+      }
 
       if (options && options.includeOutputVariantConcepts) {
         const textColors = [...STRUCTURED_COLOR_CONCEPTS].filter(concept => textConcepts.has(concept));
@@ -518,7 +559,10 @@
       }
 
       const specificTokens = ruleTokens.filter(token =>
-        !/^\d{1,4}$/.test(token) && !COMMON_MATCH_TERMS.has(token) && !RULE_UNIT_TOKENS.has(token)
+        !/^\d{1,4}$/.test(token) &&
+        !COMMON_MATCH_TERMS.has(token) &&
+        !BRAND_MATCH_TERMS.has(token) &&
+        !RULE_UNIT_TOKENS.has(token)
       );
       const matchedSpecific = specificTokens.filter(token => tokenMatchesSearch(token, searchArea));
       const hasConceptIdentity = [...ruleConcepts].some(concept => textConcepts.has(concept));
@@ -544,10 +588,13 @@
       });
 
       const textPackNumbers = extractTextPackNumbers(searchArea);
+      const textSheetNumbers = extractSheetNumbers(searchArea);
       const rulePackNumbers = extractRulePackNumbers(cleanKw);
+      let hasPackIdentity = false;
       if (rulePackNumbers.size > 0 && textPackNumbers.size > 0) {
         const packMatch = [...rulePackNumbers].some(number => textPackNumbers.has(number));
         if (packMatch) {
+          hasPackIdentity = true;
           score += 50;
           reasons.push('pack');
         } else {
@@ -555,6 +602,10 @@
           hardConflict = true;
           reasons.push('pack-conflict');
         }
+      } else if (rulePackNumbers.size > 0 && [...rulePackNumbers].some(number => textSheetNumbers.has(number))) {
+        score -= 220;
+        hardConflict = true;
+        reasons.push('pack-vs-sheet-conflict');
       }
 
       ruleConcepts.forEach(concept => {
@@ -592,7 +643,15 @@
         reasons.push('concept-number');
       }
 
-      return { rule, score, hardConflict, reason: reasons.join(',') || 'weak' };
+      const hasCommonFamilyIdentity = matchedTokens.some(token => token === 'baby');
+      const strongIdentity = Boolean(
+        (textBundle && ruleBundle === textBundle) ||
+        hasConceptIdentity ||
+        matchedSpecific.length > 0 ||
+        (hasBrandIdentity && hasCommonFamilyIdentity && hasPackIdentity)
+      );
+
+      return { rule, score, hardConflict, strongIdentity, reason: reasons.join(',') || 'weak' };
     };
 
     const normalizeOutputIdentity = (value) => normalizeMatchText(value).replace(/\s+/g, '');
@@ -609,7 +668,16 @@
       const productConcepts = getVariantConcepts(productText);
       const productPackTokens = extractPackTokens(productText);
       const bundleSignature = extractBundleSignature(productText);
+      const identityBrands = getBrandConcepts(identityParts.join(' '));
+      const productBrands = getBrandConcepts(productText);
       const structuredParts = [...identityParts];
+
+      if (identityBrands.size === 0) {
+        productBrands.forEach(brand => {
+          const aliases = BRAND_CONCEPTS[brand];
+          if (Array.isArray(aliases) && aliases[0]) structuredParts.push(aliases[0]);
+        });
+      }
 
       productPackTokens.forEach(token => {
         const [amount, unit] = token.split(':');
@@ -643,7 +711,7 @@
       const best = candidates[0];
       const runnerUp = candidates[1] || null;
       const runnerUpScore = runnerUp ? runnerUp.score : -Infinity;
-      if (best.hardConflict || best.score < 120) return null;
+      if (best.hardConflict || !best.strongIdentity || best.score < 120) return null;
 
       if (runnerUp && !runnerUp.hardConflict &&
           normalizeOutputIdentity(runnerUp.rule && runnerUp.rule.shortName) !== normalizeOutputIdentity(best.rule && best.rule.shortName) &&
@@ -687,22 +755,31 @@
         }
 
         const structuredIdentity = getStructuredMarketplaceIdentity(textToSearch);
-        if (structuredIdentity) {
-          const exactStructuredScore = scoreSkuRule(
-            exactRule,
-            structuredIdentity,
-            rules,
-            { includeOutputVariantConcepts: true }
-          );
-          if (exactStructuredScore.hardConflict) {
-            return {
-              status: 'ambiguous',
-              rule: null,
-              score: exactStructuredScore.score,
-              runnerUpScore: structuredMatch ? structuredMatch.runnerUpScore : 0,
-              reason: 'structured-exact-conflict:' + exactStructuredScore.reason
-            };
-          }
+        const exactSafetyText = structuredIdentity || textToSearch;
+        const exactSafetyScore = scoreSkuRule(
+          exactRule,
+          exactSafetyText,
+          rules,
+          { includeOutputVariantConcepts: true }
+        );
+        if (exactSafetyScore.hardConflict) {
+          const failClosedToUnmatched = /brand-conflict|pack-vs-sheet-conflict/.test(exactSafetyScore.reason);
+          return {
+            status: failClosedToUnmatched ? 'unmatched' : 'ambiguous',
+            rule: null,
+            score: exactSafetyScore.score,
+            runnerUpScore: structuredMatch ? structuredMatch.runnerUpScore : 0,
+            reason: 'structured-exact-conflict:' + exactSafetyScore.reason
+          };
+        }
+        if (!exactSafetyScore.strongIdentity) {
+          return {
+            status: 'unmatched',
+            rule: null,
+            score: exactSafetyScore.score,
+            runnerUpScore: structuredMatch ? structuredMatch.runnerUpScore : 0,
+            reason: 'exact-weak-identity:' + exactSafetyScore.reason
+          };
         }
 
         return { status: 'matched', rule: exactRule, score: 1000, runnerUpScore: 0, reason: 'exact-longest' };
@@ -721,8 +798,9 @@
       const runnerUp = candidates[1] || null;
       const runnerUpScore = runnerUp ? runnerUp.score : -Infinity;
 
-      if (best.hardConflict || best.score < 80) {
-        return { status: 'unmatched', rule: null, score: best.score, runnerUpScore, reason: best.reason };
+      if (best.hardConflict || !best.strongIdentity || best.score < 80) {
+        const reason = !best.hardConflict && !best.strongIdentity ? `weak-identity:${best.reason}` : best.reason;
+        return { status: 'unmatched', rule: null, score: best.score, runnerUpScore, reason };
       }
 
       if (runnerUp && !runnerUp.hardConflict &&

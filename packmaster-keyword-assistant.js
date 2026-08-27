@@ -20,6 +20,18 @@
     'เบบี้', 'ผู้ใหญ่', 'เมคอัพ', 'รีมูฟเวอร์', 'เครื่องสำอาง', 'คูลลิ่ง', 'เย็น', 'น้ำแร่'
   ]);
 
+  const STATIC_BROAD_TOKENS = new Set([
+    'BABY', 'WIPE', 'WIPES', 'WET', 'PACK', 'PACKS', 'SHEET', 'SHEETS',
+    'เบบี้', 'ห่อ', 'แผ่น', 'ชิ้น', 'ลัง', 'สินค้า', 'ทิชชู่', 'ทิชชู่เปียก'
+  ]);
+
+  const STATIC_STRONG_IDENTITY_TOKENS = new Set([
+    'ADULT', 'MAKEUP', 'REMOVER', 'XXL', 'COOLING', 'MENTHOL', 'JASMINE', 'LAVENDER',
+    'PURPLE', 'PINK', 'PLUS', 'VALUE', 'EXTRA', 'ALCOHOL',
+    'ผู้ใหญ่', 'เมคอัพ', 'รีมูฟเวอร์', 'เครื่องสำอาง', 'คูลลิ่ง', 'เย็น', 'น้ำแร่',
+    'ม่วง', 'ชมพู', 'มะลิ', 'ลาเวนเดอร์'
+  ]);
+
   const METADATA_TOKENS = new Set([
     'NICKNAME', 'ID', 'ORDER', 'ORDERID', 'ORDERNO', 'ORDER-NO', 'TRACKING', 'TRACKINGNO', 'TRACKING-NO',
     'RECEIVER', 'RECIPIENT', 'CUSTOMER', 'USER', 'UID', 'ADDRESS', 'PHONE', 'TEL', 'COD', 'PICK-UP', 'PICKUP',
@@ -68,6 +80,39 @@
       if (token.length < 4 && !isModelOrVariantToken(token)) return true;
     }
     return false;
+  };
+
+  const assessStaticKeywordSafety = (value) => {
+    const candidate = String(value == null ? '' : value).trim();
+    if (!candidate) return { safe: false, reason: 'empty' };
+
+    const tokens = tokenize(candidate);
+    if (tokens.length === 0) return { safe: false, reason: 'empty' };
+    if (hasMetadataNoise(tokens) || isGenericCandidate(candidate)) {
+      return { safe: false, reason: 'metadata-or-generic' };
+    }
+    if (tokens.length > 8) {
+      return { safe: false, reason: 'long-title-review' };
+    }
+
+    const hasBrandAnchor = tokens.some(isBrandAnchor);
+    const hasStrongIdentity = tokens.some(token => {
+      const normalized = normalizeKeywordText(token);
+      if (!normalized || isBrandAnchor(token) || STATIC_BROAD_TOKENS.has(normalized)) return false;
+      if (STATIC_STRONG_IDENTITY_TOKENS.has(normalized) || normalized.startsWith('สูตร')) return true;
+      if (isBundleToken(token)) return true;
+      if (isModelOrVariantToken(token) && !/^\d+$/.test(normalized)) return true;
+      return isLatinIdentityToken(token) && !/^\d+$/.test(normalized);
+    });
+
+    if (!hasStrongIdentity) {
+      return {
+        safe: false,
+        reason: hasBrandAnchor ? 'brand-generic-only' : 'weak-generic-identity'
+      };
+    }
+
+    return { safe: true, reason: 'static-identity-ok' };
   };
 
   const getProductRelevance = (tokens) => {
@@ -218,10 +263,9 @@
     const matchNormalizer = typeof value.matchNormalizer === 'function' ? value.matchNormalizer : normalizeKeywordText;
 
     if (!candidate || !sourceText) return { safe: false, reason: 'empty' };
+    const staticSafety = assessStaticKeywordSafety(candidate);
+    if (!staticSafety.safe) return staticSafety;
     if (typeof matchRule !== 'function') return { safe: false, reason: 'matcher-unavailable' };
-    if (isGenericCandidate(candidate) || hasMetadataNoise(tokenize(candidate))) {
-      return { safe: false, reason: 'metadata-or-generic' };
-    }
 
     const candidateNormalized = matchNormalizer(candidate);
     const sourceNormalized = matchNormalizer(sourceText);
@@ -370,6 +414,7 @@
   return {
     normalizeKeywordText,
     isGenericCandidate,
+    assessStaticKeywordSafety,
     assessKeywordSafety,
     generateKeywordSuggestions
   };
