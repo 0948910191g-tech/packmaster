@@ -61,6 +61,22 @@
       if (!batchIds.has(record.batchId)) throw new Error(`batchOrders references missing batch: ${record.batchId}`);
       if (orderRecordIds.has(record.batchId)) throw new Error(`Duplicate batchOrders record: ${record.batchId}`);
       requireArray(record.orders, `batchOrders[${record.batchId}].orders`);
+      record.orders.forEach((order, orderIndex) => {
+        const orderPath = `batchOrders[${record.batchId}].orders[${orderIndex}]`;
+        if (!isPlainObject(order) || typeof order.id !== 'string' || !order.id.trim()) {
+          throw new Error(`${orderPath}.id must be a non-empty string`);
+        }
+        requireArray(order.parsedItems, `${orderPath}.parsedItems`);
+        order.parsedItems.forEach((item, itemIndex) => {
+          const itemPath = `${orderPath}.parsedItems[${itemIndex}]`;
+          if (!isPlainObject(item) || typeof item.text !== 'string' || !item.text.trim()) {
+            throw new Error(`${itemPath}.text must be a non-empty string`);
+          }
+          if (!Number.isInteger(item.qty) || item.qty < 1) {
+            throw new Error(`${itemPath}.qty must be an integer >= 1`);
+          }
+        });
+      });
       orderRecordIds.add(record.batchId);
     }
 

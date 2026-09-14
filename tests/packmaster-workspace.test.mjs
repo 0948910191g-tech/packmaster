@@ -26,7 +26,7 @@ const payload = {
   settings: { thermalMode: true },
   skuRules: [{ keyword: 'SANITIZED HOYA 5', shortName: 'หมูเด้ง5' }],
   batches: [{ id: 'batch-1', name: '8 Aug / Batch #001' }],
-  batchOrders: [{ batchId: 'batch-1', orders: [{ id: 'order-1', platform: 'TIKTOK' }] }]
+  batchOrders: [{ batchId: 'batch-1', orders: [{ id: 'order-1', platform: 'TIKTOK', parsedItems: [{ text: 'SANITIZED SKU', qty: 1 }] }] }]
 };
 
 const backup = workspace.createBackup(payload, new Date('2026-08-08T12:00:00.000Z'));
@@ -61,7 +61,7 @@ for (const [candidate, expectedMessage] of invalidCases) {
 }
 
 const fakeStore = new Map([
-  ['old-a', { meta: { id: 'old-a', name: 'Old A' }, orders: [{ id: 'old-order-a' }] }],
+  ['old-a', { meta: { id: 'old-a', name: 'Old A' }, orders: [{ id: 'old-order-a', parsedItems: [{ text: 'OLD SANITIZED SKU', qty: 1 }] }] }],
   ['old-b', { meta: { id: 'old-b', name: 'Old B' }, orders: [] }]
 ]);
 const calls = [];
@@ -105,7 +105,7 @@ const replacement = workspace.createBackup({
     { id: 'new-2', name: 'Restored Two' }
   ],
   batchOrders: [
-    { batchId: 'new-1', orders: [{ id: 'restored-order' }] },
+    { batchId: 'new-1', orders: [{ id: 'restored-order', parsedItems: [{ text: 'RESTORED SANITIZED SKU', qty: 1 }] }] },
     { batchId: 'new-2', orders: [] }
   ]
 }, new Date('2026-08-08T13:00:00.000Z'));
