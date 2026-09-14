@@ -66,3 +66,19 @@ const crossPlatform = duplicate.findOrderDuplicateSignals(
 assert.equal(crossPlatform.length, 0, 'same tracking on different platforms must not collide automatically');
 
 console.log('PackMaster duplicate detection regression tests passed');
+
+const currentUploadCollisions = duplicate.findOrderDuplicateSignals([
+  { id: 'new-a', platform: 'TIKTOK', orderId: 'ROUND-1' },
+  { id: 'new-b', platform: 'TIKTOK', orderId: 'round-1' }
+], []);
+assert.equal(currentUploadCollisions.length, 1, 'duplicate identity inside one upload round must be detected');
+assert.equal(currentUploadCollisions[0].incoming.id, 'new-b');
+assert.equal(currentUploadCollisions[0].existing.id, 'new-a');
+assert.equal(currentUploadCollisions[0].source, 'current-upload');
+
+const historyCollision = duplicate.findOrderDuplicateSignals(
+  [{ id: 'incoming-history', platform: 'SHOPEE', orderId: 'HISTORY-1' }],
+  [{ id: 'stored-history', platform: 'SHOPEE', orderId: 'history-1' }]
+);
+assert.equal(historyCollision.length, 1);
+assert.equal(historyCollision[0].source, 'existing-history');

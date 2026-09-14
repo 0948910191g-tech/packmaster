@@ -31,3 +31,8 @@ assert.ok(html.includes('parseTikTokPositionedItems(positionedItems, declaredTot
 assert.ok(html.includes('parseShopeePositionedItems(positionedItems, declaredTotalQty)'), 'Shopee parser call must remain');
 
 console.log('PackMaster Phase 3B duplicate UI integration guard passed');
+
+assert.ok(html.includes("source: 'current-upload'"), 'current upload duplicate signals must be labeled separately');
+assert.ok(html.includes("source: 'existing-history'"), 'persisted duplicate signals must retain an explicit history source');
+assert.ok(html.includes('currentUploadFingerprints'), 'file duplicate flow must track hashes seen in the current selection');
+assert.ok(html.includes('ซ้ำในรอบอัปโหลดนี้') && html.includes('ซ้ำกับประวัติเดิม'), 'duplicate warning must distinguish current upload from existing history');

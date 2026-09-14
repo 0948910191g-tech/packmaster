@@ -51,10 +51,16 @@
     });
 
     const collisions = [];
+    const currentUpload = new Map();
     (Array.isArray(newOrders) ? newOrders : []).forEach((order) => {
       const key = getOrderIdentity(order);
-      if (!key || !existing.has(key)) return;
-      collisions.push({ key, incoming: order, existing: existing.get(key) });
+      if (!key) return;
+      if (currentUpload.has(key)) {
+        collisions.push({ key, incoming: order, existing: currentUpload.get(key), source: 'current-upload' });
+      } else if (existing.has(key)) {
+        collisions.push({ key, incoming: order, existing: existing.get(key), source: 'existing-history' });
+      }
+      if (!currentUpload.has(key)) currentUpload.set(key, order);
     });
     return collisions;
   };
