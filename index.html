@@ -14,6 +14,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="./packmaster-batch.js"></script>
+  <script src="./packmaster-batch-transition.js"></script>
   <script src="./packmaster-workspace.js"></script>
   <script src="./packmaster-duplicate.js"></script>
   <script src="./packmaster-exceptions.js"></script>
@@ -1175,6 +1176,7 @@
 
     function App() {
       const batchApi = window.PackMasterBatch;
+      const batchTransitionApi = window.PackMasterBatchTransition;
       const workspaceApi = window.PackMasterWorkspace;
       const duplicateApi = window.PackMasterDuplicate;
       const exceptionApi = window.PackMasterExceptions;
@@ -1190,6 +1192,7 @@
       const diagnosticsApi = window.PackMasterDiagnostics;
       const PILOT_VERSION = 'PackMaster Pilot 2026.08.08';
       const SKU_INTEGRITY_BACKUP_KEY = 'packmasterSkuIntegrityBackupV1';
+      const batchTransitionCoordinator = useMemo(() => batchTransitionApi ? batchTransitionApi.createCoordinator() : null, [batchTransitionApi]);
       const [activeTab, setActiveTab] = useState('upload');
       // PackMaster Frontend V3 — presentation-only navigation/pagination.
       const [activeView, setActiveView] = useState('batches');
@@ -2209,6 +2212,20 @@
         }
       };
 
+      const runBatchTransition = async (transition) => {
+        if (!batchTransitionCoordinator) {
+          showToast('Batch transition safety module ยังไม่พร้อม', 'error');
+          return false;
+        }
+        const result = await batchTransitionCoordinator.run({
+          hasCurrent: Boolean(activeBatchId),
+          saveCurrent: saveActiveBatchSnapshot,
+          transition
+        });
+        if (!result.ok && result.reason === 'busy') showToast('กำลังบันทึก/สลับ Batch อยู่ กรุณารอให้รายการปัจจุบันเสร็จก่อน', 'error');
+        return result.ok;
+      };
+
       const handleCreateBatch = async () => {
         if (!batchApi) {
           showToast('Local Batch module ยังไม่พร้อม', 'error');
@@ -2219,21 +2236,23 @@
         setBatchLoading(true);
 
         try {
-          if (batchStorageReady) {
-            await batchApi.saveBatch(nextBatch, []);
-          } else {
-            showToast('สร้าง Batch แบบ Session ชั่วคราว — Browser storage ยังไม่พร้อม', 'error');
-          }
+          await runBatchTransition(async () => {
+            if (batchStorageReady) {
+              await batchApi.saveBatch(nextBatch, []);
+            } else {
+              showToast('สร้าง Batch แบบ Session ชั่วคราว — Browser storage ยังไม่พร้อม', 'error');
+            }
 
-          upsertBatchMeta(nextBatch);
-          setActiveBatchId(nextBatch.id);
-          setOrders([]);
-          setReviewSearch('');
-          setReviewPlatform('ALL');
-          setReviewStatus('ALL');
-          setUploadError('');
-          setActiveTab('upload');
-          setActiveView('upload');
+            upsertBatchMeta(nextBatch);
+            setActiveBatchId(nextBatch.id);
+            setOrders([]);
+            setReviewSearch('');
+            setReviewPlatform('ALL');
+            setReviewStatus('ALL');
+            setUploadError('');
+            setActiveTab('upload');
+            setActiveView('upload');
+          });
         } catch (err) {
           console.error('Create batch failed', err);
           showToast('สร้าง Batch ไม่สำเร็จ กรุณาลองใหม่', 'error');
@@ -2251,17 +2270,19 @@
 
         setBatchLoading(true);
         try {
-          const stored = await batchApi.loadBatch(batch.id);
-          if (!stored.meta) throw new Error('Batch metadata not found');
-          upsertBatchMeta(stored.meta);
-          setActiveBatchId(stored.meta.id);
-          setOrders(Array.isArray(stored.orders) ? stored.orders : []);
-          setReviewSearch('');
-          setReviewPlatform('ALL');
-          setReviewStatus('ALL');
-          setUploadError('');
-          setActiveTab('upload');
-          setActiveView('upload');
+          await runBatchTransition(async () => {
+            const stored = await batchApi.loadBatch(batch.id);
+            if (!stored.meta) throw new Error('Batch metadata not found');
+            upsertBatchMeta(stored.meta);
+            setActiveBatchId(stored.meta.id);
+            setOrders(Array.isArray(stored.orders) ? stored.orders : []);
+            setReviewSearch('');
+            setReviewPlatform('ALL');
+            setReviewStatus('ALL');
+            setUploadError('');
+            setActiveTab('upload');
+            setActiveView('upload');
+          });
         } catch (err) {
           console.error('Open batch failed', err);
           showToast('เปิด Batch ไม่สำเร็จ', 'error');
@@ -2277,17 +2298,16 @@
           return;
         }
 
-        const saved = await saveActiveBatchSnapshot();
-        if (!saved) return;
-
-        setActiveBatchId(null);
-        setOrders([]);
-        setReviewSearch('');
-        setReviewPlatform('ALL');
-        setReviewStatus('ALL');
-        setUploadError('');
-        setActiveTab('upload');
-        setActiveView('batches');
+        await runBatchTransition(async () => {
+          setActiveBatchId(null);
+          setOrders([]);
+          setReviewSearch('');
+          setReviewPlatform('ALL');
+          setReviewStatus('ALL');
+          setUploadError('');
+          setActiveTab('upload');
+          setActiveView('batches');
+        });
       };
 
       const handleArchiveBatch = async (batch) => {
