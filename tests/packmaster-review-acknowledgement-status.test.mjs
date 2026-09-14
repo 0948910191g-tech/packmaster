@@ -56,3 +56,36 @@ test('unmapped remains blocking until a real name is applied', () => {
   assert.equal(flags.ready, false);
   assert.equal(exceptions.getPrimaryStatus(flags), 'UNMAPPED');
 });
+
+
+test('SKU acknowledgement cannot resolve a structurally unresolved SKU', () => {
+  const flags = exceptions.getExceptionFlags({
+    parsedItems: [{ text: 'Matched item', qty: 1 }, { text: 'Ambiguous item', qty: 1 }],
+    displayItems: ['Matched internal', '• ⚠️ ตรวจสอบ SKU'],
+    unresolvedSku: true,
+    reviewAcknowledgements: {
+      sku: { confirmed: true, confirmedAt: '2026-09-14T00:00:00.000Z' }
+    }
+  });
+
+  assert.equal(flags.reviewSku, true, 'structural SKU uncertainty must stay blocking after acknowledgement');
+  assert.equal(flags.ready, false);
+  assert.equal(exceptions.getPrimaryStatus(flags), 'REVIEW_SKU');
+});
+
+test('empty parsed warning cannot become Ready from SKU and Qty acknowledgement alone', () => {
+  const flags = exceptions.getExceptionFlags({
+    parsedItems: [],
+    parserWarning: true,
+    qtyWarning: true,
+    displayItems: ['• ⚠️ ตรวจสอบ SKU', '• ⚠️ ตรวจสอบ Qty'],
+    unresolvedSku: true,
+    reviewAcknowledgements: {
+      sku: { confirmed: true, confirmedAt: '2026-09-14T00:00:00.000Z' },
+      qty: { confirmed: true, confirmedAt: '2026-09-14T00:00:01.000Z' }
+    }
+  });
+
+  assert.equal(flags.reviewSku, true);
+  assert.equal(flags.ready, false);
+});

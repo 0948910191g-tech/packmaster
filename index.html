@@ -1789,7 +1789,7 @@
             const failedItems = [];
             if (o.parserWarning && !skuAcknowledged) failedItems.push('⚠️ ตรวจสอบ SKU');
             if (o.parserWarning && !qtyAcknowledged) failedItems.push('⚠️ ตรวจสอบ Qty');
-            return { ...o, displayItems: failedItems, originalQty: 0, qtyWarning: Boolean(o.parserWarning) };
+            return { ...o, displayItems: failedItems, originalQty: 0, qtyWarning: Boolean(o.parserWarning), unresolvedSku: Boolean(o.parserWarning) };
         }
 
         const skuMap = new Map();
@@ -1830,7 +1830,7 @@
 
         const skuAcknowledged = reviewOverridesApi ? reviewOverridesApi.getReviewAcknowledgement(o, 'sku') : false;
         const qtyAcknowledged = reviewOverridesApi ? reviewOverridesApi.getReviewAcknowledgement(o, 'qty') : false;
-        if ((hasAmbiguous || o.parserWarning) && !skuAcknowledged) finalDisplayItems.push('• ⚠️ ตรวจสอบ SKU');
+        if (hasAmbiguous || (o.parserWarning && !skuAcknowledged)) finalDisplayItems.push('• ⚠️ ตรวจสอบ SKU');
         if (hasUnmatched) finalDisplayItems.push('• ยังไม่ตั้งชื่อ');
 
         const totalQty = o.parsedItems.reduce((sum, item) => {
@@ -1847,7 +1847,7 @@
             finalDisplayItems[0] = finalDisplayItems[0].substring(2);
         }
 
-        return { ...o, displayItems: finalDisplayItems, originalQty: totalQty, qtyWarning };
+        return { ...o, displayItems: finalDisplayItems, originalQty: totalQty, qtyWarning, unresolvedSku: hasAmbiguous };
       }), [orders, getMatchResult, reviewOverridesApi]);
 
       const getReviewFlags = useCallback((order) => {

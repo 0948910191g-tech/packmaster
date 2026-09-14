@@ -67,3 +67,13 @@ test('Review flow offers a single inspect action for SKU and Qty exceptions', ()
   assert.ok(html.includes('data-pm-action="review-exception"'));
   assert.ok(html.includes('ตรวจรายการ'));
 });
+
+
+test('MappedOrders preserves structural unresolved SKU state after acknowledgement', () => {
+  const mappingStart = html.indexOf('const MappedOrders = useMemo');
+  const mappingEnd = html.indexOf('const getReviewFlags = useCallback', mappingStart);
+  assert.ok(mappingStart >= 0 && mappingEnd > mappingStart);
+  const mappingBlock = html.slice(mappingStart, mappingEnd);
+  assert.ok(mappingBlock.includes('unresolvedSku:'), 'mapped review data must expose structural unresolved SKU state');
+  assert.match(mappingBlock, /hasAmbiguous\s*\|\|\s*\(o\.parserWarning\s*&&\s*!skuAcknowledged\)/, 'ambiguous SKU warning must remain visible even when acknowledgement exists');
+});

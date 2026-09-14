@@ -21,7 +21,8 @@
     const rawReviewQty = Boolean(order.qtyWarning) || includesText(order.displayItems, 'ตรวจสอบ Qty');
     const rawReviewSku = parserWarning || includesText(order.displayItems, 'ตรวจสอบ SKU');
     const reviewQty = rawReviewQty && !isAcknowledged(order, 'qty');
-    const reviewSku = rawReviewSku && !isAcknowledged(order, 'sku');
+    const unresolvedSku = Boolean(order.unresolvedSku);
+    const reviewSku = unresolvedSku || (rawReviewSku && !isAcknowledged(order, 'sku'));
     const unmapped = includesText(order.displayItems, 'ยังไม่ตั้งชื่อ');
     return {
       reviewQty,
