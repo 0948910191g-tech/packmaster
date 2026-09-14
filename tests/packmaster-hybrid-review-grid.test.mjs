@@ -16,10 +16,12 @@ assert.match(html, /พรีวิวหลายใบ/, 'Multi-card preview m
 assert.equal(html.includes('reviewPreviewIndex'), false, 'Hybrid grid must not hide orders behind a single-order cursor');
 assert.equal(html.includes('review-preview-prev'), false, 'Hybrid grid must not require Previous navigation');
 assert.equal(html.includes('review-preview-next'), false, 'Hybrid grid must not require Next navigation');
-assert.match(html, /Print ยังใช้ข้อมูลเต็ม Batch/, 'Review UI must preserve full-Batch print scope notice');
+assert.match(html, /READY_ONLY/, 'Review UI must expose the safe Ready-only print scope');
+assert.match(html, /FULL_BATCH/, 'Review UI must retain explicit full-Batch scope');
 
-// Critical safety: export and browser print must still render the complete active Batch.
-assert.match(html, /for \(let i = 0; i < MappedOrders\.length; i\+\+\)/, 'Save PDF must still iterate all MappedOrders');
-assert.match(html, /\{MappedOrders\.map\(\(order\) => \(<LabelCard key=\{`print-\$\{order\.id\}`\}/, 'Print area must still render all MappedOrders');
+// Critical safety: export and browser print must follow the explicitly selected print scope.
+assert.match(html, /printScopeApi\.selectPrintOrders\(MappedOrders, printScopeMode/, 'browser print scope must be derived through the print-scope helper');
+assert.match(html, /PrintScopedOrders\.map\(/, 'Print area must render the selected print scope');
+assert.match(html, /const ordersToExport = printScopeApi/, 'Save PDF must derive an explicit scoped order list');
 
 console.log('PackMaster hybrid review grid contract passed');
