@@ -19,6 +19,7 @@
   <script src="./packmaster-exceptions.js"></script>
   <script src="./packmaster-pilot-safety.js"></script>
   <script src="./packmaster-keyword-assistant.js"></script>
+  <script src="./packmaster-sku-integrity.js"></script>
   <script src="./packmaster-review-keyword-suggestions.js"></script>
   <script src="./packmaster-review-overrides.js"></script>
   <script src="./packmaster-batch-source-files.js"></script>
@@ -1179,6 +1180,7 @@
       const exceptionApi = window.PackMasterExceptions;
       const pilotSafetyApi = window.PackMasterPilotSafety;
       const keywordAssistantApi = window.PackMasterKeywordAssistant;
+      const skuIntegrityApi = window.PackMasterSkuIntegrity;
       const reviewKeywordSuggestionsApi = window.PackMasterReviewKeywordSuggestions;
       const reviewOverridesApi = window.PackMasterReviewOverrides;
       const batchSourceFilesApi = window.PackMasterBatchSourceFiles;
@@ -1187,6 +1189,7 @@
       const storageHealthApi = window.PackMasterStorageHealth;
       const diagnosticsApi = window.PackMasterDiagnostics;
       const PILOT_VERSION = 'PackMaster Pilot 2026.08.08';
+      const SKU_INTEGRITY_BACKUP_KEY = 'packmasterSkuIntegrityBackupV1';
       const [activeTab, setActiveTab] = useState('upload');
       // PackMaster Frontend V3 — presentation-only navigation/pagination.
       const [activeView, setActiveView] = useState('batches');
@@ -2621,10 +2624,18 @@
           const backup = workspaceApi.validateBackup(parsed);
           if (duplicateApi) duplicateApi.validateFingerprintStore(backup.settings.duplicateFingerprints || {});
           if (archiveApi) archiveApi.validateArchiveStore(backup.settings.archiveState || {});
-          const summary = workspaceApi.getBackupSummary(backup);
-          setRestorePreview({ backup, summary });
+          const preparedRules = prepareSkuRules(backup.skuRules, `restore-${Date.now()}`);
+          if (preparedRules.report.conflicts.length > 0) {
+            throw new Error(`Backup มี SKU conflict ${preparedRules.report.conflicts.length} กลุ่ม ต้องให้ผู้ใช้ตัดสินใจก่อน Restore`);
+          }
+          const safeBackup = { ...backup, skuRules: preparedRules.rules };
+          const summary = workspaceApi.getBackupSummary(safeBackup);
+          setRestorePreview({ backup: safeBackup, summary, skuIntegrityReport: preparedRules.report });
           setRestoreFileName(file.name);
-          showToast('ตรวจไฟล์ Backup ผ่านแล้ว กรุณาตรวจ Summary ก่อน Replace', 'success');
+          const integrityNote = preparedRules.report.rekeyed.length > 0
+            ? ` • จะ Re-key Rule ID ${preparedRules.report.rekeyed.length} รายการโดยไม่เปลี่ยน Keyword/ชื่อภายใน`
+            : '';
+          showToast(`ตรวจไฟล์ Backup ผ่านแล้ว กรุณาตรวจ Summary ก่อน Replace${integrityNote}`, 'success');
         } catch (err) {
           console.error('Workspace restore file validation failed', err);
           resetRestorePreview();
@@ -2642,9 +2653,12 @@
           return;
         }
 
-        const { backup, summary } = restorePreview;
+        const { backup, summary, skuIntegrityReport } = restorePreview;
+        const integrityPreview = skuIntegrityReport
+          ? `\nSKU Integrity: Re-key ID ${skuIntegrityReport.rekeyed.length} • Same-output duplicate ${skuIntegrityReport.sameOutputDuplicates.length}`
+          : '';
         const confirmed = window.confirm(
-          `Replace Workspace ปัจจุบันด้วยไฟล์ Backup นี้หรือไม่?\n\nSKU ${summary.skuRules} • Batch ${summary.batches} • Orders ${summary.orders}\n\nข้อมูล Local ปัจจุบันจะถูกแทนที่ แต่ระบบจะสร้าง Safety Snapshot ในหน่วยความจำก่อนเริ่มกู้คืน`
+          `Replace Workspace ปัจจุบันด้วยไฟล์ Backup นี้หรือไม่?\n\nSKU ${summary.skuRules} • Batch ${summary.batches} • Orders ${summary.orders}${integrityPreview}\n\nข้อมูล Local ปัจจุบันจะถูกแทนที่ แต่ระบบจะสร้าง Safety Snapshot ในหน่วยความจำก่อนเริ่มกู้คืน`
         );
         if (!confirmed) return;
 
@@ -2794,6 +2808,42 @@
         }
       };
 
+      const prepareSkuRules = (rules, idPrefix = 'rule') => {
+        if (!skuIntegrityApi) throw new Error('SKU Integrity module ยังไม่พร้อม');
+        return skuIntegrityApi.prepareRules(rules, { normalize: normalizeMatchText, idPrefix });
+      };
+
+      const handleAuditSkuRules = () => {
+        try {
+          const prepared = prepareSkuRules(skuRules, 'migrate');
+          if (prepared.report.conflicts.length > 0) {
+            showToast(`พบ Mapping conflict ${prepared.report.conflicts.length} กลุ่ม — ยังไม่แก้หรือเลือกแทนให้อัตโนมัติ`, 'error');
+            return;
+          }
+          const preview = `Audit SKU Library\n\nDuplicate ID: ${prepared.report.duplicateIds.length}\nNormalized same-output: ${prepared.report.sameOutputDuplicates.length}\nRe-key ID: ${prepared.report.rekeyed.length}\n\nระบบจะ Backup dictionary ปัจจุบันก่อน Apply และจะไม่ลบ alias อัตโนมัติ`;
+          if (!window.confirm(preview)) return;
+          localStorage.setItem(SKU_INTEGRITY_BACKUP_KEY, JSON.stringify(skuRules));
+          setSkuRules(prepared.rules);
+          showToast(`Integrity migration สำเร็จ • Re-key ${prepared.report.rekeyed.length} ID`, 'success');
+        } catch (err) {
+          showToast(err.message || 'Audit SKU Library ไม่สำเร็จ', 'error');
+        }
+      };
+
+      const handleRollbackSkuMigration = () => {
+        try {
+          const raw = localStorage.getItem(SKU_INTEGRITY_BACKUP_KEY);
+          if (!raw) return showToast('ยังไม่มี Integrity backup ให้ย้อนกลับ', 'error');
+          const backupRules = JSON.parse(raw);
+          if (!Array.isArray(backupRules)) throw new Error('Integrity backup ใช้งานไม่ได้');
+          if (!window.confirm('ย้อนกลับ SKU Library ไปยัง snapshot ก่อน Integrity migration หรือไม่?')) return;
+          setSkuRules(backupRules.map((rule, index) => sanitizeSkuRule(rule, `rollback-${index}`)).filter(Boolean));
+          showToast('ย้อนกลับ SKU Library จาก Integrity backup แล้ว', 'success');
+        } catch (err) {
+          showToast(err.message || 'Rollback SKU Library ไม่สำเร็จ', 'error');
+        }
+      };
+
       const handleExportRules = () => {
         if (skuRules.length === 0) return showToast('ไม่มีข้อมูลให้ส่งออก', 'error');
         const blob = new Blob([JSON.stringify(skuRules, null, 2)], { type: "application/json" });
@@ -2827,12 +2877,17 @@
               return;
             }
 
-            setSkuRules(prev => {
-              const merged = [...validRules, ...prev];
-              const deduped = new Map();
-              merged.forEach(rule => deduped.set(normalizeRuleKeyword(rule.keyword), rule));
-              return Array.from(deduped.values());
-            });
+            const prepared = prepareSkuRules([...validRules, ...skuRules], `import-${Date.now()}`);
+            if (prepared.report.conflicts.length > 0) {
+              showToast(`นำเข้าไม่ได้: พบ Mapping conflict ${prepared.report.conflicts.length} กลุ่ม ต้องให้ผู้ใช้ตัดสินใจก่อน`, 'error');
+              return;
+            }
+            const integrityChanges = prepared.report.rekeyed.length + prepared.report.sameOutputDuplicates.length;
+            if (integrityChanges > 0) {
+              const preview = `Import SKU Library\n\nRe-key ID: ${prepared.report.rekeyed.length}\nNormalized same-output: ${prepared.report.sameOutputDuplicates.length}\n\nระบบจะไม่ลบ alias อัตโนมัติ ต้องการ Apply หรือไม่?`;
+              if (!window.confirm(preview)) return;
+            }
+            setSkuRules(prepared.rules);
 
             if (skippedCount > 0) {
               showToast(`นำเข้า ${validRules.length} ข้อ (ข้าม ${skippedCount} ข้อที่ไม่ถูกต้อง)`, 'success');
@@ -2850,23 +2905,36 @@
       const saveSkuRule = ({ keyword, shortName }, options = {}) => {
         const cleanKeyword = String(keyword || '').trim();
         const cleanShortName = String(shortName || '').trim();
-        if (!cleanKeyword || !cleanShortName) return false;
+        if (!cleanKeyword || !cleanShortName || !skuIntegrityApi) return false;
         const targetEditingId = options.editingId || null;
-        const duplicateKeywordRule = skuRules.find(rule =>
-          rule.id !== targetEditingId &&
-          normalizeMatchText(rule.keyword) === normalizeMatchText(cleanKeyword)
-        );
-        if (duplicateKeywordRule) {
-          showToast('Keyword นี้มีอยู่แล้วในคลังคำศัพท์', 'error');
+        const idCounts = new Map();
+        skuRules.forEach(rule => {
+          const key = String(rule.id);
+          idCounts.set(key, (idCounts.get(key) || 0) + 1);
+        });
+        if (Array.from(idCounts.values()).some(count => count > 1)) {
+          showToast('พบ Rule ID ซ้ำในคลังเดิม — กรุณา Audit Integrity ก่อน Add/Edit เพื่อป้องกันแก้หลาย alias พร้อมกัน', 'error');
           return false;
         }
+
+        let candidateRules;
         if (targetEditingId) {
-          setSkuRules(prev => prev.map(rule => rule.id === targetEditingId ? { keyword: cleanKeyword, shortName: cleanShortName, id: targetEditingId } : rule));
-          showToast(options.successMessage || 'แก้ไขกฎสำเร็จ', 'success');
+          candidateRules = skuRules.map(rule => rule.id === targetEditingId
+            ? { ...rule, keyword: cleanKeyword, shortName: cleanShortName }
+            : rule);
         } else {
-          setSkuRules(prev => [{ keyword: cleanKeyword, shortName: cleanShortName, id: Date.now() }, ...prev]);
-          showToast(options.successMessage || 'เพิ่มกฎใหม่สำเร็จ', 'success');
+          const usedIds = new Set(skuRules.map(rule => String(rule.id)));
+          const id = skuIntegrityApi.nextUniqueId(usedIds, `rule-${Date.now()}`);
+          candidateRules = [{ keyword: cleanKeyword, shortName: cleanShortName, id }, ...skuRules];
         }
+        const prepared = prepareSkuRules(candidateRules, `rule-${Date.now()}`);
+        if (prepared.report.conflicts.length > 0) {
+          showToast('บันทึกไม่ได้: Keyword เดียวกันหลัง normalize ชี้ไปคนละชื่อภายใน', 'error');
+          return false;
+        }
+        if (prepared.report.sameOutputDuplicates.length > 0 && !window.confirm('พบ normalized duplicate ที่ให้ผลลัพธ์เดียวกัน ระบบจะเก็บทั้งสอง alias และไม่ลบอัตโนมัติ ต้องการบันทึกต่อหรือไม่?')) return false;
+        setSkuRules(prepared.rules);
+        showToast(options.successMessage || (targetEditingId ? 'แก้ไขกฎสำเร็จ' : 'เพิ่มกฎใหม่สำเร็จ'), 'success');
         return true;
       };
 
@@ -2880,8 +2948,16 @@
       };
 
       const handleEditClick = (rule) => {
+        const sharedIdCount = skuRules.filter(candidate => String(candidate.id) === String(rule.id)).length;
+        if (sharedIdCount > 1) return showToast('Rule ID นี้ถูกใช้ร่วมกับ alias อื่น — กรุณา Audit Integrity ก่อนแก้ไข', 'error');
         setNewRule({ keyword: rule.keyword, shortName: rule.shortName });
         setEditingId(rule.id);
+      };
+
+      const handleDeleteSkuRule = (rule) => {
+        const sharedIdCount = skuRules.filter(candidate => String(candidate.id) === String(rule.id)).length;
+        if (sharedIdCount > 1) return showToast('Rule ID นี้ถูกใช้ร่วมกับ alias อื่น — กรุณา Audit Integrity ก่อนลบ', 'error');
+        if (window.confirm(`ลบกฎ ${rule.keyword} หรือไม่?`)) setSkuRules(prev => prev.filter(candidate => String(candidate.id) !== String(rule.id)));
       };
 
       const cancelEdit = () => {
@@ -3295,6 +3371,8 @@
                     <div className="pm-page-head">
                       <div><div className="pm-eyebrow">SKU Dictionary</div><h2 className="pm-page-title">คลังคำศัพท์</h2><p className="pm-page-subtitle">จัดการ Keyword → ชื่อภายในที่ทีมแพ็กเข้าใจ โดยไม่เปลี่ยน Data Shape เดิม</p></div>
                       <div className="pm-page-actions">
+                        <button onClick={handleAuditSkuRules} className="pm-warning-btn">Audit Integrity</button>
+                        <button onClick={handleRollbackSkuMigration} className="pm-ghost-btn">Rollback Audit</button>
                         <label className="pm-secondary-btn cursor-pointer"><PMIcon name="upload" /> นำเข้า<input type="file" accept=".json" className="hidden" onChange={handleImportRules} /></label>
                         <button onClick={handleExportRules} className="pm-secondary-btn"><PMIcon name="download" /> ส่งออก</button>
                       </div>
@@ -3333,7 +3411,7 @@
                         </div>
                         <div className="overflow-x-auto">
                           <table className="pm-table min-w-[720px]"><thead><tr><th>#</th><th>Keyword</th><th>ชื่อภายใน</th><th className="text-right">จัดการ</th></tr></thead><tbody>
-                            {visibleSkuRules.map((rule,idx)=><tr key={rule.id} className={editingId===rule.id?'opacity-40':''}><td className="text-slate-400 font-black">{(skuPage-1)*skuPageSize+idx+1}</td><td><div className="font-bold text-slate-700 max-w-[380px] break-words">{rule.keyword}</div></td><td><span className="inline-flex px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 font-black">{rule.shortName}</span></td><td><div className="flex justify-end gap-1"><button onClick={()=>handleEditClick(rule)} className="pm-icon-btn" title="แก้ไข"><PMIcon name="edit" className="w-4 h-4"/></button><button onClick={()=>{if(window.confirm(`ลบกฎ ${rule.keyword} หรือไม่?`)) setSkuRules(prev=>prev.filter(r=>r.id!==rule.id));}} className="pm-icon-btn pm-icon-danger" title="ลบ"><PMIcon name="trash" className="w-4 h-4"/></button></div></td></tr>)}
+                            {visibleSkuRules.map((rule,idx)=><tr key={rule.id} className={editingId===rule.id?'opacity-40':''}><td className="text-slate-400 font-black">{(skuPage-1)*skuPageSize+idx+1}</td><td><div className="font-bold text-slate-700 max-w-[380px] break-words">{rule.keyword}</div></td><td><span className="inline-flex px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 font-black">{rule.shortName}</span></td><td><div className="flex justify-end gap-1"><button onClick={()=>handleEditClick(rule)} className="pm-icon-btn" title="แก้ไข"><PMIcon name="edit" className="w-4 h-4"/></button><button onClick={()=>handleDeleteSkuRule(rule)} className="pm-icon-btn pm-icon-danger" title="ลบ"><PMIcon name="trash" className="w-4 h-4"/></button></div></td></tr>)}
                             {visibleSkuRules.length===0&&<tr><td colSpan="4"><div className="py-12 text-center text-sm font-bold text-slate-400">{skuRules.length===0?'ยังไม่มีข้อมูลคลังคำศัพท์':'ไม่พบกฎที่ตรงกับการค้นหา / ตัวกรอง'}</div></td></tr>}
                           </tbody></table>
                         </div>
