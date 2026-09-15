@@ -1822,8 +1822,8 @@
         let hasUnmatched = false;
         let hasAmbiguous = false;
 
-        o.parsedItems.forEach(item => {
-            const effectiveQty = reviewOverridesApi ? reviewOverridesApi.getEffectiveItemQty(o, item) : item.qty;
+        o.parsedItems.forEach((item, itemIndex) => {
+            const effectiveQty = reviewOverridesApi ? reviewOverridesApi.getEffectiveItemQty(o, item, itemIndex) : item.qty;
             const manualOverride = reviewOverridesApi ? reviewOverridesApi.getManualSkuOverride(o, item.text) : null;
             if (manualOverride) {
                 const baseName = manualOverride.shortName.trim().replace(/\u00A0/g, ' ');
@@ -1861,12 +1861,13 @@
         if (hasAmbiguous || (o.parserWarning && !skuAcknowledged)) finalDisplayItems.push('• ⚠️ ตรวจสอบ SKU');
         if (hasUnmatched) finalDisplayItems.push('• ยังไม่ตั้งชื่อ');
 
-        const totalQty = o.parsedItems.reduce((sum, item) => {
-          const qty = reviewOverridesApi ? reviewOverridesApi.getEffectiveItemQty(o, item) : item.qty;
+        const totalQty = o.parsedItems.reduce((sum, item, itemIndex) => {
+          const qty = reviewOverridesApi ? reviewOverridesApi.getEffectiveItemQty(o, item, itemIndex) : item.qty;
           return sum + (parseInt(qty, 10) || 0);
         }, 0);
-        const qtyWarning = hasQtyWarning(o.parsedItems, o.declaredTotalQty, o.parserWarning);
-        if (qtyWarning && !qtyAcknowledged) finalDisplayItems.push('• ⚠️ ตรวจสอบ Qty');
+        const legacyQtyOverrideAmbiguous = reviewOverridesApi ? reviewOverridesApi.hasAmbiguousLegacyQtyOverride(o) : false;
+        const qtyWarning = hasQtyWarning(o.parsedItems, o.declaredTotalQty, o.parserWarning) || legacyQtyOverrideAmbiguous;
+        if (qtyWarning && (!qtyAcknowledged || legacyQtyOverrideAmbiguous)) finalDisplayItems.push('• ⚠️ ตรวจสอบ Qty');
 
         if (finalDisplayItems.length === 0) {
             finalDisplayItems.push('ยังไม่ตั้งชื่อ (เพิ่มกฎ SKU)');
@@ -2107,10 +2108,11 @@
         const items = Array.isArray(quickMapState.row?.order?.parsedItems) ? quickMapState.row.order.parsedItems : [];
         if (!targetOrderId || !reviewOverridesApi || items.length === 0) return;
         const drafts = quickMapState.qtyDrafts || {};
-        const corrections = items.map(item => {
-          const fallbackQty = reviewOverridesApi.getEffectiveItemQty(quickMapState.row.order, item);
-          const rawDraft = Object.prototype.hasOwnProperty.call(drafts, item.text) ? drafts[item.text] : fallbackQty;
-          return { item, qty: Number(rawDraft) };
+        const corrections = items.map((item, itemIndex) => {
+          const itemKey = reviewOverridesApi.getItemKey(itemIndex);
+          const fallbackQty = reviewOverridesApi.getEffectiveItemQty(quickMapState.row.order, item, itemIndex);
+          const rawDraft = Object.prototype.hasOwnProperty.call(drafts, itemKey) ? drafts[itemKey] : fallbackQty;
+          return { item, itemIndex, qty: Number(rawDraft) };
         });
         if (corrections.some(entry => !Number.isInteger(entry.qty) || entry.qty < 1)) {
           showToast('Qty ที่แก้ต้องเป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป', 'error');
@@ -2118,7 +2120,7 @@
         }
         resetActiveBatchCompletion();
         const applyQtyCorrections = (order) => {
-          let next = corrections.reduce((current, entry) => reviewOverridesApi.upsertQtyOverride(current, entry.item.text, entry.qty), order);
+          let next = corrections.reduce((current, entry) => reviewOverridesApi.upsertQtyOverride(current, entry.item, entry.itemIndex, entry.qty), order);
           next = reviewOverridesApi.confirmReview(next, 'qty');
           return next;
         };
@@ -3175,7 +3177,7 @@
 
                     {(quickMapState.row?.types || []).includes('REVIEW_SKU') && <label data-pm-review-confirm-sku className="mt-4 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 cursor-pointer"><input type="checkbox" className="mt-0.5 w-4 h-4" checked={reviewOverridesApi ? reviewOverridesApi.getReviewAcknowledgement(quickMapState.row?.order,'sku') : false} onChange={(e)=>handleSetReviewConfirmation('sku',e.target.checked)} /><span><span className="block text-xs font-black text-emerald-900">SKU ถูกต้อง</span><span className="block text-[10px] font-semibold text-emerald-700/75 mt-0.5">ติ๊กเมื่อเทียบกับใบจริงแล้ว ชื่อ/การจับคู่ถูกต้อง</span></span></label>}
 
-                    {(quickMapState.row?.types || []).includes('REVIEW_QTY') && <div className="mt-4 rounded-xl border border-red-200 bg-red-50/50 p-3"><div className="flex items-center justify-between gap-2"><div><div className="text-xs font-black text-red-900">ตรวจสอบ Qty</div><div className="text-[10px] font-semibold text-red-700/70 mt-0.5">แก้เฉพาะ Review layer • Qty ที่ Parser อ่านเดิมยังถูกเก็บไว้</div></div></div><div className="mt-3 space-y-2">{(quickMapState.row?.order?.parsedItems || []).map((item,index)=>{const hasDraft=Object.prototype.hasOwnProperty.call(quickMapState.qtyDrafts||{},item.text);const effectiveQty=reviewOverridesApi?reviewOverridesApi.getEffectiveItemQty(quickMapState.row.order,item):item.qty;const value=hasDraft?quickMapState.qtyDrafts[item.text]:String(effectiveQty);return <div key={`${item.text}-${index}`} className="rounded-lg bg-white border border-red-100 p-2.5"><div className="text-[10px] font-bold text-slate-600 break-words mb-2">{item.text || `รายการ ${index+1}`}</div><div className="flex items-center gap-2"><span className="text-[10px] font-black text-slate-400">Qty</span><input data-pm-review-qty-override type="number" min="1" step="1" value={value} onChange={(e)=>setQuickMapState(prev=>({ ...prev, qtyDrafts:{ ...(prev.qtyDrafts||{}), [item.text]:e.target.value } }))} className="pm-input !py-2 w-24 text-center font-black" /><span className="text-[10px] font-semibold text-slate-400">Parser เดิม: {item.qty}</span></div></div>})}</div><button onClick={handleSaveQtyReviewCorrections} className="pm-secondary-btn w-full justify-center mt-3">บันทึก Qty ที่แก้</button><label data-pm-review-confirm-qty className="mt-3 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 cursor-pointer"><input type="checkbox" className="mt-0.5 w-4 h-4" checked={reviewOverridesApi ? reviewOverridesApi.getReviewAcknowledgement(quickMapState.row?.order,'qty') : false} onChange={(e)=>handleSetReviewConfirmation('qty',e.target.checked)} /><span><span className="block text-xs font-black text-emerald-900">Qty ถูกต้อง</span><span className="block text-[10px] font-semibold text-emerald-700/75 mt-0.5">ติ๊กหลังตรวจใบจริง หรือหลังแก้ Qty ด้านบนแล้ว</span></span></label></div>}
+                    {(quickMapState.row?.types || []).includes('REVIEW_QTY') && <div className="mt-4 rounded-xl border border-red-200 bg-red-50/50 p-3"><div className="flex items-center justify-between gap-2"><div><div className="text-xs font-black text-red-900">ตรวจสอบ Qty</div><div className="text-[10px] font-semibold text-red-700/70 mt-0.5">แก้เฉพาะ Review layer • Qty ที่ Parser อ่านเดิมยังถูกเก็บไว้</div></div></div><div className="mt-3 space-y-2">{(quickMapState.row?.order?.parsedItems || []).map((item,index)=>{const itemKey=reviewOverridesApi?reviewOverridesApi.getItemKey(index):`row:${index}`;const hasDraft=Object.prototype.hasOwnProperty.call(quickMapState.qtyDrafts||{},itemKey);const effectiveQty=reviewOverridesApi?reviewOverridesApi.getEffectiveItemQty(quickMapState.row.order,item,index):item.qty;const value=hasDraft?quickMapState.qtyDrafts[itemKey]:String(effectiveQty);return <div key={`${item.text}-${index}`} className="rounded-lg bg-white border border-red-100 p-2.5"><div className="text-[10px] font-bold text-slate-600 break-words mb-2">{item.text || `รายการ ${index+1}`}</div><div className="flex items-center gap-2"><span className="text-[10px] font-black text-slate-400">Qty</span><input data-pm-review-qty-override type="number" min="1" step="1" value={value} onChange={(e)=>setQuickMapState(prev=>({ ...prev, qtyDrafts:{ ...(prev.qtyDrafts||{}), [itemKey]:e.target.value } }))} className="pm-input !py-2 w-24 text-center font-black" /><span className="text-[10px] font-semibold text-slate-400">Parser เดิม: {item.qty}</span></div></div>})}</div><button onClick={handleSaveQtyReviewCorrections} className="pm-secondary-btn w-full justify-center mt-3">บันทึก Qty ที่แก้</button><label data-pm-review-confirm-qty className="mt-3 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 cursor-pointer"><input type="checkbox" className="mt-0.5 w-4 h-4" checked={reviewOverridesApi ? reviewOverridesApi.getReviewAcknowledgement(quickMapState.row?.order,'qty') : false} onChange={(e)=>handleSetReviewConfirmation('qty',e.target.checked)} /><span><span className="block text-xs font-black text-emerald-900">Qty ถูกต้อง</span><span className="block text-[10px] font-semibold text-emerald-700/75 mt-0.5">ติ๊กหลังตรวจใบจริง หรือหลังแก้ Qty ด้านบนแล้ว</span></span></label></div>}
 
                     <div className="mt-5 flex flex-col sm:flex-row sm:justify-between gap-2"><button onClick={handleOpenQuickMapInLibrary} className="pm-secondary-btn">เปิดคลังคำศัพท์</button><button onClick={()=>setQuickMapState({ open:false, row:null, keyword:'', shortName:'' })} className="pm-ghost-btn">ปิดหน้าต่าง</button></div>
                   </div>
