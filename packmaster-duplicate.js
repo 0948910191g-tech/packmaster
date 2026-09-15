@@ -76,33 +76,44 @@
     return { hash, size, addedAt };
   };
 
-  const readFingerprintStore = (storageLike) => {
+  const parseFingerprintStore = (raw) => {
+    if (!raw) return { status: 'empty', data: {} };
+    const parsed = JSON.parse(raw);
+    return { status: 'ok', data: validateFingerprintStore(parsed) };
+  };
+
+  const inspectFingerprintStore = (storageLike) => {
     const storage = resolveStorage(storageLike);
-    if (!storage || typeof storage.getItem !== 'function') return {};
+    if (!storage || typeof storage.getItem !== 'function') return { status: 'unavailable', data: {} };
     try {
-      const raw = storage.getItem(STORAGE_KEY);
-      if (!raw) return {};
-      const parsed = JSON.parse(raw);
-      if (!isPlainObject(parsed)) return {};
-      const clean = {};
-      Object.entries(parsed).forEach(([batchId, entries]) => {
-        if (!batchId || !Array.isArray(entries)) return;
-        const deduped = [];
-        const seen = new Set();
-        entries.forEach((entry) => {
-          const fingerprint = sanitizeFingerprint(entry);
-          const key = fingerprint ? normalize(fingerprint.hash) : '';
-          if (!fingerprint || !key || seen.has(key)) return;
-          seen.add(key);
-          deduped.push(fingerprint);
-        });
-        if (deduped.length > 0) clean[batchId] = deduped;
-      });
-      return clean;
+      return parseFingerprintStore(storage.getItem(STORAGE_KEY));
     } catch (error) {
-      console.warn('PackMaster duplicate sidecar is unreadable; using empty store', error);
-      return {};
+      return { status: 'corrupt', data: {}, error };
     }
+  };
+
+  const getStoreHealth = (storageLike) => {
+    const inspected = inspectFingerprintStore(storageLike);
+    return { key: STORAGE_KEY, kind: 'duplicate', status: inspected.status };
+  };
+
+  const readFingerprintStore = (storageLike) => {
+    const inspected = inspectFingerprintStore(storageLike);
+    if (inspected.status === 'corrupt') console.warn('PackMaster duplicate sidecar is unreadable; preserving raw data', inspected.error);
+    return inspected.data;
+  };
+
+  const readFingerprintStoreForWrite = (storageLike) => {
+    const inspected = inspectFingerprintStore(storageLike);
+    if (inspected.status === 'corrupt') throw new Error('Duplicate fingerprint sidecar is corrupt/unreadable; reset or restore it before writing');
+    return inspected.data;
+  };
+
+  const resetStore = (storageLike) => {
+    const storage = resolveStorage(storageLike);
+    if (!storage || typeof storage.removeItem !== 'function') throw new Error('LocalStorage is not available for duplicate fingerprint reset');
+    storage.removeItem(STORAGE_KEY);
+    return true;
   };
 
   const writeFingerprintStore = (store, storageLike) => {
@@ -139,7 +150,7 @@
   const appendBatchFingerprints = (batchId, entries, storageLike) => {
     if (!batchId) throw new Error('Batch id is required for duplicate fingerprint history');
     if (!Array.isArray(entries)) throw new Error('Fingerprint entries must be an array');
-    const store = readFingerprintStore(storageLike);
+    const store = readFingerprintStoreForWrite(storageLike);
     const current = Array.isArray(store[batchId]) ? [...store[batchId]] : [];
     const seen = new Set(current.map((entry) => normalize(entry.hash)).filter(Boolean));
 
@@ -159,7 +170,7 @@
 
   const clearBatchFingerprints = (batchId, storageLike) => {
     if (!batchId) return false;
-    const store = readFingerprintStore(storageLike);
+    const store = readFingerprintStoreForWrite(storageLike);
     const existed = Object.prototype.hasOwnProperty.call(store, batchId);
     if (!existed) return false;
     delete store[batchId];
@@ -167,7 +178,7 @@
     return true;
   };
 
-  const exportFingerprintStore = (storageLike) => JSON.parse(JSON.stringify(readFingerprintStore(storageLike)));
+  const exportFingerprintStore = (storageLike) => JSON.parse(JSON.stringify(readFingerprintStoreForWrite(storageLike)));
 
   const validateFingerprintStore = (candidate) => {
     if (!isPlainObject(candidate)) throw new Error('Duplicate fingerprint store must be an object');
@@ -206,6 +217,8 @@
     findExactFileDuplicate,
     getOrderIdentity,
     findOrderDuplicateSignals,
+    getStoreHealth,
+    resetStore,
     getBatchFingerprints,
     getKnownFingerprints,
     appendBatchFingerprints,

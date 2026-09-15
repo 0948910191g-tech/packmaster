@@ -1268,6 +1268,7 @@
 
       // Phase 3E-H — local-only hardening / pilot readiness
       const [storageHealth, setStorageHealth] = useState({ supported: null, usage: null, quota: null, percent: null });
+      const [localMetadataHealth, setLocalMetadataHealth] = useState({ status: 'unknown', stores: [], issues: [] });
       const [storageHealthBusy, setStorageHealthBusy] = useState(false);
       const [showLocalDataNotice, setShowLocalDataNotice] = useState(() => {
         try { return localStorage.getItem('packmasterPilotNoticeSeen') !== '1'; } catch (err) { return true; }
@@ -1296,7 +1297,8 @@
         }
 
         if (activeBatchId) {
-          batchSourceFilesApi.rememberBatchSourceFiles(activeBatchId, orders);
+          try { batchSourceFilesApi.rememberBatchSourceFiles(activeBatchId, orders); }
+          catch (error) { console.warn('Source-file metadata write blocked; preserving corrupt sidecar', error); }
         }
 
         const entries = visibleBatches.map((batch) => {
@@ -1365,21 +1367,44 @@
       const refreshStorageHealth = useCallback(async () => {
         if (!storageHealthApi) {
           setStorageHealth({ supported: false, usage: null, quota: null, percent: null });
+          setLocalMetadataHealth({ status: 'unknown', stores: [], issues: [] });
           return;
         }
         setStorageHealthBusy(true);
         try {
           const estimate = await storageHealthApi.estimateStorage(navigator);
           setStorageHealth(estimate);
+          const metadata = storageHealthApi.inspectLocalSafetyMetadata({ duplicateApi, archiveApi, batchSourceFilesApi });
+          setLocalMetadataHealth(metadata);
         } catch (err) {
-          console.error('Storage estimate failed', err);
+          console.error('Storage health check failed', err);
           setStorageHealth({ supported: false, usage: null, quota: null, percent: null });
         } finally {
           setStorageHealthBusy(false);
         }
-      }, [storageHealthApi]);
+      }, [storageHealthApi, duplicateApi, archiveApi, batchSourceFilesApi]);
 
       useEffect(() => { refreshStorageHealth(); }, [refreshStorageHealth]);
+
+      const handleResetCorruptSafetyMetadata = async () => {
+        const issues = Array.isArray(localMetadataHealth.issues) ? localMetadataHealth.issues : [];
+        if (issues.length === 0) return;
+        const labels = { duplicate: 'Duplicate history', archive: 'Archive state', sourceFiles: 'Source filenames' };
+        const summary = issues.map(row => labels[row.kind] || row.kind).join(', ');
+        if (!window.confirm(`พบ Local Safety Metadata เสีย: ${summary}\n\nReset จะล้างเฉพาะ Metadata ที่เสียและไม่แตะ Orders/SKU Rules ต้องการดำเนินการหรือไม่?`)) return;
+        try {
+          issues.forEach(issue => {
+            if (issue.kind === 'duplicate') duplicateApi?.resetStore();
+            if (issue.kind === 'archive') archiveApi?.resetStore();
+            if (issue.kind === 'sourceFiles') batchSourceFilesApi?.resetStore();
+          });
+          await refreshStorageHealth();
+          showToast('Reset Local Safety Metadata ที่เสียแล้ว — กรุณาตรวจ Batch ก่อนทำงานต่อ', 'success');
+        } catch (error) {
+          console.error('Reset corrupt Local Safety Metadata failed', error);
+          showToast('Reset Local Safety Metadata ไม่สำเร็จ — ข้อมูลเดิมยังถูกเก็บไว้', 'error');
+        }
+      };
 
       const dismissLocalDataNotice = () => {
         try { localStorage.setItem('packmasterPilotNoticeSeen', '1'); } catch (err) {}
@@ -2418,6 +2443,10 @@
 
       const handleCleanupReprintImages = async () => {
         if (!storageHealthApi || !batchApi || !batchStorageReady || selectedArchivedBatchIds.length === 0) return;
+        if (localMetadataHealth.status === 'degraded') {
+          showToast('Local Safety Metadata เสีย — กรุณากู้หรือ Reset ก่อน Cleanup', 'error');
+          return;
+        }
         const confirmed = window.confirm(`ล้างเฉพาะรูปสำหรับ Reprint ของ Archived Batch ที่เลือก ${selectedArchivedBatchIds.length} รายการหรือไม่?\n\nParsed Orders / SKU / Qty / สถานะ Batch จะยังอยู่ แต่ Batch ที่ล้างแล้วจะไม่มีภาพใบปะหน้าเดิมสำหรับ Reprint`);
         if (!confirmed) return;
 
@@ -2436,6 +2465,10 @@
 
       const handleDeleteSelectedArchived = async () => {
         if (!batchApi || !batchStorageReady || selectedArchivedBatchIds.length === 0) return;
+        if (localMetadataHealth.status === 'degraded') {
+          showToast('Local Safety Metadata เสีย — กรุณากู้หรือ Reset ก่อนลบ Batch', 'error');
+          return;
+        }
         const deletableIds = selectedArchivedBatchIds.filter(batchId => {
           const batch = batches.find(row => row.id === batchId);
           return batch && Boolean(getBatchArchivedAt(batch));
@@ -2446,8 +2479,10 @@
         try {
           for (const batchId of deletableIds) {
             await batchApi.deleteBatch(batchId);
+            if (batchSourceFilesApi) batchSourceFilesApi.forgetBatchSourceFiles(batchId);
             if (archiveApi) archiveApi.clearBatchArchive(batchId);
             if (duplicateApi) duplicateApi.clearBatchFingerprints(batchId);
+            if (reprintSnapshotApi) reprintSnapshotApi.clearBatchSnapshot(batchId);
             deletedIds.push(batchId);
           }
           const removed = new Set(deletedIds);
@@ -2469,6 +2504,10 @@
         if (!batch || !batch.id || !batchApi) return;
         if (!batchStorageReady) {
           showToast('Browser storage ยังไม่พร้อม', 'error');
+          return;
+        }
+        if (localMetadataHealth.status === 'degraded') {
+          showToast('Local Safety Metadata เสีย — กรุณากู้หรือ Reset ก่อนลบ Batch', 'error');
           return;
         }
         if (!window.confirm(`ลบ ${batch.name} และข้อมูลใบปะหน้าที่เก็บในเครื่องนี้หรือไม่?`)) return;
@@ -3196,6 +3235,8 @@
                 </div>
             </div>
           )}
+
+          {localMetadataHealth.status === 'degraded' && <div data-pm-local-metadata-warning className="no-print fixed top-3 left-1/2 -translate-x-1/2 z-[9998] w-[min(720px,calc(100%-24px))] rounded-2xl border-2 border-red-300 bg-red-50 px-4 py-3 shadow-xl"><div className="flex flex-col sm:flex-row sm:items-center gap-3"><div className="flex-1"><div className="text-xs font-black text-red-800">Local Safety Metadata เสีย — ระบบกำลังป้องกันการเขียนทับข้อมูลเดิม</div><div className="text-[10px] font-semibold text-red-700/80 mt-1">Duplicate / Archive / Source-file metadata บางส่วนอ่านไม่ได้ ระบบจะไม่เขียนทับข้อมูลเดิม หากไม่ต้องการกู้ metadata เดิมจึงค่อยกด Reset</div></div><button onClick={handleResetCorruptSafetyMetadata} className="pm-danger-btn shrink-0">Reset Metadata ที่เสีย</button></div></div>}
 
           <div className="no-print pm-shell" data-pm-shell="v3">
             <header className="pm-command-header">

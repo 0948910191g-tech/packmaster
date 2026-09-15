@@ -66,6 +66,21 @@
     return { cleanedBatches, cleanedOrders, skippedBatches };
   };
 
+  const inspectLocalSafetyMetadata = (apis, storageByKind = {}) => {
+    const specs = [
+      ['duplicate', apis && apis.duplicateApi],
+      ['archive', apis && apis.archiveApi],
+      ['sourceFiles', apis && apis.batchSourceFilesApi]
+    ];
+    const stores = specs.map(([kind, api]) => {
+      if (!api || typeof api.getStoreHealth !== 'function') return { kind, status: 'unavailable' };
+      const health = api.getStoreHealth(storageByKind[kind]);
+      return { kind, key: health.key || '', status: health.status || 'unavailable' };
+    });
+    const issues = stores.filter(row => row.status === 'corrupt');
+    return { status: issues.length > 0 ? 'degraded' : 'ok', stores, issues };
+  };
+
   const formatBytes = (bytes) => {
     const value = Math.max(0, Number(bytes) || 0);
     if (value === 0) return '0 B';
@@ -75,5 +90,5 @@
     return `${amount >= 10 || index === 0 ? Math.round(amount) : Math.round(amount * 10) / 10} ${units[index]}`;
   };
 
-  return { estimateStorage, stripReprintPayload, cleanupArchivedReprintImages, formatBytes };
+  return { estimateStorage, stripReprintPayload, cleanupArchivedReprintImages, inspectLocalSafetyMetadata, formatBytes };
 });

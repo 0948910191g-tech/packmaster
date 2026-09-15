@@ -31,17 +31,40 @@
     return clean;
   };
 
-  const readArchiveStore = (storageLike) => {
+  const inspectArchiveStore = (storageLike) => {
     const storage = resolveStorage(storageLike);
-    if (!storage || typeof storage.getItem !== 'function') return {};
+    if (!storage || typeof storage.getItem !== 'function') return { status: 'unavailable', data: {} };
     try {
       const raw = storage.getItem(STORAGE_KEY);
-      if (!raw) return {};
-      return validateArchiveStore(JSON.parse(raw));
+      if (!raw) return { status: 'empty', data: {} };
+      return { status: 'ok', data: validateArchiveStore(JSON.parse(raw)) };
     } catch (error) {
-      console.warn('PackMaster archive sidecar is unreadable; using empty store', error);
-      return {};
+      return { status: 'corrupt', data: {}, error };
     }
+  };
+
+  const getStoreHealth = (storageLike) => {
+    const inspected = inspectArchiveStore(storageLike);
+    return { key: STORAGE_KEY, kind: 'archive', status: inspected.status };
+  };
+
+  const readArchiveStore = (storageLike) => {
+    const inspected = inspectArchiveStore(storageLike);
+    if (inspected.status === 'corrupt') console.warn('PackMaster archive sidecar is unreadable; preserving raw data', inspected.error);
+    return inspected.data;
+  };
+
+  const readArchiveStoreForWrite = (storageLike) => {
+    const inspected = inspectArchiveStore(storageLike);
+    if (inspected.status === 'corrupt') throw new Error('Archive sidecar is corrupt/unreadable; reset or restore it before writing');
+    return inspected.data;
+  };
+
+  const resetStore = (storageLike) => {
+    const storage = resolveStorage(storageLike);
+    if (!storage || typeof storage.removeItem !== 'function') throw new Error('LocalStorage is not available for archive reset');
+    storage.removeItem(STORAGE_KEY);
+    return true;
   };
 
   const writeArchiveStore = (store, storageLike) => {
@@ -71,7 +94,7 @@
     if (Number.isNaN(date.getTime())) throw new Error('Invalid archive timestamp');
     const touchedAt = date.toISOString();
     const record = { archivedAt, touchedAt };
-    const store = readArchiveStore(storageLike);
+    const store = readArchiveStoreForWrite(storageLike);
     store[batchId] = record;
     writeArchiveStore(store, storageLike);
     return { ...record };
@@ -87,14 +110,14 @@
 
   const clearBatchArchive = (batchId, storageLike) => {
     if (!batchId) return false;
-    const store = readArchiveStore(storageLike);
+    const store = readArchiveStoreForWrite(storageLike);
     if (!Object.prototype.hasOwnProperty.call(store, batchId)) return false;
     delete store[batchId];
     writeArchiveStore(store, storageLike);
     return true;
   };
 
-  const exportArchiveStore = (storageLike) => JSON.parse(JSON.stringify(readArchiveStore(storageLike)));
+  const exportArchiveStore = (storageLike) => JSON.parse(JSON.stringify(readArchiveStoreForWrite(storageLike)));
 
   const replaceArchiveStore = (candidate, storageLike) => {
     const clean = validateArchiveStore(candidate);
@@ -104,6 +127,8 @@
 
   return {
     STORAGE_KEY,
+    getStoreHealth,
+    resetStore,
     getArchiveRecord,
     getArchivedAt,
     isArchived,

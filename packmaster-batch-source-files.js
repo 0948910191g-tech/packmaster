@@ -45,42 +45,67 @@
     };
   };
 
-  const getStorage = () => {
-    try {
-      return root && root.localStorage ? root.localStorage : null;
-    } catch (error) {
-      return null;
-    }
+  const getStorage = (storageLike) => {
+    if (storageLike) return storageLike;
+    try { return root && root.localStorage ? root.localStorage : null; }
+    catch (error) { return null; }
   };
 
-  const readSidecar = () => {
-    const storage = getStorage();
-    if (!storage) return {};
+  const validateSidecar = (candidate) => {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) throw new Error('Source-file sidecar must be an object');
+    const clean = {};
+    for (const [batchId, names] of Object.entries(candidate)) {
+      if (!batchId || !Array.isArray(names)) throw new Error(`Invalid source-file sidecar entry: ${batchId || '(empty)'}`);
+      clean[batchId] = names.map(name => String(name || '').trim()).filter(Boolean);
+    }
+    return clean;
+  };
+
+  const inspectSidecar = (storageLike) => {
+    const storage = getStorage(storageLike);
+    if (!storage || typeof storage.getItem !== 'function') return { status: 'unavailable', data: {} };
     try {
       const raw = storage.getItem(STORAGE_KEY);
-      if (!raw) return {};
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-    } catch (error) {
-      return {};
-    }
+      if (!raw) return { status: 'empty', data: {} };
+      return { status: 'ok', data: validateSidecar(JSON.parse(raw)) };
+    } catch (error) { return { status: 'corrupt', data: {}, error }; }
   };
 
-  const writeSidecar = (value) => {
-    const storage = getStorage();
-    if (!storage) return false;
-    try {
-      storage.setItem(STORAGE_KEY, JSON.stringify(value));
-      return true;
-    } catch (error) {
-      return false;
-    }
+  const getStoreHealth = (storageLike) => {
+    const inspected = inspectSidecar(storageLike);
+    return { key: STORAGE_KEY, kind: 'sourceFiles', status: inspected.status };
   };
 
-  const getBatchSourceFileNames = (batchId) => {
+  const readSidecar = (storageLike) => {
+    const inspected = inspectSidecar(storageLike);
+    if (inspected.status === 'corrupt') console.warn('PackMaster source-file sidecar is unreadable; preserving raw data', inspected.error);
+    return inspected.data;
+  };
+
+  const readSidecarForWrite = (storageLike) => {
+    const inspected = inspectSidecar(storageLike);
+    if (inspected.status === 'corrupt') throw new Error('Source-file sidecar is corrupt/unreadable; reset it before writing');
+    return inspected.data;
+  };
+
+  const writeSidecar = (value, storageLike) => {
+    const storage = getStorage(storageLike);
+    if (!storage || typeof storage.setItem !== 'function') return false;
+    storage.setItem(STORAGE_KEY, JSON.stringify(value));
+    return true;
+  };
+
+  const resetStore = (storageLike) => {
+    const storage = getStorage(storageLike);
+    if (!storage || typeof storage.removeItem !== 'function') throw new Error('LocalStorage is not available for source-file reset');
+    storage.removeItem(STORAGE_KEY);
+    return true;
+  };
+
+  const getBatchSourceFileNames = (batchId, storageLike) => {
     const id = String(batchId || '').trim();
     if (!id) return null;
-    const sidecar = readSidecar();
+    const sidecar = readSidecar(storageLike);
     if (!Object.prototype.hasOwnProperty.call(sidecar, id)) return null;
     const names = sidecar[id];
     return Array.isArray(names)
@@ -88,27 +113,29 @@
       : null;
   };
 
-  const rememberBatchSourceFiles = (batchId, orders) => {
+  const rememberBatchSourceFiles = (batchId, orders, storageLike) => {
     const id = String(batchId || '').trim();
     if (!id) return [];
     const names = extractSourceFileNames(orders);
-    const sidecar = readSidecar();
+    const sidecar = readSidecarForWrite(storageLike);
     sidecar[id] = names;
-    writeSidecar(sidecar);
+    writeSidecar(sidecar, storageLike);
     return names;
   };
 
-  const forgetBatchSourceFiles = (batchId) => {
+  const forgetBatchSourceFiles = (batchId, storageLike) => {
     const id = String(batchId || '').trim();
     if (!id) return false;
-    const sidecar = readSidecar();
+    const sidecar = readSidecarForWrite(storageLike);
     if (!Object.prototype.hasOwnProperty.call(sidecar, id)) return true;
     delete sidecar[id];
-    return writeSidecar(sidecar);
+    return writeSidecar(sidecar, storageLike);
   };
 
   return {
     STORAGE_KEY,
+    getStoreHealth,
+    resetStore,
     extractSourceFileNames,
     summarizeBatchSourceFiles,
     getBatchSourceFileNames,
