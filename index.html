@@ -15,6 +15,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="./packmaster-batch.js"></script>
   <script src="./packmaster-batch-transition.js"></script>
+  <script src="./packmaster-reprint-snapshot.js"></script>
   <script src="./packmaster-workspace.js"></script>
   <script src="./packmaster-duplicate.js"></script>
   <script src="./packmaster-exceptions.js"></script>
@@ -1177,6 +1178,7 @@
     function App() {
       const batchApi = window.PackMasterBatch;
       const batchTransitionApi = window.PackMasterBatchTransition;
+      const reprintSnapshotApi = window.PackMasterReprintSnapshot;
       const workspaceApi = window.PackMasterWorkspace;
       const duplicateApi = window.PackMasterDuplicate;
       const exceptionApi = window.PackMasterExceptions;
@@ -1804,9 +1806,9 @@
         e.target.value = null; 
       };
 
-      const MappedOrders = useMemo(() => orders.map(o => {
+      const LiveMappedOrders = useMemo(() => orders.map(o => {
         if (o.parsedItems.length === 0) {
-            if (o.isContinuation) return { ...o, displayItems: [], originalQty: 0, qtyWarning: false };
+            if (o.isContinuation) return { ...o, displayItems: [], originalQty: 0, qtyWarning: false, resolvedAudit: [] };
             const skuAcknowledged = reviewOverridesApi ? reviewOverridesApi.getReviewAcknowledgement(o, 'sku') : false;
             const qtyAcknowledged = reviewOverridesApi ? reviewOverridesApi.getReviewAcknowledgement(o, 'qty') : false;
             const failedItems = [];
@@ -1816,6 +1818,7 @@
         }
 
         const skuMap = new Map();
+        const resolvedAudit = [];
         let hasUnmatched = false;
         let hasAmbiguous = false;
 
@@ -1829,6 +1832,7 @@
                     qty: current.qty + effectiveQty,
                     sourceKeyword: current.sourceKeyword || item.text || ''
                 });
+                resolvedAudit.push({ sourceText: item.text || '', effectiveQty, resolution: 'manual', keyword: item.text || '', shortName: baseName });
                 return;
             }
             const match = getMatchResult(item.text);
@@ -1839,6 +1843,7 @@
                     qty: current.qty + effectiveQty,
                     sourceKeyword: current.sourceKeyword || match.rule.keyword || ''
                 });
+                resolvedAudit.push({ sourceText: item.text || '', effectiveQty, resolution: 'rule', keyword: match.rule.keyword || '', shortName: baseName });
             } else if (match.status === 'ambiguous') {
                 hasAmbiguous = true;
             } else {
@@ -1870,8 +1875,29 @@
             finalDisplayItems[0] = finalDisplayItems[0].substring(2);
         }
 
-        return { ...o, displayItems: finalDisplayItems, originalQty: totalQty, qtyWarning, unresolvedSku: hasAmbiguous };
+        return { ...o, displayItems: finalDisplayItems, originalQty: totalQty, qtyWarning, unresolvedSku: hasAmbiguous, resolvedAudit };
       }), [orders, getMatchResult, reviewOverridesApi]);
+
+      const historicalSnapshot = useMemo(() => {
+        if (!activeBatchId || !activeBatch?.printedAt || !reprintSnapshotApi) return null;
+        try { return reprintSnapshotApi.getBatchSnapshot(activeBatchId); }
+        catch (error) { console.error('Resolved reprint snapshot is unreadable', error); return null; }
+      }, [activeBatchId, activeBatch && activeBatch.printedAt, reprintSnapshotApi]);
+
+      const MappedOrders = useMemo(() => {
+        if (!activeBatch?.printedAt) return LiveMappedOrders;
+        if (historicalSnapshot && reprintSnapshotApi) {
+          const applied = reprintSnapshotApi.applyBatchSnapshot(LiveMappedOrders, historicalSnapshot);
+          if (applied.ok) return applied.orders;
+          console.error('Resolved reprint snapshot does not match current Batch', applied.reason);
+        }
+        return LiveMappedOrders.map(order => order.isContinuation ? { ...order, historicalSnapshotMissing: true } : {
+          ...order,
+          displayItems: [...(order.displayItems || []), '• ⚠️ ประวัติผลพิมพ์เดิมไม่ครบ — ตรวจสอบก่อน Reprint'],
+          unresolvedSku: true,
+          historicalSnapshotMissing: true
+        });
+      }, [LiveMappedOrders, activeBatch && activeBatch.printedAt, historicalSnapshot, reprintSnapshotApi]);
 
       const getReviewFlags = useCallback((order) => {
         if (exceptionApi) {
@@ -2456,6 +2482,10 @@
             try { archiveApi.clearBatchArchive(batch.id); }
             catch (archiveError) { console.warn('Clear archive sidecar failed', archiveError); }
           }
+          if (reprintSnapshotApi) {
+            try { reprintSnapshotApi.clearBatchSnapshot(batch.id); }
+            catch (snapshotError) { console.warn('Clear resolved snapshot sidecar failed', snapshotError); }
+          }
           setBatches(prev => prev.filter(item => item.id !== batch.id));
           showToast('ลบ Batch เรียบร้อย', 'success');
         } catch (err) {
@@ -2466,6 +2496,10 @@
 
       const resetActiveBatchCompletion = () => {
         if (!activeBatch || !activeBatch.printedAt || !batchApi) return;
+        if (reprintSnapshotApi) {
+          try { reprintSnapshotApi.clearBatchSnapshot(activeBatch.id); }
+          catch (snapshotError) { console.warn('Clear resolved snapshot failed', snapshotError); }
+        }
         const resetMeta = batchApi.buildBatchMeta(activeBatch, reviewSummary, { printedAt: null, now: new Date() });
         upsertBatchMeta(resetMeta);
         if (batchStorageReady) {
@@ -2474,17 +2508,22 @@
       };
 
       const markActiveBatchPrinted = async () => {
-        if (!activeBatch || !batchApi) return;
+        if (!activeBatch || !batchApi || !batchStorageReady || !reprintSnapshotApi) {
+          showToast('ยังบันทึก Snapshot สำหรับ Reprint ไม่ได้ จึงยังไม่พิมพ์แบบ Completed', 'error');
+          return false;
+        }
         const printedAt = new Date().toISOString();
         const completedMeta = batchApi.buildBatchMeta(activeBatch, reviewSummary, { printedAt, now: new Date() });
-        upsertBatchMeta(completedMeta);
-
-        if (!batchStorageReady) return;
         try {
+          reprintSnapshotApi.saveBatchSnapshot(activeBatch.id, LiveMappedOrders, printedAt, order => getReviewFlags(order).ready);
           await batchApi.saveBatch(completedMeta, orders);
+          upsertBatchMeta(completedMeta);
+          return true;
         } catch (err) {
-          console.error('Mark batch completed failed', err);
-          showToast('พิมพ์ได้ แต่บันทึกสถานะ Completed ไม่สำเร็จ', 'error');
+          try { reprintSnapshotApi.clearBatchSnapshot(activeBatch.id); } catch (cleanupError) { console.warn('Rollback resolved snapshot failed', cleanupError); }
+          console.error('Mark batch completed with snapshot failed', err);
+          showToast('บันทึกผลสำหรับ Reprint ไม่สำเร็จ — ยังไม่เปลี่ยน Batch เป็น Completed', 'error');
+          return false;
         }
       };
 
@@ -2510,6 +2549,10 @@
         if (duplicateApi && activeBatchId) {
           try { duplicateApi.clearBatchFingerprints(activeBatchId); }
           catch (fingerprintError) { console.warn('Clear duplicate fingerprint sidecar failed', fingerprintError); }
+        }
+        if (reprintSnapshotApi && activeBatchId) {
+          try { reprintSnapshotApi.clearBatchSnapshot(activeBatchId); }
+          catch (snapshotError) { console.warn('Clear resolved snapshot sidecar failed', snapshotError); }
         }
         showToast('ล้าง Orders ใน Batch เรียบร้อย', 'success');
       };
@@ -2539,7 +2582,10 @@
 
         try {
           await waitForPrintRender(document.querySelector('.print-area'), scopedOrders, thermalMode);
-          if (mode === 'FULL_BATCH' && !printBlocked) await markActiveBatchPrinted();
+          if (mode === 'FULL_BATCH' && !printBlocked) {
+            const completed = await markActiveBatchPrinted();
+            if (!completed) return;
+          }
           window.print();
         } catch (err) {
           console.error('PackMaster print preparation failed:', err);

@@ -69,9 +69,9 @@ test('Review flow offers a single inspect action for SKU and Qty exceptions', ()
 });
 
 
-test('MappedOrders preserves structural unresolved SKU state after acknowledgement', () => {
-  const mappingStart = html.indexOf('const MappedOrders = useMemo');
-  const mappingEnd = html.indexOf('const getReviewFlags = useCallback', mappingStart);
+test('LiveMappedOrders preserves structural unresolved SKU state after acknowledgement', () => {
+  const mappingStart = html.indexOf('const LiveMappedOrders = useMemo');
+  const mappingEnd = html.indexOf('const historicalSnapshot = useMemo', mappingStart);
   assert.ok(mappingStart >= 0 && mappingEnd > mappingStart);
   const mappingBlock = html.slice(mappingStart, mappingEnd);
   assert.ok(mappingBlock.includes('unresolvedSku:'), 'mapped review data must expose structural unresolved SKU state');
