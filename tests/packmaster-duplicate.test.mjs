@@ -82,3 +82,9 @@ const historyCollision = duplicate.findOrderDuplicateSignals(
 );
 assert.equal(historyCollision.length, 1);
 assert.equal(historyCollision[0].source, 'existing-history');
+
+const continuationUpload = duplicate.findOrderDuplicateSignals([
+  { id: 'main-1', platform: 'TIKTOK', orderId: 'MULTI-1', tracking: 'TH-MULTI-1' },
+  { id: 'cont-1', platform: 'TIKTOK', orderId: 'MULTI-1', tracking: 'TH-MULTI-1', isContinuation: true }
+], []);
+assert.equal(continuationUpload.length, 0, 'continuation pages must not collide with their own main order in the same upload');

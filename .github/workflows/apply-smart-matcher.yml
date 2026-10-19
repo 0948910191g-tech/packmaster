@@ -150,6 +150,33 @@ jobs:
       - name: Layout V4 no-overlap guard
         run: node tests/packmaster-layout-v4.test.mjs
 
+      - name: Hybrid Review Grid UI guard
+        run: node tests/packmaster-hybrid-review-grid.test.mjs
+
+      - name: SKU dictionary integrity tests
+        run: node tests/packmaster-sku-integrity.test.mjs
+
+      - name: SKU dictionary integrity UI guard
+        run: node tests/packmaster-sku-integrity-ui.test.mjs
+
+      - name: Workspace restored order validation tests
+        run: node tests/packmaster-workspace-order-validation.test.mjs
+
+      - name: Batch transition coordinator tests
+        run: node tests/packmaster-batch-transition.test.mjs
+
+      - name: Stable reprint snapshot tests
+        run: node tests/packmaster-reprint-snapshot.test.mjs
+
+      - name: Stable reprint snapshot UI guard
+        run: node tests/packmaster-reprint-snapshot-ui.test.mjs
+
+      - name: Item-level Qty override tests
+        run: node tests/packmaster-review-qty-row.test.mjs
+
+      - name: Local metadata health tests
+        run: node tests/packmaster-local-metadata-health.test.mjs
+
       - name: Existing guardrail tests when present
         run: |
           if [ -f tests/packmaster-guardrails.test.mjs ]; then

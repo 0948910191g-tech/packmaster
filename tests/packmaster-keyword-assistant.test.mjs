@@ -178,6 +178,76 @@ test('matcher-backed safety rejects a keyword that would newly route a sibling S
   assert.equal(safety.safe, false, 'a candidate that changes sibling routing must be rejected');
 });
 
+test('static safety rejects broad keywords even when an injected matcher is permissive', () => {
+  const permissiveMatchRule = (_text, rules) => ({
+    status: 'matched',
+    rule: Array.isArray(rules) ? rules[rules.length - 1] : null,
+    score: 999,
+    runnerUpScore: 0,
+    reason: 'permissive-test-stub'
+  });
+
+  const cases = [
+    { candidate: 'HOYA 12', sourceText: 'HOYA 12 ห่อ' },
+    { candidate: 'Baby 12', sourceText: 'NEWCO Baby 12 ห่อ' },
+    { candidate: 'Wipes 12', sourceText: 'NEWCO Wipes 12 ห่อ' }
+  ];
+
+  for (const sample of cases) {
+    const safety = assistant.assessKeywordSafety({
+      candidate: sample.candidate,
+      sourceText: sample.sourceText,
+      existingRules: [],
+      batchItemTexts: [sample.sourceText],
+      matchRule: permissiveMatchRule,
+      matchNormalizer: normalizeMatchText
+    });
+    assert.equal(safety.safe, false, `${sample.candidate} must be rejected by static policy before matcher trust`);
+  }
+});
+
+test('static safety sends long product-title mappings to review even when matcher would accept them', () => {
+  const source = 'HOYA BABY WIPES GENTLE PURE WATER SENSITIVE SKIN FAMILY CARTON 24 PACK';
+  const permissiveMatchRule = (_text, rules) => ({
+    status: 'matched',
+    rule: Array.isArray(rules) ? rules[rules.length - 1] : null,
+    score: 999,
+    runnerUpScore: 0,
+    reason: 'permissive-test-stub'
+  });
+  const safety = assistant.assessKeywordSafety({
+    candidate: source,
+    sourceText: source,
+    existingRules: [],
+    batchItemTexts: [source],
+    matchRule: permissiveMatchRule,
+    matchNormalizer: normalizeMatchText
+  });
+
+  assert.equal(safety.safe, false, 'long product titles must not receive production-safe recommendation status');
+});
+
+test('static safety preserves compact strong product identity', () => {
+  const source = 'EXCARE MAKEUP REMOVER 30 SHEETS';
+  const permissiveMatchRule = (_text, rules) => ({
+    status: 'matched',
+    rule: Array.isArray(rules) ? rules[rules.length - 1] : null,
+    score: 999,
+    runnerUpScore: 0,
+    reason: 'permissive-test-stub'
+  });
+  const safety = assistant.assessKeywordSafety({
+    candidate: 'EXCARE MAKEUP REMOVER',
+    sourceText: source,
+    existingRules: [],
+    batchItemTexts: [source],
+    matchRule: permissiveMatchRule,
+    matchNormalizer: normalizeMatchText
+  });
+
+  assert.equal(safety.safe, true, 'compact brand + strong product identity should remain eligible for matcher verification');
+});
+
 test('downgrades a short candidate when it appears across distinct sibling products', () => {
   const current = 'HOYA BABY PURPLE 5 PACK';
   const sibling = 'HOYA BABY PINK 5 PACK';

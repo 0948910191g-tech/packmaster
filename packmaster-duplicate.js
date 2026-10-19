@@ -34,7 +34,7 @@
   };
 
   const getOrderIdentity = (order) => {
-    if (!order) return null;
+    if (!order || order.isContinuation) return null;
     const platform = normalize(order.platform || 'UNKNOWN');
     const orderId = normalize(order.orderId);
     if (orderId && !/^PAGE[-_ ]?\d+$/i.test(orderId)) return `ORDER|${platform}|${orderId}`;

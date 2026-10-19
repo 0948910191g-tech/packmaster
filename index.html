@@ -872,8 +872,24 @@
         return { items: [], declaredTotalQty, parserWarning: hasTableSignal, reason: hasTableSignal ? 'header-not-found' : 'no-table' };
       }
 
+      const isTikTokFooterEntry = (candidate) => {
+        const lineText = normalizeMatchText(
+          entries
+            .filter(item => Math.abs(item.y - candidate.y) <= 4)
+            .map(item => item.text)
+            .join(' ')
+        );
+        return lineText.includes('qty total') ||
+          lineText.includes('total qty') ||
+          lineText.includes('order id') ||
+          lineText.includes('powered by');
+      };
+
       const qtyMarkers = entries.filter(item =>
-        /^\d{1,4}$/.test(item.text) && Math.abs(item.x - header.qtyX) <= 14 && Math.abs(item.y - header.y) > 5
+        /^\d{1,4}$/.test(item.text) &&
+        Math.abs(item.x - header.qtyX) <= 14 &&
+        Math.abs(item.y - header.y) > 5 &&
+        !isTikTokFooterEntry(item)
       );
       if (qtyMarkers.length === 0) {
         return { items: [], declaredTotalQty, parserWarning: true, reason: 'qty-column-empty' };
@@ -882,18 +898,33 @@
       const nearest = [...qtyMarkers].sort((a, b) => Math.abs(a.y - header.y) - Math.abs(b.y - header.y))[0];
       const direction = Math.sign(nearest.y - header.y) || 1;
       const distance = item => (item.y - header.y) * direction;
-      const markers = qtyMarkers
+      const rawMarkers = qtyMarkers
         .filter(item => distance(item) > 4)
         .sort((a, b) => distance(a) - distance(b));
+      if (rawMarkers.length === 0) {
+        return { items: [], declaredTotalQty, parserWarning: true, reason: 'qty-column-empty' };
+      }
+
+      const footerDistances = entries
+        .filter(isTikTokFooterEntry)
+        .map(distance)
+        .filter(value => value > distance(rawMarkers[0]) + 2);
+      const footerDistance = footerDistances.length ? Math.min(...footerDistances) : Infinity;
+      const markers = rawMarkers.filter(item => distance(item) < footerDistance - 1);
+      if (markers.length === 0) {
+        return { items: [], declaredTotalQty, parserWarning: true, reason: 'qty-column-empty' };
+      }
 
       const items = [];
       let parserWarning = false;
       markers.forEach((marker, markerIndex) => {
         const currentDistance = distance(marker);
         const previousDistance = markerIndex > 0 ? distance(markers[markerIndex - 1]) : 4;
-        const nextDistance = markerIndex < markers.length - 1 ? distance(markers[markerIndex + 1]) : Infinity;
+        const nextDistance = markerIndex < markers.length - 1 ? distance(markers[markerIndex + 1]) : footerDistance;
         const lower = markerIndex === 0 ? 4 : (previousDistance + currentDistance) / 2;
-        const upper = Number.isFinite(nextDistance) ? (currentDistance + nextDistance) / 2 : Infinity;
+        const upper = markerIndex < markers.length - 1
+          ? (currentDistance + nextDistance) / 2
+          : (Number.isFinite(footerDistance) ? footerDistance : Infinity);
 
         const rowEntries = entries.filter(item => {
           const d = distance(item);
@@ -1037,6 +1068,29 @@
       if (!Number.isFinite(declaredTotalQty)) return false;
       const sum = (Array.isArray(items) ? items : []).reduce((total, item) => total + (parseInt(item && item.qty, 10) || 0), 0);
       return sum !== declaredTotalQty;
+    };
+
+    const findContinuationTargetOrder = (allNewOrders, pageContext = {}) => {
+      const rows = Array.isArray(allNewOrders) ? allNewOrders : [];
+      const currentOrderId = pageContext && pageContext.currentOrderId ? String(pageContext.currentOrderId).trim() : '';
+      if (currentOrderId) {
+        const byOrderId = rows.find(o => o && o.orderId === currentOrderId && !o.isContinuation);
+        if (byOrderId) return byOrderId;
+      }
+
+      if (pageContext && pageContext.platform === 'TIKTOK' && !pageContext.hasTracking && pageContext.hasTableContent) {
+        for (let idx = rows.length - 1; idx >= 0; idx--) {
+          const candidate = rows[idx];
+          if (!candidate || candidate.isContinuation) continue;
+          const sameFile = !pageContext.fileName || candidate.sourceFileName === pageContext.fileName;
+          const openTikTokTable = candidate.platform === 'TIKTOK' && candidate.declaredTotalQty == null;
+          const compatibleOrderId = !candidate.orderId || !currentOrderId || candidate.orderId === currentOrderId;
+          if (sameFile && openTikTokTable && compatibleOrderId) return candidate;
+          break;
+        }
+      }
+
+      return null;
     };
 
     const sanitizeSkuRule = (rule, fallbackId) => {
@@ -1562,7 +1616,7 @@
               if (typeof page.cleanup === 'function') page.cleanup();
 
               let platform = 'SHOPEE';
-              if (fullText.match(/Order\s*ID/i) || fullText.match(/In\s*transit/i) || fullText.match(/TikTok/i)) platform = 'TIKTOK';
+              if (fullText.match(/Order\s*ID/i) || fullText.match(/In\s*transit/i) || fullText.match(/TikTok/i) || fullText.match(/Seller\s*SKU/i) || fullText.match(/Qty\s*Total/i)) platform = 'TIKTOK';
               const declaredTotalQty = parseExplicitTotalQty(fullText, platform);
               let parserWarning = false;
 
@@ -1736,34 +1790,45 @@
                   currentOrderId = orderMatch[1];
               }
 
-              if (currentOrderId) {
-                  let existingOrder = allNewOrders.find(o => o.orderId === currentOrderId && !o.isContinuation);
-                  if (existingOrder) {
-                      if (parsedItems.length > 0) {
-                          existingOrder.parsedItems.push(...parsedItems);
-                      }
-                      if (Number.isFinite(declaredTotalQty)) existingOrder.declaredTotalQty = declaredTotalQty;
-                      existingOrder.parserWarning = Boolean(existingOrder.parserWarning || parserWarning);
-                      
-                      if (!existingOrder.tracking || existingOrder.tracking.startsWith('PAGE-')) {
-                          existingOrder.tracking = trackingMatch ? trackingMatch[0] : existingOrder.tracking;
-                      }
-
-                      allNewOrders.push({ 
-                          id: `label-${Date.now()}-${allNewOrders.length}-${i}`, 
-                          tracking: trackingMatch ? trackingMatch[0] : existingOrder.tracking, 
-                          parsedItems: [], 
-                          pdfImage,
-                          sourceFileName: file.name,
-                          sourcePage: i,
-                          platform,
-                          orderId: currentOrderId,
-                          declaredTotalQty: null,
-                          parserWarning: false,
-                          isContinuation: true 
-                      });
-                      continue; 
+              const existingOrder = findContinuationTargetOrder(allNewOrders, {
+                  fileName: file.name,
+                  platform,
+                  currentOrderId,
+                  hasTracking: Boolean(trackingMatch),
+                  hasTableContent: parsedItems.length > 0 || parserWarning || Number.isFinite(declaredTotalQty)
+              });
+              if (existingOrder) {
+                  if (parsedItems.length > 0) {
+                      existingOrder.parsedItems.push(...parsedItems);
                   }
+                  if (Number.isFinite(declaredTotalQty)) existingOrder.declaredTotalQty = declaredTotalQty;
+                  existingOrder.parserWarning = Boolean(existingOrder.parserWarning || parserWarning);
+                  if (currentOrderId && !existingOrder.orderId) {
+                      existingOrder.orderId = currentOrderId;
+                      allNewOrders.forEach(o => {
+                          if (o.isContinuation && !o.orderId && o.sourceFileName === existingOrder.sourceFileName && o.tracking === existingOrder.tracking) {
+                              o.orderId = currentOrderId;
+                          }
+                      });
+                  }
+                  if (!existingOrder.tracking || existingOrder.tracking.startsWith('PAGE-')) {
+                      existingOrder.tracking = trackingMatch ? trackingMatch[0] : existingOrder.tracking;
+                  }
+
+                  allNewOrders.push({
+                      id: `label-${Date.now()}-${allNewOrders.length}-${i}`,
+                      tracking: trackingMatch ? trackingMatch[0] : existingOrder.tracking,
+                      parsedItems: [],
+                      pdfImage,
+                      sourceFileName: file.name,
+                      sourcePage: i,
+                      platform,
+                      orderId: currentOrderId || existingOrder.orderId || null,
+                      declaredTotalQty: null,
+                      parserWarning: false,
+                      isContinuation: true
+                  });
+                  continue;
               }
 
               allNewOrders.push({ 

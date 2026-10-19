@@ -30,6 +30,7 @@ globalThis.__packmasterSmart = {
   parseExplicitTotalQty,
   parseTikTokPositionedItems,
   parseShopeePositionedItems: typeof parseShopeePositionedItems === 'function' ? parseShopeePositionedItems : null,
+  findContinuationTargetOrder: typeof findContinuationTargetOrder === 'function' ? findContinuationTargetOrder : null,
   hasQtyWarning,
   getAggregatedShortName
 };`;
@@ -218,6 +219,64 @@ for (const sample of shopeeQtyCases) {
   assert.notEqual(sample.packSize, sample.orderQty, 'fixture must keep pack size separate from order qty');
 }
 assert.equal(parseExplicitTotalQty('Qty Total: 3 Order ID: X', 'TIKTOK'), 3);
+
+// Multi-page TikTok footer isolation: footer lines (Qty Total / Order ID) must not leak into the last SKU row or create fake rows.
+const tikTokPage2WithFooter = [
+  ...tikTokContinuationPage2,
+  { text: 'Qty Total:', x: 210, y: 92.0, index: 100 },
+  { text: '3', x: 265, y: 92.0, index: 101 },
+  { text: 'Order ID: 580999888777', x: 6, y: 92.0, index: 102 }
+];
+const t2WithFooter = parseTikTokPositionedItems(tikTokPage2WithFooter, 3);
+assert.equal(t2WithFooter.parserWarning, false, 'TikTok footer total must not trigger parserWarning');
+assert.equal(t2WithFooter.items.length, 2, 'TikTok footer total in Qty column must not create a 3rd fake SKU row');
+assert.equal(
+  t2WithFooter.items.some(item => /Qty\s*Total|Order\s*ID|580999888777/i.test(item.text)),
+  false,
+  'TikTok footer text must not leak into the last parsed SKU row'
+);
+
+// Multi-page TikTok continuation target resolution when Page 1 has no footer Order ID yet.
+assert.equal(typeof context.__packmasterSmart.findContinuationTargetOrder, 'function', 'findContinuationTargetOrder helper must be exposed');
+const simulatedOrders = [
+  {
+    id: 'page-1',
+    tracking: 'TH1234567890',
+    parsedItems: [...t1.items],
+    sourceFileName: 'tiktok-multi.pdf',
+    sourcePage: 1,
+    platform: 'TIKTOK',
+    orderId: null,
+    declaredTotalQty: null,
+    parserWarning: false
+  }
+];
+const targetOrder = context.__packmasterSmart.findContinuationTargetOrder(simulatedOrders, {
+  fileName: 'tiktok-multi.pdf',
+  platform: 'TIKTOK',
+  currentOrderId: '580999888777',
+  hasTracking: false,
+  hasTableContent: true
+});
+assert.equal(targetOrder?.id, 'page-1', 'TikTok continuation page without tracking must link to preceding unfinished TikTok main order in the same file');
+
+// Real PDF shadow corpus: wrong auto-match count must be strictly 0 across all real failure cases.
+const shadowCorpus = [
+  { text: 'แพ็ค3ห่อ HOYA Baby Wipes ทิชชู่เปียกสูตรน้ำบริสุทธิ์ 99.9% 80 แผ่น สำหรับผิวบอบบาง', rules: productionRuleSubset, expectedShortName: 'เด้งม่วง3' },
+  { text: 'Gift Set วันแม่ HAKU Cooling (ฮากุ ผ้าเปียกติดแอร์) กลิ่นมะลิ 12 ห่อ พร้อมกระเป๋าของขวัญ', rules: productionRuleSubset, expectedShortName: 'เย็นเขียว 12' },
+  { text: 'HAKU Cooling LAVENDER 6 ห่อ', rules: productionRuleSubset, expectedShortName: null },
+  { text: purple24TikTokSource, rules: purple24RulesWithStaleSharedMapping, expectedShortName: 'เด้งม่วง1ลัง' },
+  { text: purple24TikTokSource, rules: stalePinkOnlyRules, expectedShortName: null },
+  { text: 'HOYA Wet Baby Wipes 12 แผ่น 12 ห่อ', rules: [hakuBaby12Rule], expectedShortName: null },
+  { text: 'HAKU Baby 12 แผ่น', rules: [hakuBaby12Rule], expectedShortName: null },
+  { text: 'NEWCO Wet Wipes Baby 12 ห่อ', rules: [genericBaby12Rule], expectedShortName: null }
+];
+const wrongMatches = shadowCorpus.filter(entry => {
+  const result = matchSkuRule(entry.text, entry.rules);
+  if (result.status !== 'matched') return false;
+  return result.rule?.shortName !== entry.expectedShortName;
+});
+assert.equal(wrongMatches.length, 0, 'Real PDF shadow corpus must have 0 wrong auto-matches');
 
 assert.equal(getAggregatedShortName('Hoya V2 ฮากุ 1 ลัง', 2), 'Hoya V2 ฮากุ 2 ลัง');
 assert.equal(getAggregatedShortName('95 1 1', 2), '95 1 2');

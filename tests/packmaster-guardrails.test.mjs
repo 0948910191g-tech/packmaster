@@ -9,7 +9,7 @@ const root = path.resolve(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
 // Freeze the Phase 2 Batch adapter byte-for-byte using its canonical Git blob SHA-1.
-const batchSource = read('packmaster-batch.js');
+const batchSource = read('packmaster-batch.js').replace(/\r\n/g, '\n');
 const gitBlobSha = crypto.createHash('sha1')
   .update(`blob ${Buffer.byteLength(batchSource, 'utf8')}\0`)
   .update(batchSource, 'utf8')
@@ -37,7 +37,12 @@ const localHelpers = [
   'packmaster-review-overrides.js',
   'packmaster-review-keyword-suggestions.js',
   'packmaster-batch-source-files.js',
-  'packmaster-print-scope.js'
+  'packmaster-print-scope.js',
+  'packmaster-keyword-assistant.js',
+  'packmaster-pilot-safety.js',
+  'packmaster-sku-integrity.js',
+  'packmaster-batch-transition.js',
+  'packmaster-reprint-snapshot.js'
 ];
 
 const forbiddenServicePattern = /(supabase|firebase|firestore|sentry|mixpanel|amplitude|posthog|segment\.io|stripe|cloudinary)/i;
