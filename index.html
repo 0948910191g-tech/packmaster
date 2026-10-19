@@ -3311,19 +3311,9 @@
                 <div className="min-w-0">
                   <div className="flex items-center gap-3">
                     <h1 className="text-[24px] lg:text-[28px] font-black tracking-tight text-white leading-none">PackMaster</h1>
-                    <span className="hidden sm:inline-flex px-2 py-1 rounded-md bg-white/10 border border-white/10 text-[9px] font-black tracking-[0.14em] text-blue-100 uppercase">Frontend V3</span>
                   </div>
                   <p className="hidden sm:block text-[11px] lg:text-xs font-semibold text-blue-100/70 mt-1">เครื่องมือจัดการเอกสารและพิมพ์ฉลากจัดส่ง • Marketplace → Packing-ready label</p>
                 </div>
-              </div>
-
-              <div className="hidden xl:flex items-center gap-2 ml-auto">
-                <button className="pm-command-btn" onClick={() => navigateView(activeBatchId ? 'upload' : 'batches')}><PMIcon name="file" /><span>อ่าน PDF</span></button>
-                <button className="pm-command-btn" onClick={() => navigateView('sku')}><PMIcon name="barcode" /><span>จับคู่ SKU</span></button>
-                <button className="pm-command-btn" onClick={() => navigateView('batches')}><PMIcon name="layers" /><span>จัดการ Batch</span></button>
-                <button className="pm-command-btn" onClick={openExceptionMode}><PMIcon name="alert" /><span>ตรวจปัญหา</span></button>
-                <button className="pm-command-btn" onClick={() => navigateView('review')}><PMIcon name="printer" /><span>พิมพ์</span></button>
-                <button className="pm-command-btn pm-command-safe" onClick={() => navigateView('safety')}><PMIcon name="shield" /><span>Local Safety</span></button>
               </div>
             </header>
 
@@ -3334,12 +3324,12 @@
                   <button type="button" data-pm-sidebar-toggle className="pm-sidebar-toggle" aria-controls="packmaster-sidebar" aria-expanded={!sidebarCollapsed} aria-label={sidebarCollapsed ? 'ขยายเมนูด้านข้าง' : 'ย่อเมนูด้านข้าง'} title={sidebarCollapsed ? 'ขยายเมนูด้านข้าง' : 'ย่อเมนูด้านข้าง'} onClick={toggleSidebar}><span aria-hidden="true">{sidebarCollapsed ? '›' : '‹'}</span></button>
                 </div>
                 <div className="px-3 pt-2 pb-2">
-                  <div className="pm-sidebar-section-label text-[9px] font-black tracking-[0.17em] uppercase text-blue-200/45 px-3 mb-2">Workspace</div>
+                  <div className="pm-sidebar-section-label text-[9px] font-black tracking-[0.17em] uppercase text-blue-200/45 px-3 mb-2">งานหลัก</div>
                   <nav data-pm-primary-nav className="space-y-1.5">
                     {[
                       ['batches','box','งานแพ็ก'],
-                      ['sku','barcode','คลังคำศัพท์'],
-                      ['review','review','รีวิว & พิมพ์']
+                      ['upload','upload','อัปโหลด PDF'],
+                      ['review','review','ตรวจและพิมพ์']
                     ].map(([id, icon, label]) => (
                       <button key={id} aria-label={label} title={sidebarCollapsed ? label : undefined} onClick={() => navigateView(id)} className={`pm-nav-btn ${activeView === id ? 'pm-nav-btn-active' : ''}`}>
                         <PMIcon name={icon} className="w-[18px] h-[18px] flex-none" />
@@ -3350,8 +3340,9 @@
                   </nav>
                   <div data-pm-secondary-nav className="mt-4 pt-3 border-t border-white/10 space-y-1.5">
                     <div className="pm-sidebar-section-label text-[8px] font-black tracking-[0.14em] uppercase text-blue-200/35 px-3 mb-1">เครื่องมือ</div>
-                    {activeBatchId && <button aria-label="อัปโหลดไฟล์" title={sidebarCollapsed ? 'อัปโหลดไฟล์' : undefined} onClick={()=>navigateView('upload')} className={`pm-nav-btn ${activeView==='upload'?'pm-nav-btn-active':''}`}><PMIcon name="upload" className="w-[17px] h-[17px] flex-none"/><span className="pm-nav-label">อัปโหลดไฟล์</span></button>}
-                    <button aria-label="เครื่องมือ / ความปลอดภัย" title={sidebarCollapsed ? 'เครื่องมือ / ความปลอดภัย' : undefined} onClick={()=>navigateView('safety')} className={`pm-nav-btn ${activeView==='safety'?'pm-nav-btn-active':''}`}><PMIcon name="shield" className="w-[17px] h-[17px] flex-none"/><span className="pm-nav-label">เครื่องมือ / ความปลอดภัย</span></button>
+                    <button aria-label="จับคู่ SKU" title={sidebarCollapsed ? 'จับคู่ SKU' : undefined} onClick={()=>navigateView('sku')} className={`pm-nav-btn ${activeView==='sku'?'pm-nav-btn-active':''}`}><PMIcon name="barcode" className="w-[17px] h-[17px] flex-none"/><span className="pm-nav-label">จับคู่ SKU</span></button>
+                    {exceptionRows.length > 0 && <button aria-label="ตรวจปัญหา" title={sidebarCollapsed ? 'ตรวจปัญหา' : undefined} onClick={openExceptionMode} className="pm-nav-btn"><PMIcon name="alert" className="w-[17px] h-[17px] flex-none text-amber-400"/><span className="pm-nav-label">ตรวจปัญหา</span><span className="pm-nav-badge ml-auto min-w-5 h-5 px-1.5 rounded-full bg-amber-400 text-[#071f3d] text-[9px] font-black flex items-center justify-center">{exceptionRows.length}</span></button>}
+                    <button aria-label="ความปลอดภัยข้อมูล" title={sidebarCollapsed ? 'ความปลอดภัยข้อมูล' : undefined} onClick={()=>navigateView('safety')} className={`pm-nav-btn ${activeView==='safety'?'pm-nav-btn-active':''}`}><PMIcon name="shield" className="w-[17px] h-[17px] flex-none"/><span className="pm-nav-label">ความปลอดภัยข้อมูล</span></button>
                   </div>
                 </div>
                 <div className="mt-auto p-3 border-t border-white/10">
@@ -3635,7 +3626,7 @@
                     )}
 
                     {orders.length===0?(
-                      <PMEmptyState icon="review" title="ยังไม่มีข้อมูลสำหรับรีวิว" body="เลือก Batch และอัปโหลด PDF ก่อน" action={<button onClick={()=>navigateView(activeBatchId?'upload':'batches')} className="pm-primary-btn">ไปที่อัปโหลด</button>} />
+                      <PMEmptyState icon="review" title="ยังไม่มีข้อมูลสำหรับรีวิว" body="เลือก Batch และอัปโหลด PDF ก่อน" action={<button onClick={()=>navigateView('upload')} className="pm-primary-btn">ไปที่อัปโหลด</button>} />
                     ):ReviewDisplayOrders.length===0?(
                       <PMEmptyState icon="search" title="ไม่พบรายการที่ตรงกับตัวกรอง" body="ลองล้างคำค้นหา หรือเลือกสถานะ / แพลตฟอร์มอื่น" />
                     ):previewMode==='table'?(
@@ -3687,7 +3678,7 @@
 
                       <div className="pm-card p-5 xl:col-span-2">
                         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"><div className="flex items-start gap-3"><div className="pm-feature-icon"><PMIcon name="activity"/></div><div><div className="pm-section-kicker">Pilot Diagnostics</div><h3 className="text-base font-black text-slate-900">Diagnostics แบบไม่รวมข้อมูลลูกค้า</h3><p className="text-xs font-semibold text-slate-400 mt-1">Export เฉพาะข้อมูล aggregate / capabilities สำหรับตรวจ Pilot และ Browser health</p></div></div><div className="flex gap-2"><button onClick={()=>handleDownloadDiagnostics('json')} className="pm-secondary-btn"><PMIcon name="download"/> JSON</button><button onClick={()=>handleDownloadDiagnostics('csv')} className="pm-secondary-btn"><PMIcon name="download"/> CSV</button></div></div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-5"><div className="pm-mini-stat"><span>Version</span><strong className="!text-sm">{PILOT_VERSION}</strong></div><div className="pm-mini-stat"><span>IndexedDB</span><strong className="!text-sm">{window.indexedDB?'พร้อม':'ไม่พร้อม'}</strong></div><div className="pm-mini-stat"><span>WebCrypto</span><strong className="!text-sm">{window.crypto&&window.crypto.subtle?'พร้อม':'ไม่พร้อม'}</strong></div><div className="pm-mini-stat"><span>Archived</span><strong>{archivedBatchCount}</strong></div></div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-5"><div className="pm-mini-stat"><span>Version</span><strong className="!text-sm">{PILOT_VERSION} • PackMaster Frontend V3</strong></div><div className="pm-mini-stat"><span>IndexedDB</span><strong className="!text-sm">{window.indexedDB?'พร้อม':'ไม่พร้อม'}</strong></div><div className="pm-mini-stat"><span>WebCrypto</span><strong className="!text-sm">{window.crypto&&window.crypto.subtle?'พร้อม':'ไม่พร้อม'}</strong></div><div className="pm-mini-stat"><span>Archived</span><strong>{archivedBatchCount}</strong></div></div>
                       </div>
                     </div>
                   </section>
