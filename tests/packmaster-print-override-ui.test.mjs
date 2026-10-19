@@ -13,7 +13,7 @@ assert.match(html, /พิมพ์เฉพาะรายการพร้อ
 assert.match(html, /Save Ready PDF/);
 assert.match(html, /พิมพ์ทั้ง Batch/);
 assert.match(html, /Save PDF ทั้ง Batch/);
-assert.match(html, /window\.confirm\(/, 'full-batch override must require explicit confirmation');
+assert.match(html, /requestConfirm\(/, 'full-batch override must require explicit confirmation');
 assert.match(html, /PrintScopedOrders\.map\(/, 'browser print output must follow selected print scope');
 assert.match(html, /ordersToExport/, 'PDF export must iterate an explicit selected scope');
 assert.match(html, /mode === ['"]FULL_BATCH['"] && !printBlocked/, 'only a clean full-batch print may mark the batch completed');

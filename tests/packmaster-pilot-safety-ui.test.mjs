@@ -18,7 +18,7 @@ test('review screen keeps safety detection but provides safe scoped actions', ()
 test('normal full-batch flow remains safe while override is explicit', () => {
   assert.match(html, /handlePrint\(['"]FULL_BATCH['"]/);
   assert.match(html, /handleExportPDF\(['"]FULL_BATCH['"]/);
-  assert.match(html, /window\.confirm\(/);
+  assert.match(html, /requestConfirm\(/);
   assert.match(html, /mode === ['"]FULL_BATCH['"] && printBlocked && !override/);
 });
 

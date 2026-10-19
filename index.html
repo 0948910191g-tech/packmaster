@@ -1322,6 +1322,96 @@
       );
     };
 
+    const PMConfirmDialog = ({ open, title, message, details = null, confirmText = 'ยืนยัน', cancelText = 'ยกเลิก', isDanger = false, onConfirm, onCancel }) => {
+      const cancelBtnRef = React.useRef(null);
+      const dialogRef = React.useRef(null);
+
+      React.useEffect(() => {
+        if (!open) return;
+        const prevActive = document.activeElement;
+        const timer = setTimeout(() => {
+          if (cancelBtnRef.current) cancelBtnRef.current.focus();
+        }, 30);
+
+        const handleKeyDown = (e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            onCancel();
+          } else if (e.key === 'Tab' && dialogRef.current) {
+            const focusable = dialogRef.current.querySelectorAll('button:not([disabled])');
+            if (focusable.length > 0) {
+              const first = focusable[0];
+              const last = focusable[focusable.length - 1];
+              if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+              } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+              }
+            }
+          }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+          clearTimeout(timer);
+          window.removeEventListener('keydown', handleKeyDown);
+          if (prevActive && typeof prevActive.focus === 'function') prevActive.focus();
+        };
+      }, [open, onCancel]);
+
+      if (!open) return null;
+
+      return (
+        <div data-pm-confirm-dialog className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div
+            ref={dialogRef}
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="pm-confirm-title"
+            aria-describedby="pm-confirm-desc"
+            className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-slate-200"
+          >
+            <div className="flex items-start gap-4">
+              <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${isDanger ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>
+                <PMIcon name={isDanger ? 'alert' : 'shield'} className="w-6 h-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 id="pm-confirm-title" className="text-base font-black text-slate-900">{title}</h3>
+                <div id="pm-confirm-desc" className="text-xs font-semibold text-slate-600 mt-2 whitespace-pre-line leading-relaxed">
+                  {message}
+                </div>
+                {details && (
+                  <div className="mt-3 p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] font-mono text-slate-700 max-h-40 overflow-y-auto whitespace-pre-line">
+                    {details}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-col-reverse sm:flex-row sm:justify-end gap-2.5 pt-4 border-t border-slate-100">
+              <button
+                ref={cancelBtnRef}
+                type="button"
+                onClick={onCancel}
+                className="pm-secondary-btn justify-center !min-h-[44px] !px-4"
+              >
+                {cancelText}
+              </button>
+              <button
+                type="button"
+                onClick={onConfirm}
+                className={`${isDanger ? 'pm-danger-btn !bg-red-600 !text-white hover:!bg-red-700' : 'pm-primary-btn'} justify-center !min-h-[44px] !px-4`}
+              >
+                {confirmText}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
     function App() {
       const batchApi = window.PackMasterBatch;
       const batchTransitionApi = window.PackMasterBatchTransition;
@@ -1345,6 +1435,30 @@
       const [activeTab, setActiveTab] = useState('upload');
       // PackMaster Frontend V3 — presentation-only navigation/pagination.
       const [activeView, setActiveView] = useState('batches');
+
+      const [confirmDialog, setConfirmDialog] = useState(null);
+
+      const requestConfirm = ({ title, message, details = null, confirmText = 'ยืนยัน', cancelText = 'ยกเลิก', isDanger = false }) => {
+        return new Promise((resolve) => {
+          setConfirmDialog({
+            title,
+            message,
+            details,
+            confirmText,
+            cancelText,
+            isDanger,
+            onConfirm: () => {
+              setConfirmDialog(null);
+              resolve(true);
+            },
+            onCancel: () => {
+              setConfirmDialog(null);
+              resolve(false);
+            }
+          });
+        });
+      };
+
       const SIDEBAR_STORAGE_KEY = 'packmasterSidebarCollapsedV1';
       const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
         try { return localStorage.getItem(SIDEBAR_STORAGE_KEY) === '1'; }
@@ -1538,7 +1652,13 @@
         if (issues.length === 0) return;
         const labels = { duplicate: 'Duplicate history', archive: 'Archive state', sourceFiles: 'Source filenames' };
         const summary = issues.map(row => labels[row.kind] || row.kind).join(', ');
-        if (!window.confirm(`พบ Local Safety Metadata เสีย: ${summary}\n\nReset จะล้างเฉพาะ Metadata ที่เสียและไม่แตะ Orders/SKU Rules ต้องการดำเนินการหรือไม่?`)) return;
+        if (!await requestConfirm({
+          title: 'พบ Local Safety Metadata เสีย',
+          message: `พบ Local Safety Metadata เสีย: ${summary}\n\nReset จะล้างเฉพาะ Metadata ที่เสียและไม่แตะ Orders/SKU Rules ต้องการดำเนินการหรือไม่?`,
+          confirmText: 'Reset Metadata',
+          cancelText: 'ยกเลิก',
+          isDanger: true
+        })) return;
         try {
           issues.forEach(issue => {
             if (issue.kind === 'duplicate') duplicateApi?.resetStore();
@@ -1606,7 +1726,13 @@
               currentNames.length > 0 ? `ซ้ำในรอบอัปโหลดนี้: ${currentNames.join(', ')}` : '',
               historyNames.length > 0 ? `ซ้ำกับประวัติเดิม: ${historyNames.join(', ')}` : ''
             ].filter(Boolean).join('\n');
-            const importAgain = window.confirm(`พบไฟล์ PDF ที่เคยนำเข้า Batch นี้แล้ว:\n\n${duplicateSummary}\n\nกด OK หากต้องการนำเข้าซ้ำจริง ๆ หรือ Cancel เพื่อข้ามไฟล์ที่ซ้ำ`);
+            const importAgain = await requestConfirm({
+              title: 'พบไฟล์ PDF ที่เคยนำเข้า Batch นี้แล้ว',
+              message: `${duplicateSummary}\n\nต้องการนำเข้าซ้ำจริง ๆ หรือข้ามไฟล์ที่ซ้ำ?`,
+              confirmText: 'นำเข้าซ้ำ',
+              cancelText: 'ข้ามไฟล์ที่ซ้ำ',
+              isDanger: false
+            });
             if (!importAgain) {
               const duplicateFiles = new Set(exactDuplicates.map(entry => entry.file));
               files = files.filter(file => !duplicateFiles.has(file));
@@ -1954,7 +2080,13 @@
                 currentUploadCount > 0 ? `ซ้ำในรอบอัปโหลดนี้ ${currentUploadCount} รายการ` : '',
                 existingHistoryCount > 0 ? `ซ้ำกับประวัติเดิม ${existingHistoryCount} รายการ` : ''
               ].filter(Boolean).join('\n');
-              const importPossibleDuplicates = window.confirm(`พบ Order ที่อาจซ้ำกับข้อมูลใน Batch นี้ ${duplicateSignals.length} รายการ\n\n${duplicateSummary}\n\nระบบจะไม่ลบหรือรวม Qty ให้อัตโนมัติ\nกด OK หากตรวจแล้วต้องการนำเข้าต่อ หรือ Cancel เพื่อหยุดรอบนี้`);
+              const importPossibleDuplicates = await requestConfirm({
+                title: `พบ Order ที่อาจซ้ำกับข้อมูลใน Batch นี้ ${duplicateSignals.length} รายการ`,
+                message: `${duplicateSummary}\n\nระบบจะไม่ลบหรือรวม Qty ให้อัตโนมัติ ต้องการนำเข้าต่อหรือไม่?`,
+                confirmText: 'นำเข้าต่อ',
+                cancelText: 'หยุดรอบนี้ ไม่นำเข้า',
+                isDanger: true
+              });
               if (!importPossibleDuplicates) {
                 showToast('ยกเลิกการเพิ่ม Order ที่อาจซ้ำ — ข้อมูลเดิมยังอยู่ครบ', 'error');
                 return;
@@ -2361,7 +2493,7 @@
           showToast(safetyMessage, 'error');
           return;
         }
-        const saved = saveSkuRule({ keyword, shortName }, { successMessage: 'บันทึกชื่อภายในแล้ว — Review จะอัปเดตจากกฎเดียวกับคลังคำศัพท์' });
+        const saved = await saveSkuRule({ keyword, shortName }, { successMessage: 'บันทึกชื่อภายในแล้ว — Review จะอัปเดตจากกฎเดียวกับคลังคำศัพท์' });
         if (!saved) return;
         setQuickMapState({ open: false, row: null, keyword: '', shortName: '' });
       };
@@ -2524,7 +2656,13 @@
       const handleArchiveBatch = async (batch) => {
         if (!batch || !batch.id || !archiveApi) { showToast('Local Archive module ยังไม่พร้อม', 'error'); return; }
         const unresolved = (batch.reviewSkuCount || 0) + (batch.reviewQtyCount || 0) + (batch.unmappedCount || 0);
-        if (unresolved > 0 && !window.confirm(`Batch นี้ยังมี ${unresolved} รายการที่ต้องตรวจ\n\nต้องการเก็บเข้าคลังต่อหรือไม่?`)) return;
+        if (unresolved > 0 && !await requestConfirm({
+          title: 'ยังมีรายการที่ต้องตรวจ',
+          message: `Batch นี้ยังมี ${unresolved} รายการที่ต้องตรวจ\n\nต้องการเก็บเข้าคลังต่อหรือไม่?`,
+          confirmText: 'เก็บเข้าคลังต่อ',
+          cancelText: 'ยกเลิก',
+          isDanger: false
+        })) return;
         try {
           archiveApi.archiveBatch(batch.id, new Date());
           setBatches(prev => [...prev]);
@@ -2605,7 +2743,13 @@
           showToast('Local Safety Metadata เสีย — กรุณากู้หรือ Reset ก่อน Cleanup', 'error');
           return;
         }
-        const confirmed = window.confirm(`ล้างเฉพาะรูปสำหรับ Reprint ของ Archived Batch ที่เลือก ${selectedArchivedBatchIds.length} รายการหรือไม่?\n\nParsed Orders / SKU / Qty / สถานะ Batch จะยังอยู่ แต่ Batch ที่ล้างแล้วจะไม่มีภาพใบปะหน้าเดิมสำหรับ Reprint`);
+        const confirmed = await requestConfirm({
+          title: 'ยืนยันการล้างรูป Reprint',
+          message: `ล้างเฉพาะรูปสำหรับ Reprint ของ Archived Batch ที่เลือก ${selectedArchivedBatchIds.length} รายการหรือไม่?\n\nParsed Orders / SKU / Qty / สถานะ Batch จะยังอยู่ แต่ Batch ที่ล้างแล้วจะไม่มีภาพใบปะหน้าเดิมสำหรับ Reprint`,
+          confirmText: `ล้างรูป Reprint (${selectedArchivedBatchIds.length})`,
+          cancelText: 'ยกเลิก',
+          isDanger: true
+        });
         if (!confirmed) return;
 
         setStorageHealthBusy(true);
@@ -2632,7 +2776,13 @@
           return batch && Boolean(getBatchArchivedAt(batch));
         });
         if (deletableIds.length === 0) { setSelectedArchivedBatchIds([]); return; }
-        if (!window.confirm(`ลบ Batch ที่เก็บเข้าคลังแล้ว ${deletableIds.length} รายการถาวรจาก Browser นี้หรือไม่?\n\nการลบนี้ย้อนกลับไม่ได้ เว้นแต่มี Workspace Backup`)) return;
+        if (!await requestConfirm({
+          title: 'ยืนยันการลบถาวร',
+          message: `ลบ Batch ที่เก็บเข้าคลังแล้ว ${deletableIds.length} รายการถาวรจาก Browser นี้หรือไม่?\n\nการลบนี้ย้อนกลับไม่ได้ เว้นแต่มี Workspace Backup`,
+          confirmText: `ลบถาวร ${deletableIds.length} รายการ`,
+          cancelText: 'ยกเลิก ไม่ลบ',
+          isDanger: true
+        })) return;
         const deletedIds = [];
         try {
           for (const batchId of deletableIds) {
@@ -2668,7 +2818,13 @@
           showToast('Local Safety Metadata เสีย — กรุณากู้หรือ Reset ก่อนลบ Batch', 'error');
           return;
         }
-        if (!window.confirm(`ลบ ${batch.name} และข้อมูลใบปะหน้าที่เก็บในเครื่องนี้หรือไม่?`)) return;
+        if (!await requestConfirm({
+          title: 'ยืนยันการลบ Batch',
+          message: `ลบ ${batch.name} และข้อมูลใบปะหน้าที่เก็บในเครื่องนี้หรือไม่?\n\nการลบนี้ย้อนกลับไม่ได้ เว้นแต่มี Workspace Backup`,
+          confirmText: `ลบ ${batch.name}`,
+          cancelText: 'ยกเลิก',
+          isDanger: true
+        })) return;
 
         try {
           await batchApi.deleteBatch(batch.id);
@@ -2728,7 +2884,13 @@
 
       const handleClearActiveBatch = async () => {
         if (orders.length === 0) return;
-        if (!window.confirm('ล้าง Orders ใน Batch นี้หรือไม่? ตัว Batch จะยังอยู่')) return;
+        if (!await requestConfirm({
+          title: 'ยืนยันการล้าง Orders',
+          message: 'ล้าง Orders ใน Batch นี้หรือไม่? ตัว Batch จะยังอยู่',
+          confirmText: 'ล้าง Orders',
+          cancelText: 'ยกเลิก',
+          isDanger: true
+        })) return;
 
         setOrders([]);
         if (activeBatch && batchApi) {
@@ -2769,9 +2931,13 @@
           return;
         }
         if (mode === 'FULL_BATCH' && printBlocked && override) {
-          const confirmed = window.confirm(`Batch นี้ยังมี ${exceptionRows.length} Exception
-
-ต้องการพิมพ์ทั้ง Batch ต่อหรือไม่? รายการที่ยังไม่พร้อมอาจมีชื่อสินค้าไม่สมบูรณ์`);
+          const confirmed = await requestConfirm({
+            title: 'คำเตือน: บังคับพิมพ์ทั้ง Batch โดยยังมี Exception',
+            message: `Batch นี้ยังมี ${exceptionRows.length} Exception\n\nต้องการพิมพ์ทั้ง Batch ต่อหรือไม่? รายการที่ยังไม่พร้อมอาจมีชื่อสินค้าไม่สมบูรณ์`,
+            confirmText: 'ยืนยันพิมพ์ทั้ง Batch',
+            cancelText: 'ยกเลิก',
+            isDanger: true
+          });
           if (!confirmed) return;
         }
 
@@ -2922,9 +3088,13 @@
         const integrityPreview = skuIntegrityReport
           ? `\nSKU Integrity: Re-key ID ${skuIntegrityReport.rekeyed.length} • Same-output duplicate ${skuIntegrityReport.sameOutputDuplicates.length}`
           : '';
-        const confirmed = window.confirm(
-          `Replace Workspace ปัจจุบันด้วยไฟล์ Backup นี้หรือไม่?\n\nSKU ${summary.skuRules} • Batch ${summary.batches} • Orders ${summary.orders}${integrityPreview}\n\nข้อมูล Local ปัจจุบันจะถูกแทนที่ แต่ระบบจะสร้าง Safety Snapshot ในหน่วยความจำก่อนเริ่มกู้คืน`
-        );
+        const confirmed = await requestConfirm({
+          title: 'ยืนยัน Replace Workspace',
+          message: `Replace Workspace ปัจจุบันด้วยไฟล์ Backup นี้หรือไม่?\n\nSKU ${summary.skuRules} • Batch ${summary.batches} • Orders ${summary.orders}${integrityPreview}\n\nข้อมูล Local ปัจจุบันจะถูกแทนที่ แต่ระบบจะสร้าง Safety Snapshot ในหน่วยความจำก่อนเริ่มกู้คืน`,
+          confirmText: 'Replace Workspace',
+          cancelText: 'ยกเลิก',
+          isDanger: true
+        });
         if (!confirmed) return;
 
         setWorkspaceBusy(true);
@@ -3013,7 +3183,13 @@
           return;
         }
         if (mode === 'FULL_BATCH' && printBlocked && override) {
-          const confirmed = window.confirm(`Batch นี้ยังมี ${exceptionRows.length} Exception\n\nต้องการ Save PDF ทั้ง Batch ต่อหรือไม่?`);
+          const confirmed = await requestConfirm({
+            title: 'ยืนยัน Save PDF ทั้ง Batch',
+            message: `Batch นี้ยังมี ${exceptionRows.length} Exception\n\nต้องการ Save PDF ทั้ง Batch ต่อหรือไม่?`,
+            confirmText: 'Save PDF ทั้ง Batch',
+            cancelText: 'ยกเลิก',
+            isDanger: true
+          });
           if (!confirmed) return;
         }
         const ordersToExport = printScopeApi
@@ -3078,7 +3254,7 @@
         return skuIntegrityApi.prepareRules(rules, { normalize: normalizeMatchText, idPrefix });
       };
 
-      const handleAuditSkuRules = () => {
+      const handleAuditSkuRules = async () => {
         try {
           const prepared = prepareSkuRules(skuRules, 'migrate');
           if (prepared.report.conflicts.length > 0) {
@@ -3086,7 +3262,13 @@
             return;
           }
           const preview = `Audit SKU Library\n\nDuplicate ID: ${prepared.report.duplicateIds.length}\nNormalized same-output: ${prepared.report.sameOutputDuplicates.length}\nRe-key ID: ${prepared.report.rekeyed.length}\n\nระบบจะ Backup dictionary ปัจจุบันก่อน Apply และจะไม่ลบ alias อัตโนมัติ`;
-          if (!window.confirm(preview)) return;
+          if (!await requestConfirm({
+            title: 'Audit SKU Library',
+            message: preview,
+            confirmText: 'Apply Integrity Migration',
+            cancelText: 'ยกเลิก',
+            isDanger: false
+          })) return;
           localStorage.setItem(SKU_INTEGRITY_BACKUP_KEY, JSON.stringify(skuRules));
           setSkuRules(prepared.rules);
           showToast(`Integrity migration สำเร็จ • Re-key ${prepared.report.rekeyed.length} ID`, 'success');
@@ -3095,13 +3277,19 @@
         }
       };
 
-      const handleRollbackSkuMigration = () => {
+      const handleRollbackSkuMigration = async () => {
         try {
           const raw = localStorage.getItem(SKU_INTEGRITY_BACKUP_KEY);
           if (!raw) return showToast('ยังไม่มี Integrity backup ให้ย้อนกลับ', 'error');
           const backupRules = JSON.parse(raw);
           if (!Array.isArray(backupRules)) throw new Error('Integrity backup ใช้งานไม่ได้');
-          if (!window.confirm('ย้อนกลับ SKU Library ไปยัง snapshot ก่อน Integrity migration หรือไม่?')) return;
+          if (!await requestConfirm({
+            title: 'ย้อนกลับ SKU Library',
+            message: 'ย้อนกลับ SKU Library ไปยัง snapshot ก่อน Integrity migration หรือไม่?',
+            confirmText: 'ย้อนกลับ',
+            cancelText: 'ยกเลิก',
+            isDanger: true
+          })) return;
           setSkuRules(backupRules.map((rule, index) => sanitizeSkuRule(rule, `rollback-${index}`)).filter(Boolean));
           showToast('ย้อนกลับ SKU Library จาก Integrity backup แล้ว', 'success');
         } catch (err) {
@@ -3124,7 +3312,7 @@
       const handleImportRules = (e) => {
         const file = e.target.files[0]; if (!file) return;
         const reader = new FileReader();
-        reader.onload = (event) => {
+        reader.onload = async (event) => {
           try {
             const importedRules = JSON.parse(event.target.result);
             if (!Array.isArray(importedRules)) {
@@ -3150,7 +3338,13 @@
             const integrityChanges = prepared.report.rekeyed.length + prepared.report.sameOutputDuplicates.length;
             if (integrityChanges > 0) {
               const preview = `Import SKU Library\n\nRe-key ID: ${prepared.report.rekeyed.length}\nNormalized same-output: ${prepared.report.sameOutputDuplicates.length}\n\nระบบจะไม่ลบ alias อัตโนมัติ ต้องการ Apply หรือไม่?`;
-              if (!window.confirm(preview)) return;
+              if (!await requestConfirm({
+                title: 'Import SKU Library',
+                message: preview,
+                confirmText: 'นำเข้าและ Apply',
+                cancelText: 'ยกเลิก',
+                isDanger: false
+              })) return;
             }
             setSkuRules(prepared.rules);
 
@@ -3167,7 +3361,7 @@
         reader.readAsText(file); e.target.value = null;
       };
 
-      const saveSkuRule = ({ keyword, shortName }, options = {}) => {
+      const saveSkuRule = async ({ keyword, shortName }, options = {}) => {
         const cleanKeyword = String(keyword || '').trim();
         const cleanShortName = String(shortName || '').trim();
         if (!cleanKeyword || !cleanShortName || !skuIntegrityApi) return false;
@@ -3197,16 +3391,22 @@
           showToast('บันทึกไม่ได้: Keyword เดียวกันหลัง normalize ชี้ไปคนละชื่อภายใน', 'error');
           return false;
         }
-        if (prepared.report.sameOutputDuplicates.length > 0 && !window.confirm('พบ normalized duplicate ที่ให้ผลลัพธ์เดียวกัน ระบบจะเก็บทั้งสอง alias และไม่ลบอัตโนมัติ ต้องการบันทึกต่อหรือไม่?')) return false;
+        if (prepared.report.sameOutputDuplicates.length > 0 && !await requestConfirm({
+          title: 'พบ Normalized Duplicate',
+          message: 'พบ normalized duplicate ที่ให้ผลลัพธ์เดียวกัน ระบบจะเก็บทั้งสอง alias และไม่ลบอัตโนมัติ ต้องการบันทึกต่อหรือไม่?',
+          confirmText: 'บันทึกต่อ',
+          cancelText: 'ยกเลิก',
+          isDanger: false
+        })) return false;
         setSkuRules(prepared.rules);
         showToast(options.successMessage || (targetEditingId ? 'แก้ไขกฎสำเร็จ' : 'เพิ่มกฎใหม่สำเร็จ'), 'success');
         return true;
       };
 
-      const handleSubmitRule = (e) => {
+      const handleSubmitRule = async (e) => {
         e.preventDefault();
         if (!newRule.keyword.trim() || !newRule.shortName.trim()) return;
-        const saved = saveSkuRule(newRule, { editingId });
+        const saved = await saveSkuRule(newRule, { editingId });
         if (!saved) return;
         setEditingId(null);
         setNewRule({ keyword: '', shortName: '' });
@@ -3219,10 +3419,18 @@
         setEditingId(rule.id);
       };
 
-      const handleDeleteSkuRule = (rule) => {
+      const handleDeleteSkuRule = async (rule) => {
         const sharedIdCount = skuRules.filter(candidate => String(candidate.id) === String(rule.id)).length;
         if (sharedIdCount > 1) return showToast('Rule ID นี้ถูกใช้ร่วมกับ alias อื่น — กรุณา Audit Integrity ก่อนลบ', 'error');
-        if (window.confirm(`ลบกฎ ${rule.keyword} หรือไม่?`)) setSkuRules(prev => prev.filter(candidate => String(candidate.id) !== String(rule.id)));
+        if (await requestConfirm({
+          title: 'ยืนยันการลบกฎ SKU',
+          message: `ลบกฎ "${rule.keyword}" หรือไม่?`,
+          confirmText: 'ลบกฎ',
+          cancelText: 'ยกเลิก',
+          isDanger: true
+        })) {
+          setSkuRules(prev => prev.filter(candidate => String(candidate.id) !== String(rule.id)));
+        }
       };
 
       const cancelEdit = () => {
@@ -3805,6 +4013,19 @@
             </div>
           </div>
 
+          {confirmDialog && (
+            <PMConfirmDialog
+              open={Boolean(confirmDialog)}
+              title={confirmDialog.title}
+              message={confirmDialog.message}
+              details={confirmDialog.details}
+              confirmText={confirmDialog.confirmText}
+              cancelText={confirmDialog.cancelText}
+              isDanger={confirmDialog.isDanger}
+              onConfirm={confirmDialog.onConfirm}
+              onCancel={confirmDialog.onCancel}
+            />
+          )}
 
           {exportRenderOrder && <div className="fixed pointer-events-none opacity-0" style={{ top: 0, left: 0, width: '100mm', height: 0, overflow: 'hidden', zIndex: -100 }}>
             <div key={`render-arena-${exportRenderOrder.id}`} id={`render-target-${exportRenderOrder.id}`} style={{ position: 'relative', width: '100mm', height: '150mm', backgroundColor: 'white' }}>
