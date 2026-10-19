@@ -12,5 +12,6 @@ assert.match(html, /navigateView\('sku'\)/, 'SKU view must remain reachable');
 assert.match(html, /navigateView\('upload'\)/, 'Upload view must remain reachable');
 assert.match(html, /navigateView\('safety'\)/, 'Safety view must remain reachable');
 assert.match(html, /exceptionRows\.length/, 'Review exception badge/awareness must remain wired to current exceptions');
+assert.match(html, /data-pm-stepper/, 'Workflow stepper must exist');
 
 console.log('PackMaster simplified navigation contract passed');
