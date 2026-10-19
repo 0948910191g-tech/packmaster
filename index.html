@@ -2519,7 +2519,7 @@
         setQuickMapState({ open: false, row: null, keyword: '', shortName: '' });
       };
 
-      const handleSaveQuickMapping = () => {
+      const handleSaveQuickMapping = async () => {
         const keyword = String(quickMapState.keyword || '');
         const shortName = String(quickMapState.shortName || '');
         if (!keyword.trim() || !shortName.trim()) {
