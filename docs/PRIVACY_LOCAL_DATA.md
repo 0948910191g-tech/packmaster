@@ -1,71 +1,60 @@
-# PackMaster Local Data Privacy Guide
+# PackMaster Data Privacy Guide
 
-PackMaster รุ่น Local-first ไม่มี Account, Cloud Database หรือ Analytics SaaS ข้อมูลการทำงานหลักอยู่ใน Browser ของเครื่องที่ใช้งาน อย่างไรก็ตาม Local ไม่ได้แปลว่าไม่มีข้อมูลส่วนบุคคล ผู้ใช้ยังต้องดูแลไฟล์ PDF, Parsed Orders, Workspace Backup และไฟล์ Export ภายในร้านอย่างเหมาะสม
+PackMaster keeps order processing local to each browser. Cloudflare D1 stores only the shared TikTok/Shopee Marketplace product registry after an approved user signs in through Cloudflare Access. Orders, source PDFs, parsed customer data, Batch data, SKU Mapping rules, print output, and Diagnostics are not sent to D1.
 
-## ข้อมูลที่อาจมีข้อมูลลูกค้า
+## Shared Marketplace Registry
 
-- Marketplace PDF ต้นฉบับ
-- `pdfImage` ที่สร้างไว้เพื่อ Preview/Reprint
-- Parsed Order/Tracking reference
-- Workspace Backup JSON (อาจรวมทะเบียนสินค้าและ SKU ของ TikTok/Shopee)
-- Save PDF ที่ใช้แพ็กสินค้า
+The shared registry contains marketplace product names, product/item IDs, variant/model rows, and Seller SKU values from imported catalog JSON files.
 
-ข้อมูลเหล่านี้ไม่ควรถูก Commit เข้า Public GitHub Repository หรือแนบใน Public issue
+- Registry API access requires a Cloudflare Access session for an exact email address in the configured allowlist.
+- Pages Functions verify the signed Access JWT, its issuer and audience, expiry, and email before reading or writing D1.
+- The D1 database is accessed only by server-side Pages Functions. No D1 credentials or database keys are placed in browser files.
+- The cloud copy refreshes when a page regains focus and every 30 seconds while open.
+- The first authorized user explicitly seeds the cloud copy from the device that has the correct catalog. Once a cloud copy exists, it is authoritative.
+- If the cloud copy replaces different local registry data, the previous local snapshot is kept in Browser storage under packmasterMarketplaceRegistryBeforeCloudV1.
+- Workspace Backups still include the registry snapshot. Keep backup files private and out of Git.
 
-## Marketplace Product Registry
+The Marketplace Registry remains separate from the SKU Mapping library. Importing a catalog does not create internal packing names or matching rules.
 
-Marketplace product names and SKU/model rows are stored in this Browser's local storage, separated by TikTok and Shopee. They remain separate from the SKU Mapping library; importing a catalog does not create internal names or matching rules. Workspace Backups include the registry when it can be read successfully. Keep source catalogs and backups private and out of Git.
+## Data that stays local
 
-## ข้อมูล Diagnostics
+- Marketplace order PDFs and source files
+- pdfImage data used for Preview/Reprint
+- Parsed order, tracking, and customer information
+- Batch state and Workspace order history
+- SKU Mapping rules and internal packing names
+- Print-ready PDFs
 
-Diagnostics สำหรับ Pilot ต้องมีเฉพาะ aggregate/capability information เช่น:
+These files may contain customer data and must not be committed to a public GitHub repository or attached to a public issue.
 
-- จำนวน Batch
-- จำนวน Orders
-- Ready / Review / Unmapped totals
-- Storage usage โดยประมาณ
-- จำนวน duplicate warning/block
-- Browser capability flags
-- Error category แบบไม่ใส่ free-form customer data
+## Diagnostics
 
-Diagnostics ต้องไม่ส่งออก:
+Pilot Diagnostics may contain aggregate/capability information such as Batch counts, order totals, Ready/Review/Unmapped totals, storage estimates, duplicate-warning totals, browser capability flags, and error categories.
 
-- `pdfImage`
-- Raw PDF
-- Tracking เต็ม
-- Order ID เต็ม
-- ชื่อลูกค้า
-- ที่อยู่
-- เบอร์โทร
-- ข้อความ Error อิสระที่อาจมีข้อมูลเหล่านี้
+Diagnostics must not include:
 
-ก่อนส่ง Diagnostics ให้ทีมพัฒนา ผู้ใช้ควรเปิดไฟล์ตรวจอีกครั้งเสมอ
+- pdfImage
+- Raw PDFs
+- Full tracking numbers or order IDs
+- Customer names, addresses, or phone numbers
+- Free-form error text that could contain customer information
+
+Review any exported Diagnostics file before sharing it.
 
 ## Workspace Backup
 
-Workspace Backup มีไว้สำหรับ Recovery/ย้ายเครื่อง จึงอาจมี Parsed Order Data มากกว่า Diagnostics ให้ถือเป็นไฟล์ภายในร้าน:
+Workspace Backup is for recovery or device migration and may contain more local order data than Diagnostics.
 
-- เก็บใน Drive/Folder ที่ผู้ใช้ควบคุม
-- ไม่แชร์ Public link
-- ไม่ Commit ลง Repository
-- ลบสำเนาที่ไม่จำเป็นเมื่อ Pilot จบตาม policy ของร้าน
+- Keep it in a folder controlled by the shop.
+- Do not share a public link.
+- Do not commit it to Git.
+- Remove unnecessary copies according to the shop's retention policy.
 
-## Sanitized Fixture สำหรับ Bug
+## Browser and device
 
-ถ้าพบ Parser/Matcher/Qty failure ให้สร้าง fixture ใหม่ที่เหลือเฉพาะข้อความ/ตำแหน่งที่จำเป็นต่อการ reproduce แล้วแทนข้อมูลลูกค้าด้วยค่าจำลอง เช่น `ORDER-SAFE-001`, `TRACKING-SAFE-001`
+Because order data remains in the local browser:
 
-หลักการคือ Regression Test ต้องพิสูจน์บัคได้โดยไม่ต้องเก็บ PII จริง
-
-## Browser / เครื่องที่ใช้
-
-เพราะข้อมูลอยู่ Local Browser:
-
-- หลีกเลี่ยงเครื่องสาธารณะ
-- ใช้ Browser profile ที่ควบคุมได้
-- ระวังการ Clear Site Data
-- Backup ก่อนย้ายเครื่องหรือ reset Browser
-- ถ้าเครื่องใช้ร่วมกันหลายคน ให้จัดการสิทธิ์ระดับ OS/Browser ของร้านเองจนกว่าจะมี Product Need จริงสำหรับ Multi-user/Auth
-
-## Cloud / Database Gate
-
-เอกสารนี้ไม่อนุญาตให้แก้ข้อจำกัด Local ด้วยการเพิ่ม Firebase, Supabase, Cloud DB, Login หรือ paid storage โดยอัตโนมัติ การเปลี่ยน architecture ต้องเกิดหลัง Pilot พิสูจน์ Need ของ cross-device/multi-user จริงและมีคำสั่งใหม่ชัดเจน
+- Avoid public computers.
+- Use a browser profile controlled by the shop.
+- Back up before clearing site data or resetting a browser.
+- Sign in to the shared registry only on devices controlled by the shop.

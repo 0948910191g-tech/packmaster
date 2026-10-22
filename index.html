@@ -18,6 +18,9 @@
   <script src="./packmaster-reprint-snapshot.js"></script>
   <script src="./packmaster-workspace.js"></script>
   <script src="./packmaster-marketplace-registry.js"></script>
+
+  <script src="./packmaster-cloud-config.js"></script>
+  <script src="./packmaster-marketplace-cloud-sync.js"></script>
   <script src="./packmaster-duplicate.js"></script>
   <script src="./packmaster-exceptions.js"></script>
   <script src="./packmaster-pilot-safety.js"></script>
@@ -253,7 +256,7 @@
         window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     }
 
-    const { useState, useEffect, useCallback, useMemo } = React;
+    const { useState, useEffect, useCallback, useMemo, useRef } = React;
 
     const Toast = ({ message, type, onClose }) => {
       useEffect(() => { const timer = setTimeout(() => onClose(), 3000); return () => clearTimeout(timer); }, [onClose]);
@@ -1182,6 +1185,9 @@
       const reprintSnapshotApi = window.PackMasterReprintSnapshot;
       const workspaceApi = window.PackMasterWorkspace;
       const marketplaceRegistryApi = window.PackMasterMarketplaceRegistry;
+      const marketplaceCloudSyncApi = window.PackMasterMarketplaceCloudSync;
+      const marketplaceCloudConfig = window.PACKMASTER_CLOUD_CONFIG || {};
+      const marketplaceCloudConfigured = Boolean(marketplaceCloudSyncApi && marketplaceCloudSyncApi.isConfigured(marketplaceCloudConfig));
       const duplicateApi = window.PackMasterDuplicate;
       const exceptionApi = window.PackMasterExceptions;
       const pilotSafetyApi = window.PackMasterPilotSafety;
@@ -1241,6 +1247,18 @@
       const [marketplaceRegistryPage, setMarketplaceRegistryPage] = useState(1);
       const [marketplaceRegistryPageSize, setMarketplaceRegistryPageSize] = useState(20);
       const [marketplaceRegistryBusy, setMarketplaceRegistryBusy] = useState(false);
+      const [marketplaceCloudStatus, setMarketplaceCloudStatus] = useState(() => ({
+        configured: marketplaceCloudConfigured,
+        phase: marketplaceCloudConfigured ? 'signed_out' : 'local',
+        authorized: false,
+        email: '',
+        message: marketplaceCloudConfigured ? 'เข้าสู่ระบบด้วยอีเมลที่ได้รับสิทธิ์เพื่อใช้ทะเบียนร่วมกัน' : 'ทะเบียนยังเก็บอยู่ใน Browser เครื่องนี้'
+      }));
+      const [marketplaceCloudEmail, setMarketplaceCloudEmail] = useState('');
+      const [marketplaceCloudBusy, setMarketplaceCloudBusy] = useState(false);
+      const marketplaceCloudSyncRef = useRef(null);
+      const marketplaceRegistryRef = useRef(marketplaceRegistryLoad.store);
+      marketplaceRegistryRef.current = marketplaceRegistry;
       const [editingId, setEditingId] = useState(null); 
       
       const [uploadError, setUploadError] = useState('');
@@ -1336,6 +1354,157 @@
         });
         setBatchSourceSummaries(Object.fromEntries(entries));
       }, [visibleBatches, activeBatchId, orders, batchSourceFilesApi]);
+
+      useEffect(() => {
+        if (!marketplaceCloudConfigured || !marketplaceCloudSyncApi) return undefined;
+        const client = marketplaceCloudSyncApi.createClient(marketplaceCloudConfig);
+        if (!client) {
+          setMarketplaceCloudStatus({
+            configured: true,
+            phase: 'error',
+            authorized: false,
+            email: '',
+            message: 'เชื่อมต่อทะเบียนกลางไม่ได้: SDK หรือค่าตั้งค่ายังไม่พร้อม'
+          });
+          return undefined;
+        }
+
+        const sync = marketplaceCloudSyncApi.createSyncService({
+          client,
+          registryApi: marketplaceRegistryApi,
+          storage: window.localStorage
+        });
+        marketplaceCloudSyncRef.current = sync;
+        let active = true;
+
+        const applySession = async (session) => {
+          if (!active) return;
+          if (!session || !session.user) {
+            setMarketplaceCloudStatus({
+              configured: true,
+              phase: 'signed_out',
+              authorized: false,
+              email: '',
+              message: 'เข้าสู่ระบบด้วยอีเมลที่ได้รับสิทธิ์เพื่อใช้ทะเบียนร่วมกัน'
+            });
+            setMarketplaceCloudBusy(false);
+            return;
+          }
+
+          const email = session.user.email || '';
+          setMarketplaceCloudBusy(true);
+          setMarketplaceCloudStatus({
+            configured: true,
+            phase: 'loading',
+            authorized: false,
+            email,
+            message: 'กำลังตรวจสิทธิ์และโหลดทะเบียนกลาง'
+          });
+          try {
+            const localStore = marketplaceRegistryRef.current || marketplaceRegistryApi.createEmptyStore();
+            const result = await sync.connect(session, localStore);
+            if (!active) return;
+            if (result.status === 'unauthorized') {
+              setMarketplaceCloudStatus({
+                configured: true,
+                phase: 'unauthorized',
+                authorized: false,
+                email,
+                message: 'อีเมลนี้ยังไม่ได้รับอนุญาตให้เข้าถึงทะเบียนกลาง'
+              });
+              return;
+            }
+            if (result.status === 'synced') {
+              setMarketplaceRegistry(result.store);
+              setMarketplaceRegistryLoadError('');
+              setMarketplaceCloudStatus({
+                configured: true,
+                phase: 'synced',
+                authorized: true,
+                email,
+                message: 'ใช้ทะเบียนกลางร่วมกัน • revision ' + result.revision
+              });
+              return;
+            }
+            setMarketplaceCloudStatus({
+              configured: true,
+              phase: 'empty',
+              authorized: true,
+              email,
+              message: marketplaceCloudSyncApi.hasCatalogData(localStore)
+                ? 'ทะเบียนกลางยังว่าง • ตรวจว่าข้อมูลบนเครื่องนี้ถูกต้อง แล้วกดแชร์ขึ้นทะเบียนกลาง'
+                : 'ทะเบียนกลางยังว่าง • นำเข้าไฟล์ทะเบียนบนเครื่องที่มีข้อมูล แล้วกดแชร์ขึ้นทะเบียนกลาง'
+            });
+          } catch (error) {
+            console.error('Marketplace cloud sync connect failed', error);
+            setMarketplaceCloudStatus({
+              configured: true,
+              phase: 'error',
+              authorized: sync.hasAccess(),
+              email,
+              message: error.message || 'โหลดทะเบียนกลางไม่สำเร็จ'
+            });
+          } finally {
+            if (active) setMarketplaceCloudBusy(false);
+          }
+        };
+
+        client.auth.getSession().then(({ data, error }) => {
+          if (error) {
+            setMarketplaceCloudStatus({
+              configured: true,
+              phase: 'error',
+              authorized: false,
+              email: '',
+              message: error.message || 'ตรวจสถานะเข้าสู่ระบบไม่สำเร็จ'
+            });
+            return;
+          }
+          applySession(data && data.session ? data.session : null);
+        });
+
+        const authListener = client.auth.onAuthStateChange((_event, session) => {
+          setTimeout(() => applySession(session), 0);
+        });
+        const subscription = authListener && authListener.data && authListener.data.subscription;
+        const refreshCloud = async () => {
+          if (!active || !sync.hasAccess()) return;
+          try {
+            const result = await sync.refresh();
+            if (active && result.changed) {
+              setMarketplaceRegistry(result.store);
+              setMarketplaceRegistryLoadError('');
+              setMarketplaceCloudStatus((current) => ({
+                ...current,
+                configured: true,
+                phase: 'synced',
+                authorized: true,
+                message: 'ทะเบียนกลางอัปเดตแล้ว • revision ' + result.revision
+              }));
+            }
+          } catch (error) {
+            console.error('Marketplace cloud sync refresh failed', error);
+            if (active) {
+              setMarketplaceCloudStatus((current) => ({
+                ...current,
+                phase: 'error',
+                message: error.message || 'ตรวจการเปลี่ยนแปลงทะเบียนกลางไม่สำเร็จ'
+              }));
+            }
+          }
+        };
+        const handleWindowFocus = () => refreshCloud();
+        window.addEventListener('focus', handleWindowFocus);
+        const refreshTimer = window.setInterval(refreshCloud, 30000);
+
+        return () => {
+          active = false;
+          window.clearInterval(refreshTimer);
+          window.removeEventListener('focus', handleWindowFocus);
+          if (subscription && typeof subscription.unsubscribe === 'function') subscription.unsubscribe();
+          marketplaceCloudSyncRef.current = null;
+        };
+      }, [marketplaceCloudConfigured, marketplaceCloudSyncApi, marketplaceCloudConfig, marketplaceRegistryApi]);
 
       useEffect(() => { localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); }, [skuRules]);
       useEffect(() => { localStorage.setItem('thermalMode', JSON.stringify(thermalMode)); }, [thermalMode]);
@@ -2682,6 +2851,83 @@
         setRestoreFileName('');
       };
 
+      const handleMarketplaceCloudSignIn = () => {
+        const sync = marketplaceCloudSyncRef.current;
+        if (!sync) {
+          showToast('ระบบทะเบียนกลางยังตั้งค่าไม่ครบ', 'error');
+          return;
+        }
+        window.location.assign(sync.getLoginUrl());
+      };
+
+      const handleMarketplaceCloudSeed = async () => {
+        const sync = marketplaceCloudSyncRef.current;
+        if (!sync || !marketplaceCloudStatus.authorized) {
+          showToast('เข้าสู่ระบบด้วยอีเมลที่ได้รับสิทธิ์ก่อนแชร์ทะเบียน', 'error');
+          return;
+        }
+        setMarketplaceCloudBusy(true);
+        try {
+          const localStore = marketplaceRegistryRef.current || marketplaceRegistryApi.createEmptyStore();
+          const result = await sync.seedCurrentLocal(localStore);
+          if (result.status === 'synced') {
+            setMarketplaceRegistry(result.store);
+            setMarketplaceRegistryLoadError('');
+            setMarketplaceCloudStatus({
+              configured: true,
+              phase: 'synced',
+              authorized: true,
+              email: marketplaceCloudStatus.email,
+              message: 'แชร์ทะเบียนขึ้น Cloud แล้ว • revision ' + result.revision
+            });
+            showToast('แชร์ทะเบียนกลางสำเร็จ', 'success');
+          } else {
+            setMarketplaceCloudStatus((current) => ({
+              ...current,
+              phase: 'empty',
+              message: 'ยังไม่มีข้อมูลสินค้าให้แชร์ กรุณานำเข้าไฟล์ทะเบียนก่อน'
+            }));
+          }
+        } catch (error) {
+          setMarketplaceCloudStatus((current) => ({
+            ...current,
+            phase: 'error',
+            message: error.message || 'แชร์ทะเบียนกลางไม่สำเร็จ'
+          }));
+          showToast('แชร์ทะเบียนกลางไม่สำเร็จ', 'error');
+        } finally {
+          setMarketplaceCloudBusy(false);
+        }
+      };
+
+      const handleMarketplaceCloudReload = async () => {
+        const sync = marketplaceCloudSyncRef.current;
+        if (!sync || !marketplaceCloudStatus.authorized) return;
+        setMarketplaceCloudBusy(true);
+        try {
+          const result = await sync.refresh();
+          if (result.changed) {
+            setMarketplaceRegistry(result.store);
+            setMarketplaceRegistryLoadError('');
+            setMarketplaceCloudStatus((current) => ({
+              ...current,
+              phase: 'synced',
+              message: 'โหลดทะเบียนกลางล่าสุดแล้ว • revision ' + result.revision
+            }));
+          } else {
+            showToast('ทะเบียนนี้เป็นเวอร์ชันล่าสุดแล้ว', 'success');
+          }
+        } catch (error) {
+          setMarketplaceCloudStatus((current) => ({
+            ...current,
+            phase: 'error',
+            message: error.message || 'โหลดทะเบียนกลางไม่สำเร็จ'
+          }));
+        } finally {
+          setMarketplaceCloudBusy(false);
+        }
+      };
+
       const handleMarketplaceRegistryImport = async (event, expectedPlatform) => {
         const file = event.target.files && event.target.files[0];
         if (!file) return;
@@ -2699,14 +2945,36 @@
             if (!replace) return;
           }
           const nextStore = marketplaceRegistryApi.replacePlatformRegistry(currentStore, importedRegistry);
-          marketplaceRegistryApi.saveStore(window.localStorage, nextStore);
-          setMarketplaceRegistry(nextStore);
+          let committedStore = nextStore;
+          if (marketplaceCloudConfigured) {
+            const sync = marketplaceCloudSyncRef.current;
+            if (!sync || !marketplaceCloudStatus.authorized) {
+              throw new Error('กรุณาเข้าสู่ระบบทะเบียนกลางก่อนนำเข้าหรือแก้ไขทะเบียน');
+            }
+            const saved = await sync.publish(nextStore);
+            committedStore = saved.store;
+            setMarketplaceCloudStatus((current) => ({
+              ...current,
+              phase: 'synced',
+              message: 'บันทึกทะเบียนกลางแล้ว • revision ' + saved.revision
+            }));
+          } else {
+            marketplaceRegistryApi.saveStore(window.localStorage, nextStore);
+          }
+          setMarketplaceRegistry(committedStore);
           setMarketplaceRegistryLoadError('');
           setMarketplaceRegistrySearch('');
           setMarketplaceRegistryPage(1);
           showToast('นำเข้า ' + expectedPlatform + ' แล้ว • สินค้า ' + importedRegistry.summary.listedProductCount + ' • แถว SKU/ตัวเลือก ' + importedRegistry.summary.skuModelRowCount, 'success');
         } catch (err) {
           console.error('Marketplace registry import failed', err);
+          if (marketplaceCloudConfigured) {
+            setMarketplaceCloudStatus((current) => ({
+              ...current,
+              phase: 'error',
+              message: err.message || 'บันทึกทะเบียนกลางไม่สำเร็จ'
+            }));
+          }
           showToast('นำเข้าทะเบียนไม่สำเร็จ: ' + (err.message || 'รูปแบบไฟล์ไม่ถูกต้อง'), 'error');
         } finally {
           event.target.value = '';
@@ -2854,9 +3122,25 @@
           await workspaceApi.replaceWorkspaceBatches(backup, batchApi);
           if (duplicateApi) duplicateApi.replaceFingerprintStore(backup.settings.duplicateFingerprints || {});
           if (archiveApi) archiveApi.replaceArchiveStore(backup.settings.archiveState || {});
+          const restoredBatches = await batchApi.listBatches();
           if (backup.settings.marketplaceRegistry != null) {
-            marketplaceRegistryApi.saveStore(window.localStorage, backup.settings.marketplaceRegistry);
-            setMarketplaceRegistry(backup.settings.marketplaceRegistry);
+            let restoredRegistry = backup.settings.marketplaceRegistry;
+            if (marketplaceCloudConfigured) {
+              const sync = marketplaceCloudSyncRef.current;
+              if (!sync || !marketplaceCloudStatus.authorized) {
+                throw new Error('กรุณาเข้าสู่ระบบทะเบียนกลางก่อน Restore Workspace ที่มี Marketplace Registry');
+              }
+              const saved = await sync.publish(restoredRegistry);
+              restoredRegistry = saved.store;
+              setMarketplaceCloudStatus((current) => ({
+                ...current,
+                phase: 'synced',
+                message: 'กู้คืนและบันทึกทะเบียนกลางแล้ว • revision ' + saved.revision
+              }));
+            } else {
+              marketplaceRegistryApi.saveStore(window.localStorage, restoredRegistry);
+            }
+            setMarketplaceRegistry(restoredRegistry);
             setMarketplaceRegistryLoadError('');
           }
 
@@ -2865,7 +3149,6 @@
             setThermalMode(backup.settings.thermalMode);
           }
 
-          const restoredBatches = await batchApi.listBatches();
           setBatches(restoredBatches);
           setActiveBatchId(null);
           setOrders([]);
@@ -3687,16 +3970,49 @@
 
                 {activeView === 'marketplace-registry' && (
                   <section data-pm-view="marketplace-registry" className="pm-page">
-                    <div className="pm-page-head"><div><div className="pm-eyebrow">Marketplace Catalog</div><h2 className="pm-page-title">ทะเบียนสินค้า Marketplace</h2><p className="pm-page-subtitle">เก็บข้อมูลสินค้าตามแพลตฟอร์มไว้ดูและค้นหาแยกจากคลังจับคู่ SKU • ไม่สร้างชื่อภายในหรือ Mapping อัตโนมัติ</p></div><div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-black"><PMIcon name="shield"/> Local-only</div></div>
+                    <div className="pm-page-head"><div><div className="pm-eyebrow">Marketplace Catalog</div><h2 className="pm-page-title">ทะเบียนสินค้า Marketplace</h2><p className="pm-page-subtitle">เก็บข้อมูลสินค้าตามแพลตฟอร์มไว้ดูและค้นหาแยกจากคลังจับคู่ SKU • ไม่สร้างชื่อภายในหรือ Mapping อัตโนมัติ</p></div><div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-black"><PMIcon name="shield"/> {marketplaceCloudStatus.authorized ? 'Cloud Sync' : marketplaceCloudStatus.configured ? 'Cloud login' : 'Local-only'}</div></div>
 
                     {marketplaceRegistryLoadError && <div role="alert" className="pm-card mb-4 border-2 border-amber-300 bg-amber-50 p-4"><div className="text-sm font-black text-amber-900">อ่านทะเบียนเดิมไม่สำเร็จ</div><div className="mt-1 text-xs font-semibold text-amber-800">{marketplaceRegistryLoadError} • ระบบคงข้อมูลเดิมไว้จนกว่าจะเลือกนำเข้าและยืนยันสร้างทะเบียนใหม่</div></div>}
+
+                    {marketplaceCloudStatus.configured ? (
+                      <div className="pm-card mb-4 p-4 border border-blue-200 bg-blue-50/60">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-black text-blue-950">ทะเบียนกลางสำหรับทุกเครื่อง</div>
+                            <div className="mt-1 text-xs font-semibold text-blue-800">{marketplaceCloudStatus.message}</div>
+                            {marketplaceCloudStatus.email && <div className="mt-1 text-[11px] font-bold text-blue-700">{marketplaceCloudStatus.email}</div>}
+                          </div>
+                          <span className="inline-flex items-center rounded-full border border-blue-200 bg-white px-3 py-1.5 text-[11px] font-black text-blue-700">
+                            {marketplaceCloudStatus.authorized ? 'Cloud Sync' : 'ต้องเข้าสู่ระบบ'}
+                          </span>
+                        </div>
+                        {marketplaceCloudStatus.authorized ? (
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            {marketplaceCloudStatus.phase === 'empty' && marketplaceCloudSyncApi.hasCatalogData(marketplaceRegistry) && <button onClick={handleMarketplaceCloudSeed} disabled={marketplaceCloudBusy} className="pm-primary-btn"><PMIcon name="upload"/>แชร์ทะเบียนจากเครื่องนี้</button>}
+                            <button onClick={handleMarketplaceCloudReload} disabled={marketplaceCloudBusy} className="pm-secondary-btn">โหลดทะเบียนกลางล่าสุด</button>
+                          </div>
+                        ) : (
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <button onClick={handleMarketplaceCloudSignIn} disabled={marketplaceCloudBusy} className="pm-primary-btn">
+                              เข้าสู่ระบบด้วย Cloudflare Access
+                            </button>
+                            {marketplaceCloudStatus.phase === 'unauthorized' && <span className="text-xs font-bold text-red-700">บัญชีนี้ยังไม่ได้รับอนุญาต</span>}
+                          </div>
+                        )}
+                        <div className="mt-3 text-[11px] font-semibold text-blue-700">ซิงก์เฉพาะทะเบียน TikTok/Shopee • ออเดอร์, Batch และคลัง SKU ยังอยู่ในเครื่อง</div>
+                      </div>
+                    ) : (
+                      <div className="pm-card mb-4 p-4 border border-emerald-200 bg-emerald-50/60 text-xs font-semibold text-emerald-800">
+                        ทะเบียนนี้ยังเก็บใน Browser เครื่องนี้
+                      </div>
+                    )}
 
                     <div className="grid md:grid-cols-2 gap-3 mb-4">
                       {['TIKTOK','SHOPEE'].map(platform => { const item = marketplaceRegistrySummary?.[platform]; return <div key={platform} className="pm-card p-4"><div className="flex items-center justify-between"><div className="text-xs font-black uppercase tracking-wider text-slate-500">{platform === 'TIKTOK' ? 'TikTok' : 'Shopee'}</div><span className={`text-[11px] font-black px-2 py-1 rounded-full ${item?.captureDate ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{item?.captureDate ? `นำเข้า ${item.captureDate}` : 'ยังไม่มีข้อมูล'}</span></div><div className="grid grid-cols-3 gap-2 mt-3"><div className="pm-mini-stat"><span>สินค้า</span><strong>{item?.productCount || 0}</strong></div><div className="pm-mini-stat"><span>แถว SKU/ตัวเลือก</span><strong>{item?.skuRowCount || 0}</strong></div><div className="pm-mini-stat"><span>แถวไม่มี Seller SKU</span><strong>{item?.sellerSkuMissingCount || 0}</strong></div></div><div className="text-xs font-semibold text-slate-400 mt-2">ร้าน: {item?.shop || 'ยังไม่ได้นำเข้า'} • สินค้าที่ไม่มี SKU ทุกตัวเลือก: {item?.productsWithoutAnySellerSkuCount || 0}</div></div>; })}
                     </div>
 
                     <div className="grid xl:grid-cols-2 gap-3 mb-4">
-                      {['TIKTOK','SHOPEE'].map(platform => <div key={platform} className="pm-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div><div className="text-sm font-black text-slate-900">นำเข้า {platform === 'TIKTOK' ? 'TikTok' : 'Shopee'}</div><div className="text-xs font-semibold text-slate-500 mt-1">เลือกไฟล์ Registry JSON ของแพลตฟอร์มนี้ • แทนเฉพาะทะเบียนแพลตฟอร์มเดียวกัน</div></div><label className={`pm-primary-btn cursor-pointer shrink-0 ${marketplaceRegistryBusy ? 'opacity-50 pointer-events-none' : ''}`}><PMIcon name="upload"/> เลือกไฟล์ JSON<input type="file" accept=".json,application/json" disabled={marketplaceRegistryBusy} className="hidden" onChange={event => handleMarketplaceRegistryImport(event, platform)}/></label></div>)}
+                      {['TIKTOK','SHOPEE'].map(platform => <div key={platform} className="pm-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div><div className="text-sm font-black text-slate-900">นำเข้า {platform === 'TIKTOK' ? 'TikTok' : 'Shopee'}</div><div className="text-xs font-semibold text-slate-500 mt-1">เลือกไฟล์ Registry JSON ของแพลตฟอร์มนี้ • แทนเฉพาะทะเบียนแพลตฟอร์มเดียวกัน</div></div><label className={`pm-primary-btn cursor-pointer shrink-0 ${marketplaceRegistryBusy || (marketplaceCloudStatus.configured && !marketplaceCloudStatus.authorized) ? 'opacity-50 pointer-events-none' : ''}`}><PMIcon name="upload"/> เลือกไฟล์ JSON<input type="file" accept=".json,application/json" disabled={marketplaceRegistryBusy || (marketplaceCloudStatus.configured && !marketplaceCloudStatus.authorized)} className="hidden" onChange={event => handleMarketplaceRegistryImport(event, platform)}/></label></div>)}
                     </div>
 
                     <div className="pm-card p-4 mb-4"><div className="flex flex-wrap gap-2 items-center justify-between"><div className="flex flex-wrap gap-2"><button onClick={()=>setMarketplaceRegistryPlatformFilter('TIKTOK')} className={`pm-nav-btn !text-xs ${marketplaceRegistryPlatformFilter==='TIKTOK'?'pm-nav-btn-active':''}`}>TikTok</button><button onClick={()=>setMarketplaceRegistryPlatformFilter('SHOPEE')} className={`pm-nav-btn !text-xs ${marketplaceRegistryPlatformFilter==='SHOPEE'?'pm-nav-btn-active':''}`}>Shopee</button><span className="mx-1 border-l border-slate-200"/><button onClick={()=>setMarketplaceRegistryDisplayMode('products')} className={`pm-secondary-btn !py-2 ${marketplaceRegistryDisplayMode==='products'?'!border-blue-400 !bg-blue-50 !text-blue-800':''}`}>สินค้า</button><button onClick={()=>setMarketplaceRegistryDisplayMode('skuRows')} className={`pm-secondary-btn !py-2 ${marketplaceRegistryDisplayMode==='skuRows'?'!border-blue-400 !bg-blue-50 !text-blue-800':''}`}>SKU / ตัวเลือก</button></div><div className="flex items-center gap-2"><input aria-label="ค้นหาทะเบียนสินค้า" value={marketplaceRegistrySearch} onChange={event=>setMarketplaceRegistrySearch(event.target.value)} placeholder="ค้นหาชื่อ, ID, Seller SKU..." className="pm-input !py-2 min-w-[220px]"/><select aria-label="จำนวนรายการต่อหน้า" value={marketplaceRegistryPageSize} onChange={event=>{setMarketplaceRegistryPageSize(Number(event.target.value));setMarketplaceRegistryPage(1);}} className="pm-select !py-2"><option value="20">20/หน้า</option><option value="50">50/หน้า</option><option value="100">100/หน้า</option></select></div></div></div>
@@ -3705,7 +4021,7 @@
 
                     {selectedMarketplaceRegistry?.productsWithoutAnySellerSku?.length>0&&<details className="pm-card mt-4 p-4"><summary className="cursor-pointer text-sm font-black text-amber-800">สินค้าที่ไม่มี Seller SKU ในทุกตัวเลือก ({selectedMarketplaceRegistry.productsWithoutAnySellerSku.length})</summary><div className="mt-3 grid md:grid-cols-2 gap-2">{selectedMarketplaceRegistry.productsWithoutAnySellerSku.map(product=><div key={product.productId||product.itemId} className="rounded-lg border border-amber-100 bg-amber-50/60 p-2.5"><div className="text-xs font-bold text-slate-800">{product.productName||product.title||'-'}</div><div className="font-mono text-[11px] text-slate-500 mt-1">{product.productId||product.itemId}</div></div>)}</div></details>}
 
-                    <div className="mt-4 text-xs font-semibold text-slate-500">ข้อมูลทะเบียนเก็บใน Browser เครื่องนี้และอาจอยู่ใน Workspace Backup • ไม่ถูกแปลงเป็น SKU Mapping โดยอัตโนมัติ</div>
+                    <div className="mt-4 text-xs font-semibold text-slate-500">ข้อมูลทะเบียนจะซิงก์ข้ามเครื่องเมื่อเข้าสู่ระบบ • Workspace Backup ยังเก็บสำเนาในเครื่อง • ไม่ถูกแปลงเป็น SKU Mapping โดยอัตโนมัติ</div>
                   </section>
                 )}
 
