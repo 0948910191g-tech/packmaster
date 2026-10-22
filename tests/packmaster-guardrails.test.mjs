@@ -9,7 +9,7 @@ const root = path.resolve(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
 // Freeze the Phase 2 Batch adapter byte-for-byte using its canonical Git blob SHA-1.
-const batchSource = read('packmaster-batch.js');
+const batchSource = read('packmaster-batch.js').replace(/\r\n/g, '\n');
 const gitBlobSha = crypto.createHash('sha1')
   .update(`blob ${Buffer.byteLength(batchSource, 'utf8')}\0`)
   .update(batchSource, 'utf8')

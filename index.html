@@ -17,6 +17,7 @@
   <script src="./packmaster-batch-transition.js"></script>
   <script src="./packmaster-reprint-snapshot.js"></script>
   <script src="./packmaster-workspace.js"></script>
+  <script src="./packmaster-marketplace-registry.js"></script>
   <script src="./packmaster-duplicate.js"></script>
   <script src="./packmaster-exceptions.js"></script>
   <script src="./packmaster-pilot-safety.js"></script>
@@ -1180,6 +1181,7 @@
       const batchTransitionApi = window.PackMasterBatchTransition;
       const reprintSnapshotApi = window.PackMasterReprintSnapshot;
       const workspaceApi = window.PackMasterWorkspace;
+      const marketplaceRegistryApi = window.PackMasterMarketplaceRegistry;
       const duplicateApi = window.PackMasterDuplicate;
       const exceptionApi = window.PackMasterExceptions;
       const pilotSafetyApi = window.PackMasterPilotSafety;
@@ -1230,6 +1232,15 @@
         }
       });
       const [newRule, setNewRule] = useState({ keyword: '', shortName: '' });
+      const [marketplaceRegistryLoad] = useState(() => marketplaceRegistryApi ? marketplaceRegistryApi.loadStore(window.localStorage) : { store: null, error: 'โมดูลทะเบียน Marketplace ยังไม่พร้อม' });
+      const [marketplaceRegistry, setMarketplaceRegistry] = useState(() => marketplaceRegistryLoad.store);
+      const [marketplaceRegistryLoadError, setMarketplaceRegistryLoadError] = useState(() => marketplaceRegistryLoad.error || '');
+      const [marketplaceRegistryPlatformFilter, setMarketplaceRegistryPlatformFilter] = useState('TIKTOK');
+      const [marketplaceRegistryDisplayMode, setMarketplaceRegistryDisplayMode] = useState('products');
+      const [marketplaceRegistrySearch, setMarketplaceRegistrySearch] = useState('');
+      const [marketplaceRegistryPage, setMarketplaceRegistryPage] = useState(1);
+      const [marketplaceRegistryPageSize, setMarketplaceRegistryPageSize] = useState(20);
+      const [marketplaceRegistryBusy, setMarketplaceRegistryBusy] = useState(false);
       const [editingId, setEditingId] = useState(null); 
       
       const [uploadError, setUploadError] = useState('');
@@ -2671,6 +2682,37 @@
         setRestoreFileName('');
       };
 
+      const handleMarketplaceRegistryImport = async (event, expectedPlatform) => {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+        setMarketplaceRegistryBusy(true);
+        try {
+          if (!marketplaceRegistryApi) throw new Error('โมดูลทะเบียน Marketplace ยังไม่พร้อม');
+          const importedRegistry = marketplaceRegistryApi.validatePlatformRegistry(JSON.parse(await file.text()), expectedPlatform);
+          let currentStore = marketplaceRegistry || marketplaceRegistryApi.createEmptyStore();
+          if (marketplaceRegistryLoadError) {
+            const rebuild = window.confirm('ข้อมูลทะเบียนเดิมอ่านไม่ได้ การนำเข้านี้จะสร้างทะเบียน Marketplace ใหม่และแทนข้อมูลที่เสีย โดยข้อมูล Batch และ SKU Mapping จะไม่เปลี่ยน ต้องการดำเนินการต่อหรือไม่?');
+            if (!rebuild) return;
+            currentStore = marketplaceRegistryApi.createEmptyStore();
+          } else if (currentStore.platforms[expectedPlatform]) {
+            const replace = window.confirm('มีข้อมูล ' + expectedPlatform + ' อยู่แล้ว ต้องการแทนด้วยไฟล์ ' + file.name + ' หรือไม่? แพลตฟอร์มอีกฝั่งจะคงเดิม');
+            if (!replace) return;
+          }
+          const nextStore = marketplaceRegistryApi.replacePlatformRegistry(currentStore, importedRegistry);
+          marketplaceRegistryApi.saveStore(window.localStorage, nextStore);
+          setMarketplaceRegistry(nextStore);
+          setMarketplaceRegistryLoadError('');
+          setMarketplaceRegistrySearch('');
+          setMarketplaceRegistryPage(1);
+          showToast('นำเข้า ' + expectedPlatform + ' แล้ว • สินค้า ' + importedRegistry.summary.listedProductCount + ' • แถว SKU/ตัวเลือก ' + importedRegistry.summary.skuModelRowCount, 'success');
+        } catch (err) {
+          console.error('Marketplace registry import failed', err);
+          showToast('นำเข้าทะเบียนไม่สำเร็จ: ' + (err.message || 'รูปแบบไฟล์ไม่ถูกต้อง'), 'error');
+        } finally {
+          event.target.value = '';
+          setMarketplaceRegistryBusy(false);
+        }
+      };
       const handleWorkspaceBackup = async () => {
         if (!workspaceApi || !batchApi) {
           showToast('โมดูล Workspace Backup ยังไม่พร้อม', 'error');
@@ -2694,7 +2736,8 @@
             settings: {
               thermalMode,
               duplicateFingerprints: duplicateApi ? duplicateApi.exportFingerprintStore() : {},
-              archiveState: archiveApi ? archiveApi.exportArchiveStore() : {}
+              archiveState: archiveApi ? archiveApi.exportArchiveStore() : {},
+              marketplaceRegistry: marketplaceRegistryLoadError ? null : marketplaceRegistry
             },
             appVersion: document.title
           });
@@ -2731,13 +2774,18 @@
           const backup = workspaceApi.validateBackup(parsed);
           if (duplicateApi) duplicateApi.validateFingerprintStore(backup.settings.duplicateFingerprints || {});
           if (archiveApi) archiveApi.validateArchiveStore(backup.settings.archiveState || {});
+          const restoredMarketplaceRegistry = backup.settings.marketplaceRegistry == null
+            ? null
+            : marketplaceRegistryApi.validateStore(backup.settings.marketplaceRegistry);
           const preparedRules = prepareSkuRules(backup.skuRules, `restore-${Date.now()}`);
           if (preparedRules.report.conflicts.length > 0) {
             throw new Error(`Backup มี SKU conflict ${preparedRules.report.conflicts.length} กลุ่ม ต้องให้ผู้ใช้ตัดสินใจก่อน Restore`);
           }
           const safeBackup = { ...backup, skuRules: preparedRules.rules };
+          if (restoredMarketplaceRegistry) safeBackup.settings = { ...backup.settings, marketplaceRegistry: restoredMarketplaceRegistry };
           const summary = workspaceApi.getBackupSummary(safeBackup);
-          setRestorePreview({ backup: safeBackup, summary, skuIntegrityReport: preparedRules.report });
+          const marketplaceSummary = restoredMarketplaceRegistry ? marketplaceRegistryApi.getSummary(restoredMarketplaceRegistry) : null;
+          setRestorePreview({ backup: safeBackup, summary, marketplaceSummary, skuIntegrityReport: preparedRules.report });
           setRestoreFileName(file.name);
           const integrityNote = preparedRules.report.rekeyed.length > 0
             ? ` • จะ Re-key Rule ID ${preparedRules.report.rekeyed.length} รายการโดยไม่เปลี่ยน Keyword/ชื่อภายใน`
@@ -2774,6 +2822,10 @@
         const previousThermalMode = thermalMode;
         const previousDuplicateFingerprints = duplicateApi ? duplicateApi.exportFingerprintStore() : {};
         const previousArchiveState = archiveApi ? archiveApi.exportArchiveStore() : {};
+        const previousMarketplaceRegistry = marketplaceRegistry;
+        const previousMarketplaceRegistryLoadError = marketplaceRegistryLoadError;
+        let previousMarketplaceRegistryRaw = null;
+        try { previousMarketplaceRegistryRaw = window.localStorage.getItem(marketplaceRegistryApi.STORAGE_KEY); } catch (error) {}
         let safetyBackup = null;
         let rollbackSucceeded = false;
 
@@ -2792,7 +2844,8 @@
             settings: {
               thermalMode: previousThermalMode,
               duplicateFingerprints: previousDuplicateFingerprints,
-              archiveState: previousArchiveState
+              archiveState: previousArchiveState,
+              marketplaceRegistry: previousMarketplaceRegistryLoadError ? null : previousMarketplaceRegistry
             },
             appVersion: document.title
           });
@@ -2801,6 +2854,11 @@
           await workspaceApi.replaceWorkspaceBatches(backup, batchApi);
           if (duplicateApi) duplicateApi.replaceFingerprintStore(backup.settings.duplicateFingerprints || {});
           if (archiveApi) archiveApi.replaceArchiveStore(backup.settings.archiveState || {});
+          if (backup.settings.marketplaceRegistry != null) {
+            marketplaceRegistryApi.saveStore(window.localStorage, backup.settings.marketplaceRegistry);
+            setMarketplaceRegistry(backup.settings.marketplaceRegistry);
+            setMarketplaceRegistryLoadError('');
+          }
 
           setSkuRules(restoredRules);
           if (typeof backup.settings.thermalMode === 'boolean') {
@@ -2827,6 +2885,10 @@
               await workspaceApi.replaceWorkspaceBatches(safetyBackup, batchApi);
               if (duplicateApi) duplicateApi.replaceFingerprintStore(previousDuplicateFingerprints);
               if (archiveApi) archiveApi.replaceArchiveStore(previousArchiveState);
+              if (previousMarketplaceRegistryRaw == null) window.localStorage.removeItem(marketplaceRegistryApi.STORAGE_KEY);
+              else window.localStorage.setItem(marketplaceRegistryApi.STORAGE_KEY, previousMarketplaceRegistryRaw);
+              setMarketplaceRegistry(previousMarketplaceRegistry);
+              setMarketplaceRegistryLoadError(previousMarketplaceRegistryLoadError);
               const previousBatches = await batchApi.listBatches();
               setBatches(previousBatches);
               setSkuRules(previousSkuRules);
@@ -3119,6 +3181,27 @@
       const skuPageCount = Math.max(1, Math.ceil(sortedSkuRules.length / skuPageSize));
       const visibleSkuRules = sortedSkuRules.slice((skuPage - 1) * skuPageSize, skuPage * skuPageSize);
 
+      const marketplaceRegistrySummary = useMemo(() => marketplaceRegistryApi && marketplaceRegistry
+        ? marketplaceRegistryApi.getSummary(marketplaceRegistry)
+        : null, [marketplaceRegistry]);
+      const selectedMarketplaceRegistry = marketplaceRegistry?.platforms?.[marketplaceRegistryPlatformFilter] || null;
+      const filteredMarketplaceRegistryRows = useMemo(() => {
+        if (!selectedMarketplaceRegistry) return [];
+        const sourceRows = marketplaceRegistryDisplayMode === 'products'
+          ? selectedMarketplaceRegistry.products.map(product => ({ ...product, __recordType: 'product' }))
+          : selectedMarketplaceRegistry.skuRows.map(row => ({ ...row, __recordType: 'skuRow' }));
+        const query = marketplaceRegistrySearch.trim().toLowerCase();
+        return sourceRows.filter(row => {
+          const productName = row.productName || row.title || '';
+          const id = row.productId || row.itemId || '';
+          const searchArea = productName + ' ' + id + ' ' + (row.sellerSku || '') + ' ' + (row.parentSku || '') + ' ' + (row.variantName || '') + ' ' + (row.modelId || '');
+          return !query || searchArea.toLowerCase().includes(query);
+        });
+      }, [selectedMarketplaceRegistry, marketplaceRegistryDisplayMode, marketplaceRegistrySearch]);
+      const marketplaceRegistryPageCount = Math.max(1, Math.ceil(filteredMarketplaceRegistryRows.length / marketplaceRegistryPageSize));
+      const visibleMarketplaceRegistryRows = filteredMarketplaceRegistryRows.slice((marketplaceRegistryPage - 1) * marketplaceRegistryPageSize, marketplaceRegistryPage * marketplaceRegistryPageSize);
+      useEffect(() => { setMarketplaceRegistryPage(1); }, [marketplaceRegistryPlatformFilter, marketplaceRegistryDisplayMode, marketplaceRegistrySearch]);
+      useEffect(() => { if (marketplaceRegistryPage > marketplaceRegistryPageCount) setMarketplaceRegistryPage(marketplaceRegistryPageCount); }, [marketplaceRegistryPage, marketplaceRegistryPageCount]);
       const reviewPageCount = Math.max(1, Math.ceil(FilteredOrders.length / reviewPageSize));
       const visibleReviewOrders = FilteredOrders.slice((reviewPage - 1) * reviewPageSize, reviewPage * reviewPageSize);
       useEffect(() => { setSkuPage(1); }, [skuSearch, skuFilter, skuSort]);
@@ -3287,6 +3370,7 @@
                     <div className="pm-sidebar-section-label text-[8px] font-black tracking-[0.14em] uppercase text-blue-200/35 px-3 mb-1">เครื่องมือ</div>
                     {activeBatchId && <button aria-label="อัปโหลดไฟล์" title={sidebarCollapsed ? 'อัปโหลดไฟล์' : undefined} onClick={()=>navigateView('upload')} className={`pm-nav-btn ${activeView==='upload'?'pm-nav-btn-active':''}`}><PMIcon name="upload" className="w-[17px] h-[17px] flex-none"/><span className="pm-nav-label">อัปโหลดไฟล์</span></button>}
                     <button aria-label="เครื่องมือ / ความปลอดภัย" title={sidebarCollapsed ? 'เครื่องมือ / ความปลอดภัย' : undefined} onClick={()=>navigateView('safety')} className={`pm-nav-btn ${activeView==='safety'?'pm-nav-btn-active':''}`}><PMIcon name="shield" className="w-[17px] h-[17px] flex-none"/><span className="pm-nav-label">เครื่องมือ / ความปลอดภัย</span></button>
+                    <button aria-label="ทะเบียนสินค้า Marketplace" title={sidebarCollapsed ? 'ทะเบียนสินค้า Marketplace' : undefined} onClick={()=>navigateView('marketplace-registry')} className={"pm-nav-btn " + (activeView === 'marketplace-registry' ? 'pm-nav-btn-active' : '')}><PMIcon name="box" className="w-[17px] h-[17px] flex-none"/><span className="pm-nav-label">ทะเบียนสินค้า</span></button>
                   </div>
                 </div>
                 <div className="mt-auto p-3 border-t border-white/10">
@@ -3601,6 +3685,30 @@
                   </section>
                 )}
 
+                {activeView === 'marketplace-registry' && (
+                  <section data-pm-view="marketplace-registry" className="pm-page">
+                    <div className="pm-page-head"><div><div className="pm-eyebrow">Marketplace Catalog</div><h2 className="pm-page-title">ทะเบียนสินค้า Marketplace</h2><p className="pm-page-subtitle">เก็บข้อมูลสินค้าตามแพลตฟอร์มไว้ดูและค้นหาแยกจากคลังจับคู่ SKU • ไม่สร้างชื่อภายในหรือ Mapping อัตโนมัติ</p></div><div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-black"><PMIcon name="shield"/> Local-only</div></div>
+
+                    {marketplaceRegistryLoadError && <div role="alert" className="pm-card mb-4 border-2 border-amber-300 bg-amber-50 p-4"><div className="text-sm font-black text-amber-900">อ่านทะเบียนเดิมไม่สำเร็จ</div><div className="mt-1 text-xs font-semibold text-amber-800">{marketplaceRegistryLoadError} • ระบบคงข้อมูลเดิมไว้จนกว่าจะเลือกนำเข้าและยืนยันสร้างทะเบียนใหม่</div></div>}
+
+                    <div className="grid md:grid-cols-2 gap-3 mb-4">
+                      {['TIKTOK','SHOPEE'].map(platform => { const item = marketplaceRegistrySummary?.[platform]; return <div key={platform} className="pm-card p-4"><div className="flex items-center justify-between"><div className="text-xs font-black uppercase tracking-wider text-slate-500">{platform === 'TIKTOK' ? 'TikTok' : 'Shopee'}</div><span className={`text-[11px] font-black px-2 py-1 rounded-full ${item?.captureDate ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{item?.captureDate ? `นำเข้า ${item.captureDate}` : 'ยังไม่มีข้อมูล'}</span></div><div className="grid grid-cols-3 gap-2 mt-3"><div className="pm-mini-stat"><span>สินค้า</span><strong>{item?.productCount || 0}</strong></div><div className="pm-mini-stat"><span>แถว SKU/ตัวเลือก</span><strong>{item?.skuRowCount || 0}</strong></div><div className="pm-mini-stat"><span>แถวไม่มี Seller SKU</span><strong>{item?.sellerSkuMissingCount || 0}</strong></div></div><div className="text-xs font-semibold text-slate-400 mt-2">ร้าน: {item?.shop || 'ยังไม่ได้นำเข้า'} • สินค้าที่ไม่มี SKU ทุกตัวเลือก: {item?.productsWithoutAnySellerSkuCount || 0}</div></div>; })}
+                    </div>
+
+                    <div className="grid xl:grid-cols-2 gap-3 mb-4">
+                      {['TIKTOK','SHOPEE'].map(platform => <div key={platform} className="pm-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div><div className="text-sm font-black text-slate-900">นำเข้า {platform === 'TIKTOK' ? 'TikTok' : 'Shopee'}</div><div className="text-xs font-semibold text-slate-500 mt-1">เลือกไฟล์ Registry JSON ของแพลตฟอร์มนี้ • แทนเฉพาะทะเบียนแพลตฟอร์มเดียวกัน</div></div><label className={`pm-primary-btn cursor-pointer shrink-0 ${marketplaceRegistryBusy ? 'opacity-50 pointer-events-none' : ''}`}><PMIcon name="upload"/> เลือกไฟล์ JSON<input type="file" accept=".json,application/json" disabled={marketplaceRegistryBusy} className="hidden" onChange={event => handleMarketplaceRegistryImport(event, platform)}/></label></div>)}
+                    </div>
+
+                    <div className="pm-card p-4 mb-4"><div className="flex flex-wrap gap-2 items-center justify-between"><div className="flex flex-wrap gap-2"><button onClick={()=>setMarketplaceRegistryPlatformFilter('TIKTOK')} className={`pm-nav-btn !text-xs ${marketplaceRegistryPlatformFilter==='TIKTOK'?'pm-nav-btn-active':''}`}>TikTok</button><button onClick={()=>setMarketplaceRegistryPlatformFilter('SHOPEE')} className={`pm-nav-btn !text-xs ${marketplaceRegistryPlatformFilter==='SHOPEE'?'pm-nav-btn-active':''}`}>Shopee</button><span className="mx-1 border-l border-slate-200"/><button onClick={()=>setMarketplaceRegistryDisplayMode('products')} className={`pm-secondary-btn !py-2 ${marketplaceRegistryDisplayMode==='products'?'!border-blue-400 !bg-blue-50 !text-blue-800':''}`}>สินค้า</button><button onClick={()=>setMarketplaceRegistryDisplayMode('skuRows')} className={`pm-secondary-btn !py-2 ${marketplaceRegistryDisplayMode==='skuRows'?'!border-blue-400 !bg-blue-50 !text-blue-800':''}`}>SKU / ตัวเลือก</button></div><div className="flex items-center gap-2"><input aria-label="ค้นหาทะเบียนสินค้า" value={marketplaceRegistrySearch} onChange={event=>setMarketplaceRegistrySearch(event.target.value)} placeholder="ค้นหาชื่อ, ID, Seller SKU..." className="pm-input !py-2 min-w-[220px]"/><select aria-label="จำนวนรายการต่อหน้า" value={marketplaceRegistryPageSize} onChange={event=>{setMarketplaceRegistryPageSize(Number(event.target.value));setMarketplaceRegistryPage(1);}} className="pm-select !py-2"><option value="20">20/หน้า</option><option value="50">50/หน้า</option><option value="100">100/หน้า</option></select></div></div></div>
+
+                    {!selectedMarketplaceRegistry ? <PMEmptyState icon="box" title={`ยังไม่มีทะเบียน ${marketplaceRegistryPlatformFilter === 'TIKTOK' ? 'TikTok' : 'Shopee'}`} body="นำเข้าไฟล์ Registry JSON ของแพลตฟอร์มนี้เพื่อดูแคตตาล็อกสินค้าและ SKU"/> : <div className="pm-card overflow-x-auto"><table className="pm-table min-w-[860px]"><thead><tr><th>{marketplaceRegistryDisplayMode==='products'?'Product / Item ID':'Product / Model ID'}</th><th>ชื่อสินค้า / ตัวเลือก</th><th>Seller SKU</th><th>Parent SKU</th><th>สถานะ</th></tr></thead><tbody>{visibleMarketplaceRegistryRows.map((row,index)=>{const productName=row.productName||row.title||'-';const productId=row.productId||row.itemId||'-';const skuRow=row.__recordType==='skuRow';const productHasVariantSku=Array.isArray(row.variants)&&row.variants.some(variant=>variant.sellerSku&&variant.sellerSku.trim());const sellerSku=skuRow?(row.sellerSku&&row.sellerSku.trim()?row.sellerSku:'ไม่แสดง'):marketplaceRegistryPlatformFilter==='SHOPEE'?(productHasVariantSku?'อยู่ในตัวเลือก':'ดูตัวเลือก'):(row.sellerSku&&row.sellerSku.trim()?row.sellerSku:productHasVariantSku?'อยู่ในตัวเลือก':'ไม่แสดง');const missingSku=sellerSku==='ไม่แสดง';return <tr key={`${marketplaceRegistryPlatformFilter}-${skuRow?'sku':'product'}-${row.modelId||row.variantOrdinal||productId}-${(marketplaceRegistryPage-1)*marketplaceRegistryPageSize+index}`}><td><div className="font-mono text-xs font-bold text-slate-700 break-all">{skuRow?(row.modelId||productId):productId}</div><div className="text-[11px] text-slate-400">{skuRow?`Product: ${productId}`:row.status||'-'}</div></td><td><div className="text-xs font-bold text-slate-800">{productName}</div>{skuRow&&row.variantName&&<div className="text-[11px] text-slate-500 mt-1">{row.variantName}</div>}{!skuRow&&<div className="text-[11px] text-slate-500 mt-1">{Array.isArray(row.variants)?row.variants.length:0} ตัวเลือก</div>}</td><td><span className={`text-xs font-black ${missingSku?'text-amber-700':marketplaceRegistryDisplayMode==='products'?'text-blue-700':'text-slate-800'}`}>{sellerSku}</span></td><td className="text-xs font-semibold text-slate-600">{row.parentSku||'-'}</td><td><span className={`text-[11px] font-black px-2 py-1 rounded-full ${missingSku?'bg-amber-50 text-amber-700':marketplaceRegistryDisplayMode==='products'?'bg-blue-50 text-blue-700':'bg-emerald-50 text-emerald-700'}`}>{missingSku?'ไม่มี Seller SKU':skuRow?'มี Seller SKU':'ดู SKU/ตัวเลือก'}</span></td></tr>;})}{visibleMarketplaceRegistryRows.length===0&&<tr><td colSpan="5" className="text-center text-xs font-semibold text-slate-400 py-8">ไม่พบรายการที่ตรงกับคำค้นหา</td></tr>}</tbody></table><div className="pm-pagination p-4"><div className="text-xs font-bold text-slate-500">แสดง {visibleMarketplaceRegistryRows.length} จาก {filteredMarketplaceRegistryRows.length} รายการ • หน้า {marketplaceRegistryPage}/{marketplaceRegistryPageCount}</div><div className="flex gap-2"><button disabled={marketplaceRegistryPage<=1} onClick={()=>setMarketplaceRegistryPage(page=>Math.max(1,page-1))} className="pm-page-btn">‹</button><button disabled={marketplaceRegistryPage>=marketplaceRegistryPageCount} onClick={()=>setMarketplaceRegistryPage(page=>Math.min(marketplaceRegistryPageCount,page+1))} className="pm-page-btn">›</button></div></div></div>}
+
+                    {selectedMarketplaceRegistry?.productsWithoutAnySellerSku?.length>0&&<details className="pm-card mt-4 p-4"><summary className="cursor-pointer text-sm font-black text-amber-800">สินค้าที่ไม่มี Seller SKU ในทุกตัวเลือก ({selectedMarketplaceRegistry.productsWithoutAnySellerSku.length})</summary><div className="mt-3 grid md:grid-cols-2 gap-2">{selectedMarketplaceRegistry.productsWithoutAnySellerSku.map(product=><div key={product.productId||product.itemId} className="rounded-lg border border-amber-100 bg-amber-50/60 p-2.5"><div className="text-xs font-bold text-slate-800">{product.productName||product.title||'-'}</div><div className="font-mono text-[11px] text-slate-500 mt-1">{product.productId||product.itemId}</div></div>)}</div></details>}
+
+                    <div className="mt-4 text-xs font-semibold text-slate-500">ข้อมูลทะเบียนเก็บใน Browser เครื่องนี้และอาจอยู่ใน Workspace Backup • ไม่ถูกแปลงเป็น SKU Mapping โดยอัตโนมัติ</div>
+                  </section>
+                )}
+
                 {activeView === 'safety' && (
                   <section data-pm-view="safety" data-pm-layout-v4 className="pm-page">
                     <div className="pm-page-head"><div><div className="pm-eyebrow">Local Safety</div><h2 className="pm-page-title">สำรองข้อมูล & ความปลอดภัย</h2><p className="pm-page-subtitle">สำรอง Workspace, ตรวจพื้นที่ และสร้าง Diagnostics โดยข้อมูลไม่ถูกส่งขึ้น Server</p></div><div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-black"><PMIcon name="shield"/> Local-only</div></div>
@@ -3611,7 +3719,7 @@
                         <div className="flex flex-wrap gap-2 mt-5"><button data-pm-action="workspace-backup" onClick={handleWorkspaceBackup} disabled={workspaceBusy||!batchStorageReady} className="pm-primary-btn"><PMIcon name="download"/> สำรอง Workspace</button><label className={`pm-secondary-btn cursor-pointer ${workspaceBusy||!batchStorageReady?'opacity-50 pointer-events-none':''}`}><PMIcon name="upload"/> กู้คืน Workspace<input type="file" accept=".json,application/json" disabled={workspaceBusy||!batchStorageReady} className="hidden" onChange={handleWorkspaceRestoreFile}/></label></div>
                         <div className="mt-4 rounded-xl bg-amber-50 border border-amber-200 px-3 py-3 text-[11px] font-semibold leading-5 text-amber-800">Backup อาจมีข้อมูลที่อ่านจากใบออเดอร์ ควรเก็บเป็นข้อมูลภายในร้านและไม่อัปโหลดไฟล์จริงขึ้น Public GitHub</div>
 
-                        {restorePreview&&<div className="mt-4 rounded-xl border-2 border-blue-200 bg-blue-50/50 p-4"><div className="text-[10px] font-black text-blue-600">ตรวจไฟล์ผ่านแล้ว • {restoreFileName||'Backup JSON'}</div><div className="grid grid-cols-3 gap-2 mt-3"><div className="pm-mini-stat"><span>SKU Rules</span><strong>{restorePreview.summary.skuRules}</strong></div><div className="pm-mini-stat"><span>Batches</span><strong>{restorePreview.summary.batches}</strong></div><div className="pm-mini-stat"><span>Orders</span><strong>{restorePreview.summary.orders}</strong></div></div><div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-blue-200"><span className="text-[10px] font-bold text-red-600">Replace Workspace จะแทนข้อมูล Local ปัจจุบัน</span><div className="flex gap-2"><button onClick={resetRestorePreview} className="pm-ghost-btn">ยกเลิก</button><button onClick={handleConfirmWorkspaceRestore} disabled={workspaceBusy} className="pm-danger-btn">Replace Workspace</button></div></div></div>}
+                        {restorePreview&&<div className="mt-4 rounded-xl border-2 border-blue-200 bg-blue-50/50 p-4"><div className="text-[10px] font-black text-blue-600">ตรวจไฟล์ผ่านแล้ว • {restoreFileName||'Backup JSON'}</div>{restorePreview.marketplaceSummary&&<div className="mt-2 text-xs font-bold text-blue-800">Marketplace Registry: TikTok {restorePreview.marketplaceSummary.TIKTOK.productCount} สินค้า • Shopee {restorePreview.marketplaceSummary.SHOPEE.productCount} สินค้า</div>}<div className="grid grid-cols-3 gap-2 mt-3"><div className="pm-mini-stat"><span>SKU Rules</span><strong>{restorePreview.summary.skuRules}</strong></div><div className="pm-mini-stat"><span>Batches</span><strong>{restorePreview.summary.batches}</strong></div><div className="pm-mini-stat"><span>Orders</span><strong>{restorePreview.summary.orders}</strong></div></div><div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-blue-200"><span className="text-[10px] font-bold text-red-600">Replace Workspace จะแทนข้อมูล Local ปัจจุบัน</span><div className="flex gap-2"><button onClick={resetRestorePreview} className="pm-ghost-btn">ยกเลิก</button><button onClick={handleConfirmWorkspaceRestore} disabled={workspaceBusy} className="pm-danger-btn">Replace Workspace</button></div></div></div>}
                       </div>
 
                       <div className="pm-card p-5">
