@@ -1,6 +1,6 @@
 # PackMaster Local Data Privacy Guide
 
-PackMaster รุ่น Local-first ไม่มี Account, Cloud Database หรือ Analytics SaaS ข้อมูลการทำงานหลักอยู่ใน Browser ของเครื่องที่ใช้งาน อย่างไรก็ตาม Local ไม่ได้แปลว่าไม่มีข้อมูลส่วนบุคคล ผู้ใช้ยังต้องดูแลไฟล์ PDF, Parsed Orders, Workspace Backup และไฟล์ Export ภายในร้านอย่างเหมาะสม
+PackMaster เก็บ Batch, Orders และ SKU Mapping ใน Browser แบบ Local-first โดยค่าเริ่มต้น ไม่มี Account หรือ Analytics SaaS แต่มีตัวเลือกซิงก์เฉพาะทะเบียนสินค้า Marketplace กับ Cloudflare D1 หลังตั้งค่า Worker แยกต่างหาก อย่างไรก็ตาม Local ไม่ได้แปลว่าไม่มีข้อมูลส่วนบุคคล ผู้ใช้ยังต้องดูแลไฟล์ PDF, Parsed Orders, Workspace Backup และไฟล์ Export ภายในร้านอย่างเหมาะสม
 
 ## ข้อมูลที่อาจมีข้อมูลลูกค้า
 
@@ -14,7 +14,9 @@ PackMaster รุ่น Local-first ไม่มี Account, Cloud Database ห�
 
 ## Marketplace Product Registry
 
-Marketplace product names and SKU/model rows are stored in this Browser's local storage, separated by TikTok and Shopee. They remain separate from the SKU Mapping library; importing a catalog does not create internal names or matching rules. Workspace Backups include the registry when it can be read successfully. Keep source catalogs and backups private and out of Git.
+Marketplace product names and SKU/model rows are stored in this Browser's local storage by default, separated by TikTok and Shopee. They remain separate from the SKU Mapping library; importing a catalog does not create internal names or matching rules. Workspace Backups include the registry when it can be read successfully. Keep source catalogs and backups private and out of Git.
+
+An optional Cloudflare D1 registry sync is available only after a Worker and database are configured. Cloud sync is manual, platform-scoped, and requires confirmation; it uploads only the marketplace catalog, not customer orders, PDF images, batches, or SKU Mapping. The access token is held in page memory, not localStorage, and must never be committed or embedded in the HTML. This token-entry prototype is for an internal trusted environment; production multi-user access requires a dedicated authentication and authorization review. See `docs/REGISTRY_CLOUD_SETUP.md`.
 
 ## ข้อมูล Diagnostics
 

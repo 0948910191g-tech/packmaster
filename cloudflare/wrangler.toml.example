@@ -1,0 +1,11 @@
+name = "packmaster-registry"
+main = "registry-worker.mjs"
+compatibility_date = "2026-10-01"
+
+[[d1_databases]]
+binding = "REGISTRY_DB"
+database_name = "packmaster-registry"
+database_id = "REPLACE_WITH_DATABASE_ID"
+
+[vars]
+ALLOWED_ORIGINS = "https://0948910191g-tech.github.io"

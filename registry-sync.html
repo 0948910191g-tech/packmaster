@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src https://packmaster-registry.hakubaby2022.workers.dev; base-uri 'none'; object-src 'none'; form-action 'none'; frame-src 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>Packmaster • Secure Registry Sync</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#f6f4fb;color:#251944;font:15px/1.55 system-ui,'Segoe UI',sans-serif}
+    main{max-width:980px;margin:40px auto;padding:0 20px 50px}header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:24px}
+    h1{font-size:28px;line-height:1.2;margin:4px 0}h2{font-size:18px;margin:0 0 8px}.muted{color:#6f6680}.small{font-size:13px}
+    a{color:#633fb2}section{background:white;border:1px solid #e6e0f0;border-radius:18px;padding:22px;margin:16px 0;box-shadow:0 4px 25px #331a630b}
+    label{display:block;font-weight:700;margin:12px 0 6px}input{display:block;width:100%;padding:12px;border:1px solid #c9bddf;border-radius:10px;font:inherit}
+    input:focus{outline:2px solid #7550bb;outline-offset:2px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+    button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid #7550bb;padding:10px 13px;background:white;color:#55338d;font-weight:700}
+    button.primary{background:#6941ab;color:white}button:disabled{opacity:.55;cursor:wait}button:focus-visible{outline:3px solid #8a65c5;outline-offset:2px}
+    .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}.pill{background:#ede5fa;padding:5px 11px;border-radius:999px;font-size:12px}
+    #status{white-space:pre-wrap;border-radius:10px;background:#f5f0fd;padding:12px;margin-top:16px;min-height:44px}
+    #status[data-tone=error]{color:#9b1a28;background:#fff1f0}#status[data-tone=success]{color:#166534;background:#f0fdf4}
+    @media(max-width:650px){main{margin:20px auto}.grid{grid-template-columns:1fr}}
+  </style>
+  <script src="./packmaster-marketplace-registry.js" defer></script>
+  <script src="./packmaster-registry-sync.js" defer></script>
+  <script src="./registry-sync-admin.js" defer></script>
+</head>
+<body>
+  <main>
+    <header><div><span class="pill">PPG • Internal Tools</span><h1>ทะเบียนสินค้า Cloud Sync</h1><p class="muted">จัดการข้อมูล TikTok และ Shopee แยกกันอย่างปลอดภัย</p></div>
+      <a href="./index.html" rel="noopener noreferrer">กลับไป Packmaster Dashboard</a>
+    </header>
+    <section>
+      <h2>เชื่อมต่อ Cloudflare</h2>
+      <p class="muted small">หน้านี้ไม่โหลด JavaScript จาก CDN ภายนอก รหัสใช้งานเฉพาะในหน้านี้ ไม่บันทึกใน Browser หรือส่งไปที่อื่น</p>
+      <label for="token">Registry access token</label>
+      <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="กรอกรหัสที่ผู้ดูแลระบบอนุญาต">
+      <div class="actions"><button type="button" id="check">ตรวจการเชื่อมต่อ</button><button type="button" id="local-backup">สำรองทะเบียนใน Browser เป็น JSON</button></div>
+      <p id="status" role="status" aria-live="polite">ยังไม่ได้ตรวจการเชื่อมต่อ</p>
+    </section>
+    <div class="grid">
+      <section><h2>TikTok</h2><div id="tiktok-local" class="small muted">กำลังอ่านทะเบียนใน Browser</div><div id="tiktok-remote" class="small muted">Cloud: ยังไม่ได้ตรวจสอบ</div>
+      <div class="actions"><button type="button" data-platform="TIKTOK" data-direction="pull" class="primary">รับจาก Cloud</button><button type="button" data-platform="TIKTOK" data-direction="push">ส่งขึ้น Cloud</button></div></section>
+      <section><h2>Shopee</h2><div id="shopee-local" class="small muted">กำลังอ่านทะเบียนใน Browser</div><div id="shopee-remote" class="small muted">Cloud: ยังไม่ได้ตรวจสอบ</div>
+      <div class="actions"><button type="button" data-platform="SHOPEE" data-direction="pull" class="primary">รับจาก Cloud</button><button type="button" data-platform="SHOPEE" data-direction="push">ส่งขึ้น Cloud</button></div></section>
+    </div>
+    <p class="small muted">รับข้อมูลจาก Cloud จะเปลี่ยนเฉพาะทะเบียนของแพลตฟอร์มที่เลือก ไม่เปลี่ยน Batch, รายการออเดอร์, หรือ SKU Mapping และต้องยืนยันก่อนบันทึกทุกครั้ง</p>
+  </main>
+</body>
+</html>

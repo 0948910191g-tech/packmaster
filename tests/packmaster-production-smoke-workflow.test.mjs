@@ -8,6 +8,10 @@ const workflow = fs.readFileSync(path.resolve(__dirname, '../.github/workflows/p
 
 assert.ok(workflow.includes('set -euo pipefail'), 'smoke workflow should keep strict shell safety');
 assert.ok(workflow.includes("grep -Fq 'PackMaster Pilot' <<< \"$html\""), 'marker checks must use here-strings so grep -q cannot break the producer under pipefail');
+assert.ok(workflow.includes("grep -Fq 'href=\"./registry-sync.html\"' <<< \"$html\""), 'production must include registry sync');
+assert.ok(workflow.includes("grep -Fq './packmaster-registry-identity.js' <<< \"$html\""), 'production must include identity helper');
+assert.ok(workflow.includes("grep -Fq 'data-pm-registry-cloud-sync' <<< \"$html\""), 'production must expose manual cloud sync UI');
+assert.ok(workflow.includes("grep -Fq 'data-pm-registry-evidence' <<< \"$html\""), 'production must expose registry review evidence');
 assert.ok(workflow.includes("grep -Fq './packmaster-storage-health.js' <<< \"$html\""));
 assert.ok(workflow.includes("grep -Fq './packmaster-diagnostics.js' <<< \"$html\""));
 assert.ok(workflow.includes("grep -Fq './packmaster-pilot-safety.js' <<< \"$html\""), 'production smoke must verify the pilot safety module is deployed');

@@ -18,6 +18,7 @@
   <script src="./packmaster-reprint-snapshot.js"></script>
   <script src="./packmaster-workspace.js"></script>
   <script src="./packmaster-marketplace-registry.js"></script>
+  <script src="./packmaster-registry-identity.js"></script>
   <script src="./packmaster-duplicate.js"></script>
   <script src="./packmaster-exceptions.js"></script>
   <script src="./packmaster-pilot-safety.js"></script>
@@ -1182,6 +1183,7 @@
       const reprintSnapshotApi = window.PackMasterReprintSnapshot;
       const workspaceApi = window.PackMasterWorkspace;
       const marketplaceRegistryApi = window.PackMasterMarketplaceRegistry;
+      const registryIdentityApi = window.PackMasterRegistryIdentity;
       const duplicateApi = window.PackMasterDuplicate;
       const exceptionApi = window.PackMasterExceptions;
       const pilotSafetyApi = window.PackMasterPilotSafety;
@@ -1241,6 +1243,11 @@
       const [marketplaceRegistryPage, setMarketplaceRegistryPage] = useState(1);
       const [marketplaceRegistryPageSize, setMarketplaceRegistryPageSize] = useState(20);
       const [marketplaceRegistryBusy, setMarketplaceRegistryBusy] = useState(false);
+      const marketplaceCatalogIndex = useMemo(() => {
+        if (!registryIdentityApi || !marketplaceRegistryApi || marketplaceRegistryLoadError || !marketplaceRegistry) return null;
+        try { return registryIdentityApi.buildIndex(marketplaceRegistry, marketplaceRegistryApi); }
+        catch (error) { console.error('Marketplace registry identity index failed', error); return null; }
+      }, [marketplaceRegistry, marketplaceRegistryLoadError]);
       const [editingId, setEditingId] = useState(null); 
       
       const [uploadError, setUploadError] = useState('');
@@ -2685,6 +2692,7 @@
       const handleMarketplaceRegistryImport = async (event, expectedPlatform) => {
         const file = event.target.files && event.target.files[0];
         if (!file) return;
+        if (marketplaceRegistryBusy) { event.target.value = ''; return; }
         setMarketplaceRegistryBusy(true);
         try {
           if (!marketplaceRegistryApi) throw new Error('โมดูลทะเบียน Marketplace ยังไม่พร้อม');
@@ -3287,6 +3295,25 @@
                     <div className="rounded-xl border border-blue-100 bg-blue-50/55 p-3"><div className="text-[9px] uppercase tracking-[.12em] font-black text-blue-500">Order</div><div className="mt-1 font-mono text-xs font-black text-blue-950 break-all">{quickMapState.row?.order?.tracking || quickMapState.row?.order?.orderId || 'Exception'}</div><div data-pm-source-reference className="mt-2 text-[10px] font-bold text-blue-700/70">Source: {quickMapState.row?.order?.sourceFileName || '-'}{quickMapState.row?.order?.sourcePage ? ` • หน้า ${quickMapState.row.order.sourcePage}` : ''}</div></div>
                     {quickMapState.sourceText && <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3"><div className="text-[9px] font-black uppercase tracking-[.1em] text-slate-400">ข้อความสินค้าจากใบจริง</div><div className="mt-1 text-xs font-bold leading-5 text-slate-700 break-words">{reviewKeywordSuggestionsApi?.formatReviewDisplayText ? reviewKeywordSuggestionsApi.formatReviewDisplayText(quickMapState.sourceText) : quickMapState.sourceText}</div></div>}
 
+                    {marketplaceCatalogIndex?.[quickMapState.row?.order?.platform]?.captureDate && (
+                      <div data-pm-registry-evidence className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="text-xs font-black text-slate-800">ตรวจ Seller SKU จากทะเบียน {quickMapState.row?.order?.platform}</div>
+                        <div className="mt-1 text-[10px] text-slate-500 font-semibold">ข้อมูลอ้างอิงเท่านั้น • ไม่เปลี่ยนชื่อภายในหรือสถานะพร้อมพิมพ์</div>
+                        <div className="mt-2 space-y-2">
+                          {(quickMapState.row?.order?.parsedItems || []).map((item, index) => {
+                            const evidence = registryIdentityApi.resolve(marketplaceCatalogIndex, quickMapState.row.order.platform, item);
+                            return <div key={index} className="rounded-lg bg-white border border-slate-200 p-2.5">
+                              <div className="text-[10px] font-bold text-slate-500">รายการ {index + 1} • {item.text}</div>
+                              {evidence.status === 'found' ? <div className="mt-1 text-xs font-black text-blue-800">พบในทะเบียน: {evidence.candidate.productName || evidence.candidate.productId} • Seller SKU {evidence.candidate.sellerSku}</div>
+                                : evidence.status === 'ambiguous' ? <div className="mt-1 text-xs font-bold text-amber-700">Seller SKU ซ้ำ {evidence.candidateCount} รายการ • ต้องตรวจด้วยคน</div>
+                                : evidence.status === 'not_found' ? <div className="mt-1 text-xs font-bold text-amber-700">ไม่พบ Seller SKU นี้ในทะเบียน</div>
+                                : <div className="mt-1 text-xs font-semibold text-slate-500">ไม่มี Seller SKU ที่แยกได้อย่างชัดเจน • ไม่เดาชื่อสินค้า</div>}
+                            </div>;
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     {(quickMapState.row?.types || []).some(type => type === 'REVIEW_SKU' || type === 'UNMAPPED') && <>
                       <div className="mt-4"><label className="pm-label">Keyword ที่ใช้จับคู่ (เฉพาะตอนบันทึกเป็น Mapping)</label><input value={reviewKeywordSuggestionsApi?.formatReviewDisplayText ? reviewKeywordSuggestionsApi.formatReviewDisplayText(quickMapState.keyword) : quickMapState.keyword} onChange={(e)=>setQuickMapState(prev=>({ ...prev, keyword:e.target.value }))} className="pm-input" /></div>
                       <div data-pm-keyword-suggestions className="mt-3">
@@ -3687,7 +3714,7 @@
 
                 {activeView === 'marketplace-registry' && (
                   <section data-pm-view="marketplace-registry" className="pm-page">
-                    <div className="pm-page-head"><div><div className="pm-eyebrow">Marketplace Catalog</div><h2 className="pm-page-title">ทะเบียนสินค้า Marketplace</h2><p className="pm-page-subtitle">เก็บข้อมูลสินค้าตามแพลตฟอร์มไว้ดูและค้นหาแยกจากคลังจับคู่ SKU • ไม่สร้างชื่อภายในหรือ Mapping อัตโนมัติ</p></div><div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-black"><PMIcon name="shield"/> Local-only</div></div>
+                    <div className="pm-page-head"><div><div className="pm-eyebrow">Marketplace Catalog</div><h2 className="pm-page-title">ทะเบียนสินค้า Marketplace</h2><p className="pm-page-subtitle">เก็บข้อมูลสินค้าตามแพลตฟอร์มไว้ดูและค้นหาแยกจากคลังจับคู่ SKU • ไม่สร้างชื่อภายในหรือ Mapping อัตโนมัติ</p></div><div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-black"><PMIcon name="shield"/> Local-first • Optional Cloud</div></div>
 
                     {marketplaceRegistryLoadError && <div role="alert" className="pm-card mb-4 border-2 border-amber-300 bg-amber-50 p-4"><div className="text-sm font-black text-amber-900">อ่านทะเบียนเดิมไม่สำเร็จ</div><div className="mt-1 text-xs font-semibold text-amber-800">{marketplaceRegistryLoadError} • ระบบคงข้อมูลเดิมไว้จนกว่าจะเลือกนำเข้าและยืนยันสร้างทะเบียนใหม่</div></div>}
 
@@ -3696,7 +3723,13 @@
                     </div>
 
                     <div className="grid xl:grid-cols-2 gap-3 mb-4">
-                      {['TIKTOK','SHOPEE'].map(platform => <div key={platform} className="pm-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div><div className="text-sm font-black text-slate-900">นำเข้า {platform === 'TIKTOK' ? 'TikTok' : 'Shopee'}</div><div className="text-xs font-semibold text-slate-500 mt-1">เลือกไฟล์ Registry JSON ของแพลตฟอร์มนี้ • แทนเฉพาะทะเบียนแพลตฟอร์มเดียวกัน</div></div><label className={`pm-primary-btn cursor-pointer shrink-0 ${marketplaceRegistryBusy ? 'opacity-50 pointer-events-none' : ''}`}><PMIcon name="upload"/> เลือกไฟล์ JSON<input type="file" accept=".json,application/json" disabled={marketplaceRegistryBusy} className="hidden" onChange={event => handleMarketplaceRegistryImport(event, platform)}/></label></div>)}
+                      {['TIKTOK','SHOPEE'].map(platform => <div key={platform} className="pm-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div><div className="text-sm font-black text-slate-900">นำเข้า {platform === 'TIKTOK' ? 'TikTok' : 'Shopee'}</div><div className="text-xs font-semibold text-slate-500 mt-1">เลือกไฟล์ Registry JSON ของแพลตฟอร์มนี้ • แทนเฉพาะทะเบียนแพลตฟอร์มเดียวกัน</div></div><label className={`pm-primary-btn cursor-pointer shrink-0 ${marketplaceRegistryBusy || registrySyncBusy ? 'opacity-50 pointer-events-none' : ''}`}><PMIcon name="upload"/> เลือกไฟล์ JSON<input type="file" accept=".json,application/json" disabled={marketplaceRegistryBusy || registrySyncBusy} className="hidden" onChange={event => handleMarketplaceRegistryImport(event, platform)}/></label></div>)}
+                    </div>
+
+                    <div data-pm-registry-cloud-sync className="pm-card p-4 mb-4">
+                      <div className="font-black text-sm text-slate-800">Cloud Registry</div>
+                      <p className="text-xs font-semibold text-slate-500 mt-1">ซิงก์ทะเบียน TikTok และ Shopee ผ่านหน้าจัดการที่ไม่โหลดสคริปต์จาก CDN ภายนอก • ไม่ส่งข้อมูลลูกค้าหรือคลัง Mapping ขึ้น Cloud</p>
+                      <a href="./registry-sync.html" rel="noopener noreferrer" className="pm-primary-btn inline-flex mt-3">เปิดหน้าซิงก์ทะเบียนอย่างปลอดภัย</a>
                     </div>
 
                     <div className="pm-card p-4 mb-4"><div className="flex flex-wrap gap-2 items-center justify-between"><div className="flex flex-wrap gap-2"><button onClick={()=>setMarketplaceRegistryPlatformFilter('TIKTOK')} className={`pm-nav-btn !text-xs ${marketplaceRegistryPlatformFilter==='TIKTOK'?'pm-nav-btn-active':''}`}>TikTok</button><button onClick={()=>setMarketplaceRegistryPlatformFilter('SHOPEE')} className={`pm-nav-btn !text-xs ${marketplaceRegistryPlatformFilter==='SHOPEE'?'pm-nav-btn-active':''}`}>Shopee</button><span className="mx-1 border-l border-slate-200"/><button onClick={()=>setMarketplaceRegistryDisplayMode('products')} className={`pm-secondary-btn !py-2 ${marketplaceRegistryDisplayMode==='products'?'!border-blue-400 !bg-blue-50 !text-blue-800':''}`}>สินค้า</button><button onClick={()=>setMarketplaceRegistryDisplayMode('skuRows')} className={`pm-secondary-btn !py-2 ${marketplaceRegistryDisplayMode==='skuRows'?'!border-blue-400 !bg-blue-50 !text-blue-800':''}`}>SKU / ตัวเลือก</button></div><div className="flex items-center gap-2"><input aria-label="ค้นหาทะเบียนสินค้า" value={marketplaceRegistrySearch} onChange={event=>setMarketplaceRegistrySearch(event.target.value)} placeholder="ค้นหาชื่อ, ID, Seller SKU..." className="pm-input !py-2 min-w-[220px]"/><select aria-label="จำนวนรายการต่อหน้า" value={marketplaceRegistryPageSize} onChange={event=>{setMarketplaceRegistryPageSize(Number(event.target.value));setMarketplaceRegistryPage(1);}} className="pm-select !py-2"><option value="20">20/หน้า</option><option value="50">50/หน้า</option><option value="100">100/หน้า</option></select></div></div></div>

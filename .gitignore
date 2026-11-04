@@ -1,0 +1,8 @@
+# Private Cloudflare deployment configuration and local credentials
+cloudflare/wrangler.toml
+cloudflare/.dev.vars*
+cloudflare/.env*
+cloudflare/.wrangler/
+*.dpapi
+.env
+.env.*

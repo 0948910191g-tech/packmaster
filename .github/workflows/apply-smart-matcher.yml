@@ -158,5 +158,8 @@ jobs:
             echo "Guardrail test file is not on this branch yet"
           fi
 
+      - name: Cloud registry and secure sync regression tests
+        run: node --test tests/packmaster-marketplace-registry.test.mjs tests/packmaster-marketplace-registry-ui.test.mjs tests/packmaster-registry-worker.test.mjs tests/packmaster-registry-sync.test.mjs tests/packmaster-registry-identity.test.mjs
+
       - name: Check whitespace errors
         run: git diff --check
