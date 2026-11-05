@@ -17,6 +17,7 @@
   <script src="./packmaster-batch-transition.js"></script>
   <script src="./packmaster-reprint-snapshot.js"></script>
   <script src="./packmaster-workspace.js"></script>
+  <script src="./packmaster-marketplace-registry.js"></script>
   <script src="./packmaster-duplicate.js"></script>
   <script src="./packmaster-exceptions.js"></script>
   <script src="./packmaster-pilot-safety.js"></script>
@@ -74,7 +75,7 @@
       --pm-surface: #ffffff;
       --pm-border: #dfe7f1;
       --pm-text: #172033;
-      --pm-muted: #708096;
+      --pm-muted: #5f6f82;
       --pm-header-h: 82px;
       --pm-header-h-mobile: 68px;
       --pm-page-pad-x: 24px;
@@ -155,12 +156,12 @@
     .pm-issue-dot { width: 7px; height: 7px; border-radius: 999px; flex: 0 0 auto; }
     .pm-label { display: block; color: #53657b; font-size: 12px; font-weight: 900; margin-bottom: 6px; }
     .pm-help { color: #99a5b4; font-size: 12px; font-weight: 600; line-height: 1.5; margin-top: 5px; }
-    .pm-input, .pm-select { border: 1px solid #d9e2ec; background: white; color: #26364c; border-radius: 10px; outline: none; font-size: 13px; font-weight: 700; transition: .16s ease; }
+    .pm-input, .pm-select { border: 1px solid #d9e2ec; background: white; color: #26364c; border-radius: 10px; font-size: var(--pm-font-xs); font-weight: 700; transition: .16s ease; }
     .pm-input { width: 100%; padding: 11px 12px; min-height: 44px; }
     .pm-select { padding: 10px 32px 10px 12px; min-height: 44px; }
     .pm-input:focus, .pm-select:focus { border-color: #6fa8e4; box-shadow: 0 0 0 3px rgba(11,99,206,.10); }
     .pm-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    .pm-table thead th { padding: 10px 13px; color: #7d8b9c; background: #f7f9fc; border-bottom: 1px solid #e7ecf2; font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+    .pm-table thead th { padding: 10px 13px; color: #5f6f82; background: #f7f9fc; border-bottom: 1px solid #e7ecf2; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
     .pm-table tbody td { padding: 11px 13px; border-bottom: 1px solid #eef2f6; vertical-align: top; }
     .pm-table tbody tr:hover { background: #fbfdff; }
     .pm-icon-btn { min-width: 44px; min-height: 44px; border-radius: 10px; border: 1px solid #e1e8f0; background: white; color: #66809a; display: inline-flex; align-items: center; justify-content: center; }
@@ -191,7 +192,7 @@
     .pm-quick-map-backdrop { position: fixed; inset: 0; z-index: 10020; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(7,31,61,.32); backdrop-filter: blur(4px); }
     .pm-quick-map-panel { width: min(560px, 100%); max-height: calc(100vh - 40px); overflow: auto; background: #fff; border: 1px solid #dce6f1; border-radius: 18px; box-shadow: 0 24px 70px rgba(7,31,61,.28); padding: 20px; }
     .pm-review-bottom-space { padding-bottom: 48px; }
-    @media (max-width: 1180px) { .pm-sku-layout { grid-template-columns: minmax(0, 1fr); } }
+    @media (max-width: 1320px) { .pm-sku-layout { grid-template-columns: minmax(0, 1fr); } }
     @media (max-width: 1023px) { .pm-active-batch-bar { padding: 9px 14px; } .pm-active-batch-inner { align-items: flex-start; flex-direction: column; } .pm-review-action-bar { align-items: stretch; flex-direction: column; } .pm-page-actions { width: 100%; justify-content: flex-start; } }
     @media (min-width: 1024px) { .pm-review-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (min-width: 1536px) { .pm-review-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
@@ -210,7 +211,7 @@
     .pm-status-orange { color: #c44b14; background: #fff5ed; border-color: #fed7aa; }
     .pm-metric { border: 1px solid #dfe7f1; border-radius: 14px; padding: 13px 14px; background: white; min-width: 0; box-shadow: 0 4px 12px rgba(26,54,93,.035); }
     .pm-metric-compact { padding: 10px 11px; border-radius: 11px; box-shadow: none; }
-    .pm-metric-label { font-size: 11px; font-weight: 900; color: #8390a2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pm-metric-label { font-size: 11px; font-weight: 800; color: #5f6f82; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .pm-metric-value { margin-top: 3px; font-size: 25px; line-height: 1.05; font-weight: 900; color: #1b2a42; }
     .pm-metric-compact .pm-metric-value { font-size: 20px; }
     .pm-metric-helper { margin-top: 3px; font-size: 11px; font-weight: 700; color: #a1aab7; }
@@ -711,6 +712,19 @@
     };
 
     const normalizeOutputIdentity = (value) => normalizeMatchText(value).replace(/\s+/g, '');
+    const SKU_RULE_PLATFORMS = ['TIKTOK', 'SHOPEE'];
+
+    const normalizeSkuRulePlatform = (value) => {
+      const normalized = String(value || '').trim().toUpperCase();
+      return SKU_RULE_PLATFORMS.includes(normalized) ? normalized : null;
+    };
+
+    const filterSkuRulesByPlatform = (rules, platform) => {
+      const source = Array.isArray(rules) ? rules : [];
+      const normalizedPlatform = normalizeSkuRulePlatform(platform);
+      if (!normalizedPlatform) return source;
+      return source.filter(rule => normalizeSkuRulePlatform(rule && rule.platform) === normalizedPlatform);
+    };
 
     const getStructuredMarketplaceIdentity = (textToSearch) => {
       const raw = String(textToSearch || '');
@@ -784,9 +798,10 @@
       };
     };
 
-    const matchSkuRule = (textToSearch, rules) => {
+    const matchSkuRule = (textToSearch, rules, platform = null) => {
       const searchArea = normalizeMatchText(textToSearch);
-      const normalizedRules = (Array.isArray(rules) ? rules : [])
+      const scopedRules = filterSkuRulesByPlatform(rules, platform);
+      const normalizedRules = scopedRules
         .map(rule => ({ rule, cleanKw: normalizeMatchText(rule && rule.keyword) }))
         .filter(entry => entry.cleanKw);
 
@@ -803,7 +818,7 @@
         }
 
         const exactRule = longest[0].rule;
-        const structuredMatch = getConfidentStructuredMatch(textToSearch, rules);
+        const structuredMatch = getConfidentStructuredMatch(textToSearch, scopedRules);
         if (structuredMatch && structuredMatch.status === 'ambiguous') return structuredMatch;
         if (structuredMatch && structuredMatch.status === 'matched' &&
             normalizeOutputIdentity(structuredMatch.rule && structuredMatch.rule.shortName) !== normalizeOutputIdentity(exactRule && exactRule.shortName)) {
@@ -815,7 +830,7 @@
         const exactSafetyScore = scoreSkuRule(
           exactRule,
           exactSafetyText,
-          rules,
+          scopedRules,
           { includeOutputVariantConcepts: true }
         );
         if (exactSafetyScore.hardConflict) {
@@ -842,7 +857,7 @@
       }
 
       const candidates = normalizedRules
-        .map(entry => scoreSkuRule(entry.rule, textToSearch, rules))
+        .map(entry => scoreSkuRule(entry.rule, textToSearch, scopedRules))
         .filter(candidate => Number.isFinite(candidate.score))
         .sort((a, b) => b.score - a.score);
 
@@ -878,65 +893,130 @@
       return shopeeFooter ? parseInt(shopeeFooter[1], 10) : null;
     };
 
-    const toPositionedPdfItems = (textContent) => (textContent && Array.isArray(textContent.items) ? textContent.items : [])
-      .map((item, index) => ({
-        text: String(item && item.str || '').trim(),
-        x: Number(item && item.transform && item.transform[4]) || 0,
-        y: Number(item && item.transform && item.transform[5]) || 0,
-        index
-      }))
-      .filter(item => item.text);
+    const toPositionedPdfItems = (textContent) => {
+      const sourceItems = textContent && Array.isArray(textContent.items) ? textContent.items : [];
+      const positionedItems = [];
+      let pendingSpace = false;
+
+      sourceItems.forEach((item, index) => {
+        const rawText = String(item && item.str || '');
+        const text = rawText.trim();
+        if (!text) {
+          if (/\s/.test(rawText)) pendingSpace = true;
+          return;
+        }
+
+        positionedItems.push({
+          text,
+          x: Number(item && item.transform && item.transform[4]) || 0,
+          y: Number(item && item.transform && item.transform[5]) || 0,
+          index,
+          spaceBefore: pendingSpace || /^\s/.test(rawText)
+        });
+        pendingSpace = false;
+      });
+
+      return positionedItems;
+    };
+
+    const joinPositionedText = (items) => {
+      const values = (Array.isArray(items) ? items : []).slice().sort((a, b) => a.index - b.index);
+      if (values.length === 0) return '';
+
+      const hasWhitespaceMetadata = values.some(item => Object.prototype.hasOwnProperty.call(item, 'spaceBefore'));
+      if (!hasWhitespaceMetadata) return values.map(item => item.text).join(' ').trim();
+
+      let output = '';
+      let previous = null;
+      values.forEach(item => {
+        const lineBreak = previous && Math.abs(item.y - previous.y) > 4;
+        if (output && (item.spaceBefore || lineBreak) && !output.endsWith(' ')) output += ' ';
+        output += item.text;
+        previous = item;
+      });
+      return output.replace(/\s+/g, ' ').trim();
+    };
 
     const parseTikTokPositionedItems = (rawItems, declaredTotalQty = null) => {
       const entries = (Array.isArray(rawItems) ? rawItems : []).map((item, index) => ({
         text: String(item && (item.text ?? item.str) || '').trim(),
         x: Number(item && (item.x ?? (item.transform && item.transform[4]))) || 0,
         y: Number(item && (item.y ?? (item.transform && item.transform[5]))) || 0,
-        index: Number.isFinite(item && item.index) ? item.index : index
+        index: Number.isFinite(item && item.index) ? item.index : index,
+        ...(item && Object.prototype.hasOwnProperty.call(item, 'spaceBefore')
+          ? { spaceBefore: Boolean(item.spaceBefore) }
+          : {})
       })).filter(item => item.text);
 
-      const hasTableSignal = normalizeMatchText(entries.map(item => item.text).join(' ')).includes('product name');
-      const qtyHeaders = entries.filter(item => normalizeMatchText(item.text) === 'qty');
+      const structuralLines = [];
+      entries.forEach(item => {
+        let line = structuralLines.find(candidate => Math.abs(candidate.y - item.y) <= 3);
+        if (!line) {
+          line = { y: item.y, items: [] };
+          structuralLines.push(line);
+        }
+        line.items.push(item);
+      });
+
+      const buildStructuralSignature = (lineItems) => {
+        const sorted = (Array.isArray(lineItems) ? lineItems : []).slice().sort((a, b) => a.x - b.x || a.index - b.index);
+        let compact = '';
+        const sourceByCharacter = [];
+        sorted.forEach(item => {
+          const normalized = normalizeMatchText(item.text).replace(/\s+/g, '');
+          for (const character of normalized) {
+            compact += character;
+            sourceByCharacter.push(item);
+          }
+        });
+        return { compact, sourceByCharacter };
+      };
+
+      let hasTableSignal = false;
       let header = null;
 
-      for (const qtyHeader of qtyHeaders) {
-        const sameLine = entries.filter(item => Math.abs(item.y - qtyHeader.y) <= 5);
-        const lineText = normalizeMatchText(sameLine.map(item => item.text).join(' '));
-        const sellerHeader = sameLine.find(item => normalizeMatchText(item.text).includes('seller'));
-        const skuHeaders = sameLine
-          .filter(item => /(^|\s)sku($|\s)/.test(normalizeMatchText(item.text)))
-          .sort((a, b) => a.x - b.x);
-        const firstSkuHeader = sellerHeader
-          ? (skuHeaders.find(item => item.x < sellerHeader.x - 1) || skuHeaders[0])
-          : skuHeaders[0];
+      for (const line of structuralLines) {
+        const structure = buildStructuralSignature(line.items);
+        const productNameIndex = structure.compact.indexOf('productname');
+        if (productNameIndex < 0) continue;
+        hasTableSignal = true;
 
-        if (lineText.includes('product name') && firstSkuHeader && sellerHeader && qtyHeader.x > sellerHeader.x) {
-          header = {
-            y: qtyHeader.y,
-            qtyX: qtyHeader.x,
-            firstSkuX: firstSkuHeader.x,
-            sellerX: sellerHeader.x
-          };
-          break;
-        }
+        const firstSkuIndex = structure.compact.indexOf('sku', productNameIndex + 'productname'.length);
+        const sellerIndex = structure.compact.indexOf('sellersku', Math.max(0, firstSkuIndex + 3));
+        const qtyIndex = structure.compact.indexOf('qty', Math.max(0, sellerIndex + 'sellersku'.length));
+        if (firstSkuIndex < 0 || sellerIndex < 0 || qtyIndex < 0) continue;
+
+        const firstSkuHeader = structure.sourceByCharacter[firstSkuIndex];
+        const sellerHeader = structure.sourceByCharacter[sellerIndex];
+        const qtyHeader = structure.sourceByCharacter[qtyIndex];
+        if (!firstSkuHeader || !sellerHeader || !qtyHeader || qtyHeader.x <= sellerHeader.x) continue;
+
+        header = {
+          y: qtyHeader.y,
+          qtyX: qtyHeader.x,
+          firstSkuX: firstSkuHeader.x,
+          sellerX: sellerHeader.x
+        };
+        break;
       }
 
       if (!header) {
         return { items: [], declaredTotalQty, parserWarning: hasTableSignal, reason: hasTableSignal ? 'header-not-found' : 'no-table' };
       }
 
-      const isTikTokFooterEntry = (candidate) => {
-        const lineText = normalizeMatchText(
-          entries
-            .filter(item => Math.abs(item.y - candidate.y) <= 4)
-            .map(item => item.text)
-            .join(' ')
-        );
-        return lineText.includes('qty total') ||
-          lineText.includes('total qty') ||
-          lineText.includes('order id') ||
-          lineText.includes('powered by');
-      };
+      const footerEntryIndexes = new Set();
+      structuralLines.forEach(line => {
+        const compact = buildStructuralSignature(line.items).compact;
+        if (
+          compact.includes('qtytotal') ||
+          compact.includes('totalqty') ||
+          compact.includes('orderid') ||
+          compact.includes('poweredby')
+        ) {
+          line.items.forEach(item => footerEntryIndexes.add(item.index));
+        }
+      });
+      const isTikTokFooterEntry = (candidate) => footerEntryIndexes.has(candidate.index);
 
       const qtyMarkers = entries.filter(item =>
         /^\d{1,4}$/.test(item.text) &&
@@ -986,9 +1066,9 @@
         const productParts = rowEntries.filter(item => item.x < header.firstSkuX - 2).sort((a, b) => a.index - b.index);
         const skuParts = rowEntries.filter(item => item.x >= header.firstSkuX - 2 && item.x < header.sellerX - 2).sort((a, b) => a.index - b.index);
         const sellerParts = rowEntries.filter(item => item.x >= header.sellerX - 2 && item.x < header.qtyX - 5).sort((a, b) => a.index - b.index);
-        const productText = productParts.map(item => item.text).join(' ').trim();
-        const skuText = skuParts.map(item => item.text).join(' ').trim();
-        const sellerText = sellerParts.map(item => item.text).join(' ').trim();
+        const productText = joinPositionedText(productParts);
+        const skuText = joinPositionedText(skuParts);
+        const sellerText = joinPositionedText(sellerParts);
         const text = [productText, skuText, sellerText].filter(Boolean).join(' | ');
         const qty = parseInt(marker.text, 10);
 
@@ -1126,17 +1206,22 @@
     const findContinuationTargetOrder = (allNewOrders, pageContext = {}) => {
       const rows = Array.isArray(allNewOrders) ? allNewOrders : [];
       const currentOrderId = pageContext && pageContext.currentOrderId ? String(pageContext.currentOrderId).trim() : '';
+      const isSameSourceFile = (candidate) => !pageContext.fileName || !candidate.sourceFileName || candidate.sourceFileName === pageContext.fileName;
       if (currentOrderId) {
-        const byOrderId = rows.find(o => o && o.orderId === currentOrderId && !o.isContinuation);
-        if (byOrderId) return byOrderId;
+        for (let idx = rows.length - 1; idx >= 0; idx--) {
+          const candidate = rows[idx];
+          if (candidate && candidate.orderId === currentOrderId && !candidate.isContinuation && isSameSourceFile(candidate)) {
+            return candidate;
+          }
+        }
       }
 
       if (pageContext && pageContext.platform === 'TIKTOK' && !pageContext.hasTracking && pageContext.hasTableContent) {
         for (let idx = rows.length - 1; idx >= 0; idx--) {
           const candidate = rows[idx];
           if (!candidate || candidate.isContinuation) continue;
-          const sameFile = !pageContext.fileName || candidate.sourceFileName === pageContext.fileName;
-          const openTikTokTable = candidate.platform === 'TIKTOK' && candidate.declaredTotalQty == null;
+          const sameFile = isSameSourceFile(candidate);
+          const openTikTokTable = candidate.platform === 'TIKTOK' && candidate.declaredTotalQty == null && Array.isArray(candidate.parsedItems) && candidate.parsedItems.length > 0;
           const compatibleOrderId = !candidate.orderId || !currentOrderId || candidate.orderId === currentOrderId;
           if (sameFile && openTikTokTable && compatibleOrderId) return candidate;
           break;
@@ -1154,7 +1239,39 @@
       const shortName = rule.shortName.trim();
       if (!keyword || !shortName) return null;
 
-      return { id: rule.id ?? fallbackId, keyword, shortName };
+      const hasPlatformValue = rule.platform != null && String(rule.platform).trim() !== '';
+      const platform = normalizeSkuRulePlatform(rule.platform);
+      if (hasPlatformValue && !platform) return null;
+      return {
+        id: rule.id ?? fallbackId,
+        keyword,
+        shortName,
+        ...(platform ? { platform } : {})
+      };
+    };
+
+    const migrateSkuRulesToPlatformScopes = (rules, fallbackPrefix = 'rule') => {
+      const output = [];
+      const usedIds = new Set();
+
+      (Array.isArray(rules) ? rules : []).forEach((rule, index) => {
+        const sanitized = sanitizeSkuRule(rule, `${fallbackPrefix}-${index + 1}`);
+        if (!sanitized) return;
+
+        const platforms = sanitized.platform ? [sanitized.platform] : SKU_RULE_PLATFORMS;
+        platforms.forEach(platform => {
+          const baseId = sanitized.platform
+            ? String(sanitized.id)
+            : `${String(sanitized.id)}-${platform.toLowerCase()}`;
+          let id = baseId;
+          let suffix = 2;
+          while (usedIds.has(id)) id = `${baseId}-${suffix++}`;
+          usedIds.add(id);
+          output.push({ ...sanitized, id, platform });
+        });
+      });
+
+      return output;
     };
 
     const getAggregatedShortName = (baseName, qty, sourceKeyword = '') => {
@@ -1328,8 +1445,8 @@
           completed: activeBatch?.status === 'COMPLETED',
           locked: ordersCount === 0 || printBlocked,
           hint: ordersCount === 0 ? 'ยังไม่มีข้อมูล' : printBlocked ? `ติดปัญหา ${exceptionCount} รายการ` : 'พร้อมพิมพ์',
-          clickable: ordersCount > 0,
-          onClick: () => ordersCount > 0 && onNavigate('review')
+          clickable: ordersCount > 0 && !printBlocked,
+          onClick: () => ordersCount > 0 && !printBlocked && onNavigate('review')
         }
       ];
 
@@ -1410,14 +1527,14 @@
         return () => {
           clearTimeout(timer);
           window.removeEventListener('keydown', handleKeyDown);
-          if (prevActive && typeof prevActive.focus === 'function') prevActive.focus();
+          if (prevActive && prevActive.isConnected && typeof prevActive.focus === 'function') prevActive.focus();
         };
       }, [open, onCancel]);
 
       if (!open) return null;
 
       return (
-        <div data-pm-confirm-dialog className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+        <div data-pm-confirm-dialog onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }} className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div
             ref={dialogRef}
             role="alertdialog"
@@ -1482,6 +1599,7 @@
       const archiveApi = window.PackMasterArchive;
       const storageHealthApi = window.PackMasterStorageHealth;
       const diagnosticsApi = window.PackMasterDiagnostics;
+      const marketplaceRegistryApi = window.PackMasterMarketplaceRegistry;
       const PILOT_VERSION = 'PackMaster Pilot 2026.08.08';
       const SKU_INTEGRITY_BACKUP_KEY = 'packmasterSkuIntegrityBackupV1';
       const batchTransitionCoordinator = useMemo(() => batchTransitionApi ? batchTransitionApi.createCoordinator() : null, [batchTransitionApi]);
@@ -1490,10 +1608,20 @@
       const [activeView, setActiveView] = useState('batches');
 
       const [confirmDialog, setConfirmDialog] = useState(null);
+      const confirmQueueRef = React.useRef([]);
 
-      const requestConfirm = ({ title, message, details = null, confirmText = 'ยืนยัน', cancelText = 'ยกเลิก', isDanger = false }) => {
+      const advanceConfirmQueue = useCallback(() => {
+        if (confirmQueueRef.current.length === 0) {
+          setConfirmDialog(null);
+          return;
+        }
+        const nextItem = confirmQueueRef.current.shift();
+        setConfirmDialog(nextItem);
+      }, []);
+
+      const requestConfirm = useCallback(({ title, message, details = null, confirmText = 'ยืนยัน', cancelText = 'ยกเลิก', isDanger = false }) => {
         return new Promise((resolve) => {
-          setConfirmDialog({
+          const dialogConfig = {
             title,
             message,
             details,
@@ -1501,16 +1629,21 @@
             cancelText,
             isDanger,
             onConfirm: () => {
-              setConfirmDialog(null);
               resolve(true);
+              advanceConfirmQueue();
             },
             onCancel: () => {
-              setConfirmDialog(null);
               resolve(false);
+              advanceConfirmQueue();
             }
+          };
+          setConfirmDialog((current) => {
+            if (!current) return dialogConfig;
+            confirmQueueRef.current.push(dialogConfig);
+            return current;
           });
         });
-      };
+      }, [advanceConfirmQueue]);
 
       const SIDEBAR_STORAGE_KEY = 'packmasterSidebarCollapsedV1';
       const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -1527,6 +1660,7 @@
       const [skuPageSize, setSkuPageSize] = useState(20);
       const [skuSort, setSkuSort] = useState('keyword');
       const [orders, setOrders] = useState([]);
+      const SKU_PLATFORM_MIGRATION_BACKUP_KEY = 'packmasterSkuRulesBeforePlatformSplitV1';
       const [skuRules, setSkuRules] = useState(() => {
         try {
           const saved = localStorage.getItem('skuMappingRules');
@@ -1535,15 +1669,29 @@
           const parsedRules = JSON.parse(saved);
           if (!Array.isArray(parsedRules)) return [];
 
-          return parsedRules
-            .map((rule, index) => sanitizeSkuRule(rule, `saved-${Date.now()}-${index}`))
-            .filter(Boolean);
+          const hasLegacySharedRules = parsedRules.some(rule =>
+            sanitizeSkuRule(rule, 'legacy-check') && !normalizeSkuRulePlatform(rule && rule.platform)
+          );
+          if (hasLegacySharedRules && !localStorage.getItem(SKU_PLATFORM_MIGRATION_BACKUP_KEY)) {
+            localStorage.setItem(SKU_PLATFORM_MIGRATION_BACKUP_KEY, saved);
+          }
+
+          return migrateSkuRulesToPlatformScopes(parsedRules, `saved-${Date.now()}`);
         } catch (e) {
           console.warn('โหลดกฎ SKU จาก localStorage ไม่สำเร็จ', e);
           return [];
         }
       });
-      const [newRule, setNewRule] = useState({ keyword: '', shortName: '' });
+      const [newRule, setNewRule] = useState({ platform: 'TIKTOK', keyword: '', shortName: '' });
+      const [marketplaceRegistryLoad] = useState(() => marketplaceRegistryApi ? marketplaceRegistryApi.loadStore(window.localStorage) : { store: null, error: 'โมดูลทะเบียน Marketplace ยังไม่พร้อม' });
+      const [marketplaceRegistry, setMarketplaceRegistry] = useState(() => marketplaceRegistryLoad.store);
+      const [marketplaceRegistryLoadError, setMarketplaceRegistryLoadError] = useState(() => marketplaceRegistryLoad.error || '');
+      const [marketplaceRegistryPlatformFilter, setMarketplaceRegistryPlatformFilter] = useState('TIKTOK');
+      const [marketplaceRegistryDisplayMode, setMarketplaceRegistryDisplayMode] = useState('products');
+      const [marketplaceRegistrySearch, setMarketplaceRegistrySearch] = useState('');
+      const [marketplaceRegistryPage, setMarketplaceRegistryPage] = useState(1);
+      const [marketplaceRegistryPageSize, setMarketplaceRegistryPageSize] = useState(20);
+      const [marketplaceRegistryBusy, setMarketplaceRegistryBusy] = useState(false);
       const [editingId, setEditingId] = useState(null); 
       
       const [uploadError, setUploadError] = useState('');
@@ -1554,6 +1702,7 @@
       const [previewMode, setPreviewMode] = useState('labels');
       const [testInput, setTestInput] = useState('');
       const [testQty, setTestQty] = useState('1');
+      const [testPlatform, setTestPlatform] = useState('TIKTOK');
       const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
       // Phase 1 UI/UX V2 — presentation-only controls
@@ -1561,6 +1710,7 @@
       const [reviewPlatform, setReviewPlatform] = useState('ALL');
       const [reviewStatus, setReviewStatus] = useState('ALL');
       const [skuSearch, setSkuSearch] = useState('');
+      const [skuPlatformFilter, setSkuPlatformFilter] = useState('ALL');
       const [skuFilter, setSkuFilter] = useState('ALL');
       const [exceptionType, setExceptionType] = useState('ALL');
       const [exceptionSearch, setExceptionSearch] = useState('');
@@ -1678,6 +1828,46 @@
 
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
 
+      const handleMarketplaceRegistryImport = async (event, expectedPlatform) => {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+        setMarketplaceRegistryBusy(true);
+        try {
+          if (!marketplaceRegistryApi) throw new Error('โมดูลทะเบียน Marketplace ยังไม่พร้อม');
+          const importedRegistry = marketplaceRegistryApi.validatePlatformRegistry(JSON.parse(await file.text()), expectedPlatform);
+          let currentStore = marketplaceRegistry || marketplaceRegistryApi.createEmptyStore();
+          if (marketplaceRegistryLoadError) {
+            const rebuild = await requestConfirm({
+              title: 'สร้างทะเบียน Marketplace ใหม่',
+              message: 'ข้อมูลทะเบียนเดิมอ่านไม่ได้ การนำเข้านี้จะสร้างทะเบียน Marketplace ใหม่และแทนข้อมูลที่เสีย โดยข้อมูล Batch และ SKU Mapping จะไม่เปลี่ยน',
+              confirmText: 'นำเข้าและสร้างใหม่', cancelText: 'ยกเลิก', isDanger: true
+            });
+            if (!rebuild) return;
+            currentStore = marketplaceRegistryApi.createEmptyStore();
+          } else if (currentStore.platforms[expectedPlatform]) {
+            const replace = await requestConfirm({
+              title: `แทนทะเบียน ${expectedPlatform}`,
+              message: `มีข้อมูล ${expectedPlatform} อยู่แล้ว ต้องการแทนด้วยไฟล์ ${file.name} หรือไม่? แพลตฟอร์มอีกฝั่งจะคงเดิม`,
+              confirmText: 'แทนทะเบียน', cancelText: 'ยกเลิก', isDanger: true
+            });
+            if (!replace) return;
+          }
+          const nextStore = marketplaceRegistryApi.replacePlatformRegistry(currentStore, importedRegistry);
+          marketplaceRegistryApi.saveStore(window.localStorage, nextStore);
+          setMarketplaceRegistry(nextStore);
+          setMarketplaceRegistryLoadError('');
+          setMarketplaceRegistrySearch('');
+          setMarketplaceRegistryPage(1);
+          showToast(`นำเข้า ${expectedPlatform} แล้ว • สินค้า ${importedRegistry.summary.listedProductCount} • แถว SKU/ตัวเลือก ${importedRegistry.summary.skuModelRowCount}`, 'success');
+        } catch (err) {
+          console.error('Marketplace registry import failed', err);
+          showToast(`นำเข้าทะเบียนไม่สำเร็จ: ${err.message || 'รูปแบบไฟล์ไม่ถูกต้อง'}`, 'error');
+        } finally {
+          event.target.value = '';
+          setMarketplaceRegistryBusy(false);
+        }
+      };
+
       const refreshStorageHealth = useCallback(async () => {
         if (!storageHealthApi) {
           setStorageHealth({ supported: false, usage: null, quota: null, percent: null });
@@ -1731,8 +1921,8 @@
         setShowLocalDataNotice(false);
       };
 
-      const getMatchResult = useCallback((textToSearch) => {
-        return matchSkuRule(textToSearch, skuRules);
+      const getMatchResult = useCallback((textToSearch, platform = null) => {
+        return matchSkuRule(textToSearch, skuRules, platform);
       }, [skuRules]);
 
       const handleFileUpload = async (e) => {
@@ -1772,6 +1962,7 @@
           }
 
           const exactDuplicates = fingerprinted.filter(entry => entry.duplicate);
+          let deferredFileDuplicateSummary = '';
           if (exactDuplicates.length > 0) {
             const currentNames = exactDuplicates.filter(entry => entry.duplicate.source === 'current-upload').map(entry => entry.file.name);
             const historyNames = exactDuplicates.filter(entry => entry.duplicate.source === 'existing-history').map(entry => entry.file.name);
@@ -1779,16 +1970,22 @@
               currentNames.length > 0 ? `ซ้ำในรอบอัปโหลดนี้: ${currentNames.join(', ')}` : '',
               historyNames.length > 0 ? `ซ้ำกับประวัติเดิม: ${historyNames.join(', ')}` : ''
             ].filter(Boolean).join('\n');
-            const importAgain = await requestConfirm({
-              title: 'พบไฟล์ PDF ที่เคยนำเข้า Batch นี้แล้ว',
-              message: `${duplicateSummary}\n\nต้องการนำเข้าซ้ำจริง ๆ หรือข้ามไฟล์ที่ซ้ำ?`,
-              confirmText: 'นำเข้าซ้ำ',
-              cancelText: 'ข้ามไฟล์ที่ซ้ำ',
-              isDanger: false
-            });
-            if (!importAgain) {
-              const duplicateFiles = new Set(exactDuplicates.map(entry => entry.file));
-              files = files.filter(file => !duplicateFiles.has(file));
+            const nonDuplicateFiles = files.filter(file => !exactDuplicates.some(entry => entry.file === file));
+            if (nonDuplicateFiles.length > 0) {
+              const importAgain = await requestConfirm({
+                title: 'พบไฟล์ PDF ที่เคยนำเข้า Batch นี้แล้ว',
+                message: `${duplicateSummary}\n\nต้องการนำเข้าซ้ำจริง ๆ หรือข้ามไฟล์ที่ซ้ำ?`,
+                confirmText: 'นำเข้าซ้ำ',
+                cancelText: 'ข้ามไฟล์ที่ซ้ำ',
+                isDanger: false
+              });
+              if (!importAgain) {
+                files = nonDuplicateFiles;
+              } else {
+                deferredFileDuplicateSummary = duplicateSummary;
+              }
+            } else {
+              deferredFileDuplicateSummary = duplicateSummary;
             }
           }
 
@@ -1876,6 +2073,7 @@
               const textContent = await page.getTextContent();
               const fullText = textContent.items.map(item => item.str).join(' ');
               const positionedItems = toPositionedPdfItems(textContent);
+              const pdfSignalText = `${fullText} ${joinPositionedText(positionedItems)}`;
 
               const viewport = page.getViewport({ scale: 2.5 }); 
               const canvas = document.createElement('canvas');
@@ -1888,8 +2086,9 @@
               if (typeof page.cleanup === 'function') page.cleanup();
 
               let platform = 'SHOPEE';
-              if (fullText.match(/Order\s*ID/i) || fullText.match(/In\s*transit/i) || fullText.match(/TikTok/i) || fullText.match(/Seller\s*SKU/i) || fullText.match(/Qty\s*Total/i)) platform = 'TIKTOK';
-              const declaredTotalQty = parseExplicitTotalQty(fullText, platform);
+              const hasShopeeOrderSignal = /Shopee\s*Order\s*No/i.test(pdfSignalText);
+              if (!hasShopeeOrderSignal && (pdfSignalText.match(/Order\s*ID/i) || pdfSignalText.match(/In\s*transit/i) || pdfSignalText.match(/TikTok/i) || pdfSignalText.match(/Seller\s*SKU/i) || pdfSignalText.match(/Qty\s*Total/i))) platform = 'TIKTOK';
+              const declaredTotalQty = parseExplicitTotalQty(pdfSignalText, platform);
               let parserWarning = false;
 
               let zone = fullText;
@@ -2054,10 +2253,10 @@
                   parsedItems.push({ text: textWithoutQty, qty: itemQty });
               }
 
-              const trackingMatch = fullText.match(/(TH\d{10,}|JT\d{10,}|SPX[A-Z0-9]+|KER[A-Z0-9]+|KA[A-Z0-9]+|66\d{10,}|82\d{10,}|\b\d{12}\b)/i);
+              const trackingMatch = pdfSignalText.match(/(TH[A-Z0-9]{10,}|JT\d{10,}|SPX[A-Z0-9]+|KER[A-Z0-9]+|KA[A-Z0-9]+|66\d{10,}|82\d{10,}|\b\d{12}\b)/i);
               
               let currentOrderId = null;
-              let orderMatch = fullText.match(/(?:Shopee\s*Order\s*No\.?|Order\s*ID)[\s:]*([A-Z0-9]+)/i);
+              let orderMatch = pdfSignalText.match(/(?:Shopee\s*Order\s*No\.?|Order\s*ID)[\s:]*([A-Z0-9]+)/i);
               if (orderMatch) {
                   currentOrderId = orderMatch[1];
               }
@@ -2126,19 +2325,28 @@
               ? duplicateApi.findOrderDuplicateSignals(allNewOrders, orders)
               : [];
 
-            if (duplicateSignals.length > 0) {
+            if (duplicateSignals.length > 0 || (typeof deferredFileDuplicateSummary === 'string' && deferredFileDuplicateSummary)) {
               const currentUploadCount = duplicateSignals.filter(signal => signal.source === 'current-upload').length;
               const existingHistoryCount = duplicateSignals.filter(signal => signal.source === 'existing-history').length;
               const duplicateSummary = [
+                typeof deferredFileDuplicateSummary === 'string' && deferredFileDuplicateSummary ? deferredFileDuplicateSummary : '',
                 currentUploadCount > 0 ? `ซ้ำในรอบอัปโหลดนี้ ${currentUploadCount} รายการ` : '',
                 existingHistoryCount > 0 ? `ซ้ำกับประวัติเดิม ${existingHistoryCount} รายการ` : ''
               ].filter(Boolean).join('\n');
+              const duplicateDetailRows = duplicateSignals
+                .slice(0, 10)
+                .map(signal => `• ${signal.incoming?.tracking || signal.incoming?.orderId || signal.incoming?.sourceFileName || 'Order'} (${signal.source === 'current-upload' ? 'ซ้ำในรอบนี้' : 'ซ้ำกับประวัติเดิม'})`)
+                .join('\n');
+              const dialogTitle = duplicateSignals.length > 0
+                ? `พบ Order ที่อาจซ้ำกับข้อมูลใน Batch นี้ ${duplicateSignals.length} รายการ`
+                : 'พบไฟล์ PDF ที่เคยนำเข้า Batch นี้แล้ว';
               const importPossibleDuplicates = await requestConfirm({
-                title: `พบ Order ที่อาจซ้ำกับข้อมูลใน Batch นี้ ${duplicateSignals.length} รายการ`,
+                title: dialogTitle,
                 message: `${duplicateSummary}\n\nระบบจะไม่ลบหรือรวม Qty ให้อัตโนมัติ ต้องการนำเข้าต่อหรือไม่?`,
+                details: duplicateDetailRows || null,
                 confirmText: 'นำเข้าต่อ',
                 cancelText: 'หยุดรอบนี้ ไม่นำเข้า',
-                isDanger: true
+                isDanger: duplicateSignals.length > 0
               });
               if (!importPossibleDuplicates) {
                 showToast('ยกเลิกการเพิ่ม Order ที่อาจซ้ำ — ข้อมูลเดิมยังอยู่ครบ', 'error');
@@ -2203,7 +2411,7 @@
                 resolvedAudit.push({ sourceText: item.text || '', effectiveQty, resolution: 'manual', keyword: item.text || '', shortName: baseName });
                 return;
             }
-            const match = getMatchResult(item.text);
+            const match = getMatchResult(item.text, o.platform);
             if (match.status === 'matched' && match.rule) {
                 const baseName = match.rule.shortName.trim().replace(/\u00A0/g, ' ');
                 const current = skuMap.get(baseName) || { qty: 0, sourceKeyword: match.rule.keyword || '' };
@@ -2369,21 +2577,25 @@
         const types = row.types || [];
         let seed = '';
         if (pilotSafetyApi && types.some(type => type === 'REVIEW_SKU' || type === 'UNMAPPED')) {
-          try { seed = pilotSafetyApi.getSkuFixSeed(row, getMatchResult) || ''; }
+          try { seed = pilotSafetyApi.getSkuFixSeed(row, text => getMatchResult(text, row.order.platform)) || ''; }
           catch (error) { console.warn('Pilot Safety seed unavailable', error); }
         }
         if (seed) return seed;
         const parsedItems = Array.isArray(row.order.parsedItems) ? row.order.parsedItems : [];
         const unresolved = parsedItems.find(item => {
-          try { return getMatchResult(item && item.text).status !== 'matched'; }
+          try { return getMatchResult(item && item.text, row.order.platform).status !== 'matched'; }
           catch (error) { return true; }
         });
         return String((unresolved || parsedItems[0])?.text || '').trim();
       };
 
-      const getReviewKeywordSuggestions = (seed) => {
+      const getReviewKeywordSuggestions = (seed, platform) => {
         if (!seed) return [];
-        const batchItemTexts = orders.flatMap(order => (Array.isArray(order && order.parsedItems) ? order.parsedItems : []))
+        const normalizedPlatform = normalizeSkuRulePlatform(platform);
+        const scopedRules = filterSkuRulesByPlatform(skuRules, normalizedPlatform);
+        const batchItemTexts = orders
+          .filter(order => !normalizedPlatform || normalizeSkuRulePlatform(order && order.platform) === normalizedPlatform)
+          .flatMap(order => (Array.isArray(order && order.parsedItems) ? order.parsedItems : []))
           .map(item => String(item && item.text || '').trim())
           .filter(Boolean);
         let suggestions = [];
@@ -2391,7 +2603,7 @@
           try {
             suggestions = reviewKeywordSuggestionsApi.generateReviewKeywordSuggestions({
               sourceText: seed,
-              existingRules: skuRules,
+              existingRules: scopedRules,
               batchItemTexts,
               maxSuggestions: 3,
               keywordAssistant: keywordAssistantApi,
@@ -2405,7 +2617,7 @@
         } else if (keywordAssistantApi && typeof keywordAssistantApi.generateKeywordSuggestions === 'function') {
           suggestions = keywordAssistantApi.generateKeywordSuggestions({
             sourceText: seed,
-            existingRules: skuRules,
+            existingRules: scopedRules,
             batchItemTexts,
             maxSuggestions: 3,
             safeOnly: true,
@@ -2435,7 +2647,8 @@
           showToast('ไม่พบข้อความสินค้าใน Order นี้ — กรุณาตรวจใบจริง', 'error');
           return;
         }
-        const suggestions = getReviewKeywordSuggestions(seed);
+        const suggestions = getReviewKeywordSuggestions(seed, row.order.platform);
+        quickMapPreviousActiveRef.current = document.activeElement;
         setQuickMapState({ open: true, row, sourceText: seed, keyword: '', shortName: '', suggestions });
       };
 
@@ -2447,6 +2660,7 @@
           return;
         }
         const seed = getReviewSourceText(row);
+        quickMapPreviousActiveRef.current = document.activeElement;
         setQuickMapState({ open: true, row, sourceText: seed, keyword: '', shortName: '', suggestions: [] });
       };
 
@@ -2520,20 +2734,28 @@
       };
 
       const handleSaveQuickMapping = async () => {
+        const platform = normalizeSkuRulePlatform(quickMapState.row?.order?.platform);
         const keyword = String(quickMapState.keyword || '');
         const shortName = String(quickMapState.shortName || '');
+        if (!platform) {
+          showToast('ไม่พบแพลตฟอร์มของ Order นี้ จึงยังบันทึก Mapping ถาวรไม่ได้', 'error');
+          return;
+        }
         if (!keyword.trim() || !shortName.trim()) {
           showToast('กรอก Keyword และชื่อภายในก่อนบันทึก', 'error');
           return;
         }
-        const batchItemTexts = orders.flatMap(order => (Array.isArray(order && order.parsedItems) ? order.parsedItems : []))
+        const scopedRules = filterSkuRulesByPlatform(skuRules, platform);
+        const batchItemTexts = orders
+          .filter(order => normalizeSkuRulePlatform(order && order.platform) === platform)
+          .flatMap(order => (Array.isArray(order && order.parsedItems) ? order.parsedItems : []))
           .map(item => String(item && item.text || '').trim())
           .filter(Boolean);
         const safety = keywordAssistantApi && typeof keywordAssistantApi.assessKeywordSafety === 'function'
           ? keywordAssistantApi.assessKeywordSafety({
               candidate: keyword,
               sourceText: String(quickMapState.sourceText || ''),
-              existingRules: skuRules,
+              existingRules: scopedRules,
               batchItemTexts,
               matchRule: matchSkuRule,
               matchNormalizer: normalizeMatchText
@@ -2546,17 +2768,19 @@
           showToast(safetyMessage, 'error');
           return;
         }
-        const saved = await saveSkuRule({ keyword, shortName }, { successMessage: 'บันทึกชื่อภายในแล้ว — Review จะอัปเดตจากกฎเดียวกับคลังคำศัพท์' });
+        const saved = await saveSkuRule({ platform, keyword, shortName }, { successMessage: `บันทึก Mapping ${platform === 'TIKTOK' ? 'TikTok' : 'Shopee'} แล้ว — ไม่กระทบอีกแพลตฟอร์ม` });
         if (!saved) return;
         setQuickMapState({ open: false, row: null, keyword: '', shortName: '' });
       };
 
       const handleOpenQuickMapInLibrary = () => {
         const seed = String(quickMapState.keyword || '').trim();
+        const platform = normalizeSkuRulePlatform(quickMapState.row?.order?.platform) || 'TIKTOK';
         setEditingId(null);
         setSkuSearch(seed);
+        setSkuPlatformFilter(platform);
         setSkuFilter('ALL');
-        setNewRule({ keyword: seed, shortName: String(quickMapState.shortName || '') });
+        setNewRule({ platform, keyword: seed, shortName: String(quickMapState.shortName || '') });
         setQuickMapState({ open: false, row: null, keyword: '', shortName: '' });
         setActiveTab('settings');
         setActiveView('sku');
@@ -3071,7 +3295,8 @@
             settings: {
               thermalMode,
               duplicateFingerprints: duplicateApi ? duplicateApi.exportFingerprintStore() : {},
-              archiveState: archiveApi ? archiveApi.exportArchiveStore() : {}
+              archiveState: archiveApi ? archiveApi.exportArchiveStore() : {},
+              marketplaceRegistry: marketplaceRegistryLoadError ? null : marketplaceRegistry
             },
             appVersion: document.title
           });
@@ -3108,18 +3333,24 @@
           const backup = workspaceApi.validateBackup(parsed);
           if (duplicateApi) duplicateApi.validateFingerprintStore(backup.settings.duplicateFingerprints || {});
           if (archiveApi) archiveApi.validateArchiveStore(backup.settings.archiveState || {});
+          const restoredMarketplaceRegistry = backup.settings.marketplaceRegistry == null
+            ? null
+            : marketplaceRegistryApi.validateStore(backup.settings.marketplaceRegistry);
           const preparedRules = prepareSkuRules(backup.skuRules, `restore-${Date.now()}`);
           if (preparedRules.report.conflicts.length > 0) {
             throw new Error(`Backup มี SKU conflict ${preparedRules.report.conflicts.length} กลุ่ม ต้องให้ผู้ใช้ตัดสินใจก่อน Restore`);
           }
           const safeBackup = { ...backup, skuRules: preparedRules.rules };
+          if (restoredMarketplaceRegistry) safeBackup.settings = { ...backup.settings, marketplaceRegistry: restoredMarketplaceRegistry };
           const summary = workspaceApi.getBackupSummary(safeBackup);
-          setRestorePreview({ backup: safeBackup, summary, skuIntegrityReport: preparedRules.report });
+          const marketplaceSummary = restoredMarketplaceRegistry ? marketplaceRegistryApi.getSummary(restoredMarketplaceRegistry) : null;
+          setRestorePreview({ backup: safeBackup, summary, marketplaceSummary, skuIntegrityReport: preparedRules.report });
           setRestoreFileName(file.name);
           const integrityNote = preparedRules.report.rekeyed.length > 0
             ? ` • จะ Re-key Rule ID ${preparedRules.report.rekeyed.length} รายการโดยไม่เปลี่ยน Keyword/ชื่อภายใน`
             : '';
-          showToast(`ตรวจไฟล์ Backup ผ่านแล้ว กรุณาตรวจ Summary ก่อน Replace${integrityNote}`, 'success');
+          const registryNote = restoredMarketplaceRegistry ? ' • มี Marketplace Registry' : '';
+          showToast(`ตรวจไฟล์ Backup ผ่านแล้ว กรุณาตรวจ Summary ก่อน Replace${integrityNote}${registryNote}`, 'success');
         } catch (err) {
           console.error('Workspace restore file validation failed', err);
           resetRestorePreview();
@@ -3155,6 +3386,10 @@
         const previousThermalMode = thermalMode;
         const previousDuplicateFingerprints = duplicateApi ? duplicateApi.exportFingerprintStore() : {};
         const previousArchiveState = archiveApi ? archiveApi.exportArchiveStore() : {};
+        const previousMarketplaceRegistry = marketplaceRegistry;
+        const previousMarketplaceRegistryLoadError = marketplaceRegistryLoadError;
+        let previousMarketplaceRegistryRaw = null;
+        try { previousMarketplaceRegistryRaw = window.localStorage.getItem(marketplaceRegistryApi.STORAGE_KEY); } catch (error) {}
         let safetyBackup = null;
         let rollbackSucceeded = false;
 
@@ -3173,7 +3408,8 @@
             settings: {
               thermalMode: previousThermalMode,
               duplicateFingerprints: previousDuplicateFingerprints,
-              archiveState: previousArchiveState
+              archiveState: previousArchiveState,
+              marketplaceRegistry: previousMarketplaceRegistryLoadError ? null : previousMarketplaceRegistry
             },
             appVersion: document.title
           });
@@ -3182,6 +3418,11 @@
           await workspaceApi.replaceWorkspaceBatches(backup, batchApi);
           if (duplicateApi) duplicateApi.replaceFingerprintStore(backup.settings.duplicateFingerprints || {});
           if (archiveApi) archiveApi.replaceArchiveStore(backup.settings.archiveState || {});
+          if (backup.settings.marketplaceRegistry != null) {
+            marketplaceRegistryApi.saveStore(window.localStorage, backup.settings.marketplaceRegistry);
+            setMarketplaceRegistry(backup.settings.marketplaceRegistry);
+            setMarketplaceRegistryLoadError('');
+          }
 
           setSkuRules(restoredRules);
           if (typeof backup.settings.thermalMode === 'boolean') {
@@ -3208,6 +3449,10 @@
               await workspaceApi.replaceWorkspaceBatches(safetyBackup, batchApi);
               if (duplicateApi) duplicateApi.replaceFingerprintStore(previousDuplicateFingerprints);
               if (archiveApi) archiveApi.replaceArchiveStore(previousArchiveState);
+              if (previousMarketplaceRegistryRaw == null) window.localStorage.removeItem(marketplaceRegistryApi.STORAGE_KEY);
+              else window.localStorage.setItem(marketplaceRegistryApi.STORAGE_KEY, previousMarketplaceRegistryRaw);
+              setMarketplaceRegistry(previousMarketplaceRegistry);
+              setMarketplaceRegistryLoadError(previousMarketplaceRegistryLoadError);
               const previousBatches = await batchApi.listBatches();
               setBatches(previousBatches);
               setSkuRules(previousSkuRules);
@@ -3304,7 +3549,8 @@
 
       const prepareSkuRules = (rules, idPrefix = 'rule') => {
         if (!skuIntegrityApi) throw new Error('SKU Integrity module ยังไม่พร้อม');
-        return skuIntegrityApi.prepareRules(rules, { normalize: normalizeMatchText, idPrefix });
+        const scopedRules = migrateSkuRulesToPlatformScopes(rules, idPrefix);
+        return skuIntegrityApi.prepareRules(scopedRules, { normalize: normalizeMatchText, idPrefix });
       };
 
       const handleAuditSkuRules = async () => {
@@ -3343,7 +3589,7 @@
             cancelText: 'ยกเลิก',
             isDanger: true
           })) return;
-          setSkuRules(backupRules.map((rule, index) => sanitizeSkuRule(rule, `rollback-${index}`)).filter(Boolean));
+          setSkuRules(migrateSkuRulesToPlatformScopes(backupRules, 'rollback'));
           showToast('ย้อนกลับ SKU Library จาก Integrity backup แล้ว', 'success');
         } catch (err) {
           showToast(err.message || 'Rollback SKU Library ไม่สำเร็จ', 'error');
@@ -3414,10 +3660,14 @@
         reader.readAsText(file); e.target.value = null;
       };
 
-      const saveSkuRule = async ({ keyword, shortName }, options = {}) => {
+      const saveSkuRule = async ({ platform, keyword, shortName }, options = {}) => {
+        const cleanPlatform = normalizeSkuRulePlatform(platform);
         const cleanKeyword = String(keyword || '').trim();
         const cleanShortName = String(shortName || '').trim();
-        if (!cleanKeyword || !cleanShortName || !skuIntegrityApi) return false;
+        if (!cleanPlatform || !cleanKeyword || !cleanShortName || !skuIntegrityApi) {
+          showToast('กรุณาเลือกแพลตฟอร์ม กรอก Keyword และชื่อภายในให้ครบ', 'error');
+          return false;
+        }
         const targetEditingId = options.editingId || null;
         const idCounts = new Map();
         skuRules.forEach(rule => {
@@ -3432,16 +3682,16 @@
         let candidateRules;
         if (targetEditingId) {
           candidateRules = skuRules.map(rule => rule.id === targetEditingId
-            ? { ...rule, keyword: cleanKeyword, shortName: cleanShortName }
+            ? { ...rule, platform: cleanPlatform, keyword: cleanKeyword, shortName: cleanShortName }
             : rule);
         } else {
           const usedIds = new Set(skuRules.map(rule => String(rule.id)));
           const id = skuIntegrityApi.nextUniqueId(usedIds, `rule-${Date.now()}`);
-          candidateRules = [{ keyword: cleanKeyword, shortName: cleanShortName, id }, ...skuRules];
+          candidateRules = [{ platform: cleanPlatform, keyword: cleanKeyword, shortName: cleanShortName, id }, ...skuRules];
         }
         const prepared = prepareSkuRules(candidateRules, `rule-${Date.now()}`);
         if (prepared.report.conflicts.length > 0) {
-          showToast('บันทึกไม่ได้: Keyword เดียวกันหลัง normalize ชี้ไปคนละชื่อภายใน', 'error');
+          showToast('บันทึกไม่ได้: Keyword เดียวกันในแพลตฟอร์มเดียวกันชี้ไปคนละชื่อภายใน', 'error');
           return false;
         }
         if (prepared.report.sameOutputDuplicates.length > 0 && !await requestConfirm({
@@ -3458,17 +3708,17 @@
 
       const handleSubmitRule = async (e) => {
         e.preventDefault();
-        if (!newRule.keyword.trim() || !newRule.shortName.trim()) return;
+        if (!normalizeSkuRulePlatform(newRule.platform) || !newRule.keyword.trim() || !newRule.shortName.trim()) return;
         const saved = await saveSkuRule(newRule, { editingId });
         if (!saved) return;
         setEditingId(null);
-        setNewRule({ keyword: '', shortName: '' });
+        setNewRule({ platform: newRule.platform || 'TIKTOK', keyword: '', shortName: '' });
       };
 
       const handleEditClick = (rule) => {
         const sharedIdCount = skuRules.filter(candidate => String(candidate.id) === String(rule.id)).length;
         if (sharedIdCount > 1) return showToast('Rule ID นี้ถูกใช้ร่วมกับ alias อื่น — กรุณา Audit Integrity ก่อนแก้ไข', 'error');
-        setNewRule({ keyword: rule.keyword, shortName: rule.shortName });
+        setNewRule({ platform: normalizeSkuRulePlatform(rule.platform) || 'TIKTOK', keyword: rule.keyword, shortName: rule.shortName });
         setEditingId(rule.id);
       };
 
@@ -3487,19 +3737,19 @@
       };
 
       const cancelEdit = () => {
-        setNewRule({ keyword: '', shortName: '' });
+        setNewRule({ platform: newRule.platform || 'TIKTOK', keyword: '', shortName: '' });
         setEditingId(null);
       };
 
       const testResult = useMemo(() => {
         if (!testInput) return null;
-        const match = getMatchResult(testInput);
+        const match = getMatchResult(testInput, testPlatform);
         const totalQty = parseInt(testQty, 10) || 1;
         if (match.status === 'ambiguous') return '⚠️ ตรวจสอบ SKU';
         if (match.status !== 'matched' || !match.rule) return 'ไม่พบคีย์เวิร์ด';
         const baseName = match.rule.shortName.trim().replace(/\u00A0/g, ' ');
         return getAggregatedShortName(baseName, totalQty);
-      }, [testInput, testQty, getMatchResult]);
+      }, [testInput, testQty, testPlatform, getMatchResult]);
 
       const skuFilterOptions = [
         { id: 'ALL', label: 'ทั้งหมด' },
@@ -3517,7 +3767,9 @@
       const filteredSkuRules = useMemo(() => {
         const query = skuSearch.trim().toLowerCase();
         return skuRules.filter(rule => {
-          const searchArea = `${rule.keyword || ''} ${rule.shortName || ''}`.toLowerCase();
+          const rulePlatform = normalizeSkuRulePlatform(rule && rule.platform);
+          const searchArea = `${rule.platform || ''} ${rule.keyword || ''} ${rule.shortName || ''}`.toLowerCase();
+          if (skuPlatformFilter !== 'ALL' && rulePlatform !== skuPlatformFilter) return false;
           if (query && !searchArea.includes(query)) return false;
           if (skuFilter === 'HOYA' && !searchArea.includes('hoya')) return false;
           if (skuFilter === 'HAKU' && !searchArea.includes('haku')) return false;
@@ -3526,7 +3778,27 @@
           if (skuFilter === 'VALUE' && !/(value\s*pack|valuepack|แวลู|แวล)/i.test(searchArea)) return false;
           return true;
         });
-      }, [skuRules, skuSearch, skuFilter]);
+      }, [skuRules, skuSearch, skuPlatformFilter, skuFilter]);
+
+      const marketplaceRegistrySummary = useMemo(() => marketplaceRegistryApi && marketplaceRegistry
+        ? marketplaceRegistryApi.getSummary(marketplaceRegistry)
+        : null, [marketplaceRegistry]);
+      const selectedMarketplaceRegistry = marketplaceRegistry?.platforms?.[marketplaceRegistryPlatformFilter] || null;
+      const filteredMarketplaceRegistryRows = useMemo(() => {
+        if (!selectedMarketplaceRegistry) return [];
+        const sourceRows = marketplaceRegistryDisplayMode === 'products'
+          ? selectedMarketplaceRegistry.products.map(product => ({ ...product, __recordType: 'product' }))
+          : selectedMarketplaceRegistry.skuRows.map(row => ({ ...row, __recordType: 'skuRow' }));
+        const query = marketplaceRegistrySearch.trim().toLowerCase();
+        return sourceRows.filter(row => {
+          const productName = row.productName || row.title || '';
+          const id = row.productId || row.itemId || '';
+          const searchArea = `${productName} ${id} ${row.sellerSku || ''} ${row.parentSku || ''} ${row.variantName || ''} ${row.modelId || ''}`.toLowerCase();
+          return !query || searchArea.includes(query);
+        });
+      }, [selectedMarketplaceRegistry, marketplaceRegistryDisplayMode, marketplaceRegistrySearch]);
+      const marketplaceRegistryPageCount = Math.max(1, Math.ceil(filteredMarketplaceRegistryRows.length / marketplaceRegistryPageSize));
+      const visibleMarketplaceRegistryRows = filteredMarketplaceRegistryRows.slice((marketplaceRegistryPage - 1) * marketplaceRegistryPageSize, marketplaceRegistryPage * marketplaceRegistryPageSize);
 
       const sortedSkuRules = useMemo(() => {
         const rows = [...filteredSkuRules];
@@ -3540,9 +3812,11 @@
 
       const reviewPageCount = Math.max(1, Math.ceil(FilteredOrders.length / reviewPageSize));
       const visibleReviewOrders = FilteredOrders.slice((reviewPage - 1) * reviewPageSize, reviewPage * reviewPageSize);
-      useEffect(() => { setSkuPage(1); }, [skuSearch, skuFilter, skuSort]);
+      useEffect(() => { setSkuPage(1); }, [skuSearch, skuPlatformFilter, skuFilter, skuSort]);
       useEffect(() => { setReviewPage(1); }, [reviewSearch, reviewPlatform, reviewStatus, previewMode, activeBatchId]);
       useEffect(() => { if (skuPage > skuPageCount) setSkuPage(skuPageCount); }, [skuPage, skuPageCount]);
+      useEffect(() => { setMarketplaceRegistryPage(1); }, [marketplaceRegistryPlatformFilter, marketplaceRegistryDisplayMode, marketplaceRegistrySearch]);
+      useEffect(() => { if (marketplaceRegistryPage > marketplaceRegistryPageCount) setMarketplaceRegistryPage(marketplaceRegistryPageCount); }, [marketplaceRegistryPage, marketplaceRegistryPageCount]);
       useEffect(() => { if (reviewPage > reviewPageCount) setReviewPage(reviewPageCount); }, [reviewPage, reviewPageCount]);
 
       const activeBatchRows = batches.filter(batch => !getBatchArchivedAt(batch));
@@ -3595,7 +3869,7 @@
       const quickMapDialogRef = React.useRef(null);
       useEffect(() => {
         if (!quickMapState.open) return undefined;
-        quickMapPreviousActiveRef.current = document.activeElement;
+        if (!quickMapPreviousActiveRef.current) quickMapPreviousActiveRef.current = document.activeElement;
         const handleKeyDown = (event) => {
           if (event.key === 'Escape') {
             event.preventDefault();
@@ -3621,7 +3895,8 @@
         return () => {
           window.removeEventListener('keydown', handleKeyDown);
           const prev = quickMapPreviousActiveRef.current;
-          if (prev && typeof prev.focus === 'function') {
+          quickMapPreviousActiveRef.current = null;
+          if (prev && prev.isConnected && typeof prev.focus === 'function') {
             prev.focus();
           }
         };
@@ -3665,7 +3940,7 @@
                         <div className="flex items-center justify-between gap-2"><label className="pm-label mb-0">Keyword แนะนำที่ผ่าน Safety Check</label><span className="text-xs font-semibold text-slate-400">ไม่ Auto-fill • ไม่ Auto-save</span></div>
                         {(quickMapState.suggestions || []).length > 0 ? <div className="mt-2 grid gap-2">{(quickMapState.suggestions || []).map((suggestion,index)=>{const selected=quickMapState.keyword===suggestion.value;return <button key={`${suggestion.value}-${index}`} type="button" data-pm-keyword-suggestion onClick={()=>setQuickMapState(prev => ({ ...prev, keyword: suggestion.value }))} className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${selected ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-100' : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-blue-50/40'}`}><div className="flex items-start justify-between gap-3"><span className="text-xs font-black text-slate-800 break-words">{suggestion.displayValue || suggestion.value}</span><span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-black ${suggestion.confidence === 'recommended' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>{suggestion.confidence === 'recommended' ? 'ปลอดภัย' : 'ตรวจอีกครั้ง'}</span></div><div className="mt-1 text-xs font-semibold text-slate-500">{suggestion.confidence === 'recommended' ? 'ผ่าน Smart Matcher กับคลังและ Batch ปัจจุบัน' : 'เฉพาะที่สุดจากใบจริง • ระบบจะเช็ก Safety อีกครั้งก่อนบันทึก'}</div></button>})}</div> : <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-500">ยังตั้งชื่อเฉพาะ Order นี้ได้ — กรุณาอ้างอิงใบจริงด้านซ้ายและใช้ Keyword ที่เฉพาะเจาะจง</div>}
                       </div>
-                      <div className="mt-3"><label className="pm-label">ชื่อภายใน / ผลลัพธ์ที่จะพิมพ์</label><input autoFocus list="pm-internal-name-options" value={quickMapState.shortName} onChange={(e)=>setQuickMapState(prev=>({ ...prev, shortName:e.target.value }))} placeholder="ค้นหาจากคลัง หรือกรอกชื่อใหม่" className="pm-input text-base font-black" /><datalist id="pm-internal-name-options">{internalNameChoices.map(name=><option key={name} value={name} />)}</datalist></div>
+                      <div className="mt-3"><label className="pm-label">ชื่อภายใน / ผลลัพธ์ที่จะพิมพ์</label><input list="pm-internal-name-options" value={quickMapState.shortName} onChange={(e)=>setQuickMapState(prev=>({ ...prev, shortName:e.target.value }))} placeholder="ค้นหาจากคลัง หรือกรอกชื่อใหม่" className="pm-input text-base font-black" /><datalist id="pm-internal-name-options">{internalNameChoices.map(name=><option key={name} value={name} />)}</datalist></div>
                       <div className="mt-3 grid sm:grid-cols-2 gap-2"><button onClick={handleSaveQuickMapping} disabled={!quickMapState.keyword.trim() || !quickMapState.shortName.trim()} className="pm-secondary-btn justify-center">บันทึกเป็น Mapping และใช้</button><button onClick={handleApplyQuickOrderName} disabled={!quickMapState.shortName.trim()} className="pm-primary-btn justify-center">ใช้กับ Order นี้</button></div>
                     </>}
 
@@ -3714,7 +3989,7 @@
                   <button type="button" data-pm-sidebar-toggle className="pm-sidebar-toggle" aria-controls="packmaster-sidebar" aria-expanded={!sidebarCollapsed} aria-label={sidebarCollapsed ? 'ขยายเมนูด้านข้าง' : 'ย่อเมนูด้านข้าง'} title={sidebarCollapsed ? 'ขยายเมนูด้านข้าง' : 'ย่อเมนูด้านข้าง'} onClick={toggleSidebar}><span aria-hidden="true">{sidebarCollapsed ? '›' : '‹'}</span></button>
                 </div>
                 <div className="px-3 pt-2 pb-2">
-                  <div className="pm-sidebar-section-label text-[11px] font-black tracking-[0.17em] uppercase text-blue-200/45 px-3 mb-2">งานหลัก</div>
+                  <div className="pm-sidebar-section-label text-xs font-bold tracking-[0.14em] uppercase text-blue-100/80 px-3 mb-2">งานหลัก</div>
                   <nav data-pm-primary-nav className="space-y-1.5">
                     {[
                       ['batches','box','งานแพ็ก'],
@@ -3729,8 +4004,9 @@
                     ))}
                   </nav>
                   <div data-pm-secondary-nav className="mt-4 pt-3 border-t border-white/10 space-y-1.5">
-                    <div className="pm-sidebar-section-label text-[11px] font-black tracking-[0.14em] uppercase text-blue-200/35 px-3 mb-1">เครื่องมือ</div>
+                    <div className="pm-sidebar-section-label text-xs font-bold tracking-[0.14em] uppercase text-blue-100/80 px-3 mb-1">เครื่องมือ</div>
                     <button aria-label="จับคู่ SKU" title={sidebarCollapsed ? 'จับคู่ SKU' : undefined} onClick={()=>navigateView('sku')} className={`pm-nav-btn ${activeView==='sku'?'pm-nav-btn-active':''}`}><PMIcon name="barcode" className="w-[17px] h-[17px] flex-none"/><span className="pm-nav-label">จับคู่ SKU</span></button>
+                    <button aria-label="ทะเบียนสินค้า Marketplace" title={sidebarCollapsed ? 'ทะเบียนสินค้า Marketplace' : undefined} onClick={()=>navigateView('marketplace-registry')} className={`pm-nav-btn ${activeView==='marketplace-registry'?'pm-nav-btn-active':''}`}><PMIcon name="box" className="w-[17px] h-[17px] flex-none"/><span className="pm-nav-label">ทะเบียนสินค้า</span></button>
                     {exceptionRows.length > 0 && <button aria-label="ตรวจปัญหา" title={sidebarCollapsed ? 'ตรวจปัญหา' : undefined} onClick={openExceptionMode} className="pm-nav-btn"><PMIcon name="alert" className="w-[17px] h-[17px] flex-none text-amber-400"/><span className="pm-nav-label">ตรวจปัญหา</span><span className="pm-nav-badge ml-auto min-w-5 h-5 px-1.5 rounded-full bg-amber-400 text-[#071f3d] text-[11px] font-black flex items-center justify-center">{exceptionRows.length}</span></button>}
                     <button aria-label="ความปลอดภัยข้อมูล" title={sidebarCollapsed ? 'ความปลอดภัยข้อมูล' : undefined} onClick={()=>navigateView('safety')} className={`pm-nav-btn ${activeView==='safety'?'pm-nav-btn-active':''}`}><PMIcon name="shield" className="w-[17px] h-[17px] flex-none"/><span className="pm-nav-label">ความปลอดภัยข้อมูล</span></button>
                   </div>
@@ -3800,7 +4076,7 @@
                     <div className="pm-card p-4 mb-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
                       <div className="flex gap-1.5 p-1 rounded-xl bg-slate-100 w-fit">
                         {[['ACTIVE','กำลังใช้งาน'],['ARCHIVED','เก็บแล้ว'],['ALL','ทั้งหมด']].map(([id,label]) => (
-                          <button key={id} onClick={() => { setBatchViewFilter(id); setSelectedArchivedBatchIds([]); }} className={`px-4 py-2 rounded-lg text-xs font-black transition ${batchViewFilter === id ? 'bg-white text-[#0b63ce] shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>{label}{id === 'ARCHIVED' ? ` (${archivedBatchCount})` : ''}</button>
+                          <button key={id} onClick={() => { setBatchViewFilter(id); setSelectedArchivedBatchIds([]); }} className={`min-h-[44px] px-4 py-2 rounded-lg text-xs font-black transition ${batchViewFilter === id ? 'bg-white text-[#0b63ce] shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>{label}{id === 'ARCHIVED' ? ` (${archivedBatchCount})` : ''}</button>
                         ))}
                       </div>
                       <div className="flex items-center gap-2">
@@ -3889,7 +4165,6 @@
                           <div className="pm-card p-5">
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
                               <div><div className="text-xs uppercase tracking-[0.15em] font-black text-blue-600">Active Batch</div><div className="flex items-center gap-2 mt-1"><div className="text-lg font-black text-slate-900">{activeBatch?.name || 'Active Batch'}</div>{activeBatch && (() => { const ui = getBatchStatusUi(getEffectiveBatchStatus(activeBatch)); return <span className={`px-2 py-1 rounded-full border text-[11px] font-black ${ui.className}`}>{ui.label}</span>; })()}</div><div className="text-xs font-semibold text-slate-400 mt-1">สูงสุดรวม 150 ใบต่อ Batch • Duplicate Guard ทำงานอัตโนมัติ</div></div>
-                              {orders.length > 0 && <button onClick={() => navigateView('review')} className="pm-primary-btn" title="รีวิว & พิมพ์">ขั้นต่อไป: ตรวจรายการ <PMIcon name="arrow-right" /></button>}
                             </div>
 
                             <div className={`pm-upload-zone ${loadingStatus.active ? 'pm-upload-zone-active' : ''}`}>
@@ -3900,7 +4175,7 @@
                                   <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4"><PMIcon name="upload" className="w-7 h-7" /></div>
                                   <h3 className="text-lg font-black text-slate-900">ลากและวางไฟล์ PDF ที่นี่</h3>
                                   <p className="text-xs font-semibold text-slate-400 mt-2 mb-5">หรือเลือกไฟล์ Shopee / TikTok จากเครื่อง • เพิ่มหลายไฟล์ได้</p>
-                                  <label data-pm-action="upload-pdf" className="pm-primary-btn inline-flex cursor-pointer"><PMIcon name="file" /> เลือกไฟล์ PDF<input type="file" accept=".pdf" multiple className="hidden" onChange={handleFileUpload} /></label>
+                                  <button type="button" data-pm-action="upload-pdf" data-pm-file-picker className="pm-primary-btn inline-flex" onClick={() => document.getElementById('pm-upload-pdf-input')?.click()}><PMIcon name="file" /> เลือกไฟล์ PDF</button><input id="pm-upload-pdf-input" type="file" accept=".pdf" multiple className="hidden" onChange={handleFileUpload} />
                                   {uploadError && <div role="alert" aria-live="polite" className="mt-4 inline-flex px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-black">{uploadError}</div>}
                                 </div>
                               )}
@@ -3949,11 +4224,11 @@
                 {activeView === 'sku' && (
                   <section data-pm-view="sku" data-pm-layout-v4 className="pm-page">
                     <div className="pm-page-head">
-                      <div><div className="pm-eyebrow">SKU Dictionary</div><h2 className="pm-page-title">คลังคำศัพท์</h2><p className="pm-page-subtitle">จัดการ Keyword → ชื่อภายในที่ทีมแพ็กเข้าใจ โดยไม่เปลี่ยน Data Shape เดิม</p></div>
+                      <div><div className="pm-eyebrow">SKU Dictionary</div><h2 className="pm-page-title">คลังคำศัพท์</h2><p className="pm-page-subtitle">แยก Mapping TikTok / Shopee ชัดเจน เพื่อไม่ให้การแก้กฎของแพลตฟอร์มหนึ่งกระทบอีกแพลตฟอร์ม</p></div>
                       <div className="pm-page-actions">
                         <button onClick={handleAuditSkuRules} className="pm-warning-btn">Audit Integrity</button>
                         <button onClick={handleRollbackSkuMigration} className="pm-ghost-btn">Rollback Audit</button>
-                        <label className="pm-secondary-btn cursor-pointer"><PMIcon name="upload" /> นำเข้า<input type="file" accept=".json" className="hidden" onChange={handleImportRules} /></label>
+                        <button type="button" data-pm-file-picker className="pm-secondary-btn" onClick={() => document.getElementById('pm-import-rules-input')?.click()}><PMIcon name="upload" /> นำเข้า</button><input id="pm-import-rules-input" type="file" accept=".json" className="hidden" onChange={handleImportRules} />
                         <button onClick={handleExportRules} className="pm-secondary-btn"><PMIcon name="download" /> ส่งออก</button>
                       </div>
                     </div>
@@ -3964,16 +4239,17 @@
                           <div className="pm-section-kicker">เพิ่ม / แก้ไขกฎ</div>
                           <h3 className="text-base font-black text-slate-900 mb-4">{editingId ? 'แก้ไข Mapping' : 'เพิ่ม Mapping ใหม่'}</h3>
                           <form onSubmit={handleSubmitRule} className="space-y-4">
-                            <div><label className="pm-label">Keyword *</label><textarea rows="3" value={newRule.keyword} onChange={(e) => setNewRule({...newRule, keyword:e.target.value})} placeholder="เช่น HOYA Cooling 5 ห่อ" className="pm-input resize-none"></textarea><p className="pm-help">ใช้คำที่ช่วยยืนยันตัวสินค้าให้ชัดเจน ไม่ควรใช้คำทั่วไปอย่าง HOYA เพียงคำเดียว</p></div>
-                            <div><label className="pm-label">ชื่อภายใน (Internal Short Name) *</label><input value={newRule.shortName} onChange={(e) => setNewRule({...newRule, shortName:e.target.value})} placeholder="เช่น เย็นฟ้า5" className="pm-input" /></div>
-                            <div className="flex gap-2 pt-1"><button type="submit" disabled={!newRule.keyword.trim() || !newRule.shortName.trim()} className="pm-primary-btn flex-1 justify-center">{editingId ? 'บันทึก' : 'เพิ่มกฎ'}</button>{editingId && <button type="button" onClick={cancelEdit} className="pm-secondary-btn">ยกเลิก</button>}</div>
+                            <div><label htmlFor="pm-sku-platform" className="pm-label">แพลตฟอร์ม *</label><select id="pm-sku-platform" value={newRule.platform || 'TIKTOK'} onChange={(e) => setNewRule({...newRule, platform:e.target.value})} className="pm-select w-full"><option value="TIKTOK">TikTok</option><option value="SHOPEE">Shopee</option></select><p className="pm-help">Mapping จะใช้เฉพาะแพลตฟอร์มที่เลือก และไม่ไหลข้ามไปอีกแพลตฟอร์ม</p></div>
+                            <div><label htmlFor="pm-sku-keyword" className="pm-label">Keyword *</label><textarea id="pm-sku-keyword" aria-describedby="pm-sku-keyword-help" rows="3" value={newRule.keyword} onChange={(e) => setNewRule({...newRule, keyword:e.target.value})} placeholder="เช่น HOYA Cooling 5 ห่อ" className="pm-input resize-none"></textarea><p id="pm-sku-keyword-help" className="pm-help">ใช้คำที่ช่วยยืนยันตัวสินค้าให้ชัดเจน ไม่ควรใช้คำทั่วไปอย่าง HOYA เพียงคำเดียว</p></div>
+                            <div><label htmlFor="pm-sku-short-name" className="pm-label">ชื่อภายใน (Internal Short Name) *</label><input id="pm-sku-short-name" value={newRule.shortName} onChange={(e) => setNewRule({...newRule, shortName:e.target.value})} placeholder="เช่น เย็นฟ้า5" className="pm-input" /></div>
+                            <div className="flex gap-2 pt-1"><button type="submit" disabled={!normalizeSkuRulePlatform(newRule.platform) || !newRule.keyword.trim() || !newRule.shortName.trim()} className="pm-primary-btn flex-1 justify-center">{editingId ? 'บันทึก' : 'เพิ่มกฎ'}</button>{editingId && <button type="button" onClick={cancelEdit} className="pm-secondary-btn">ยกเลิก</button>}</div>
                           </form>
                         </div>
 
                         <div className="pm-card p-5">
                           <div className="pm-section-kicker">Quick Test</div><h3 className="text-sm font-black text-slate-900 mb-3">ทดสอบ Mapping ก่อนใช้จริง</h3>
-                          <textarea rows="3" value={testInput} onChange={(e) => setTestInput(e.target.value)} placeholder="วางชื่อสินค้าเต็ม..." className="pm-input resize-none"></textarea>
-                          <div className="flex items-center gap-2 mt-2"><label className="pm-label !mb-0">Qty</label><input type="number" min="1" value={testQty} onChange={(e) => setTestQty(e.target.value)} className="pm-input !py-2 w-24 text-center" /></div>
+                          <div className="grid sm:grid-cols-[160px_1fr] gap-2"><div><label htmlFor="pm-sku-test-platform" className="pm-label">แพลตฟอร์ม</label><select id="pm-sku-test-platform" value={testPlatform} onChange={(e)=>setTestPlatform(e.target.value)} className="pm-select w-full"><option value="TIKTOK">TikTok</option><option value="SHOPEE">Shopee</option></select></div><div><label htmlFor="pm-sku-test-input" className="pm-label">ชื่อสินค้า</label><textarea id="pm-sku-test-input" rows="3" value={testInput} onChange={(e) => setTestInput(e.target.value)} placeholder="วางชื่อสินค้าเต็ม..." className="pm-input resize-none"></textarea></div></div>
+                          <div className="flex items-center gap-2 mt-2"><label htmlFor="pm-sku-test-qty" className="pm-label !mb-0">Qty</label><input id="pm-sku-test-qty" type="number" min="1" value={testQty} onChange={(e) => setTestQty(e.target.value)} className="pm-input !py-2 w-24 text-center" /></div>
                           <div className="mt-3 p-3 rounded-xl bg-slate-50 border border-slate-200"><div className="text-xs font-black uppercase tracking-wider text-slate-400">Result</div><div className={`mt-1 text-sm font-black ${testInput && (testResult === 'ไม่พบคีย์เวิร์ด' || testResult === '⚠️ ตรวจสอบ SKU') ? 'text-red-600' : 'text-slate-900'}`}>{testInput ? testResult : '-'}</div></div>
                         </div>
                       </div>
@@ -3983,16 +4259,17 @@
                           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                             <div><div className="pm-section-kicker">ค้นหา / กรองกฎ</div><div className="text-xs font-bold text-slate-500 mt-1">{filteredSkuRules.length} จาก {skuRules.length} กฎ</div></div>
                             <div className="pm-sku-toolbar">
-                              <div className="relative min-w-[230px] flex-1"><PMIcon name="search" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="search" value={skuSearch} onChange={(e)=>setSkuSearch(e.target.value)} placeholder="ค้นหา Keyword / ชื่อภายใน" className="pm-input !py-2.5 !pl-9"/></div>
+                              <div className="relative min-w-[230px] flex-1"><label htmlFor="pm-sku-search" className="sr-only">ค้นหากฎ SKU</label><PMIcon name="search" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input id="pm-sku-search" type="search" value={skuSearch} onChange={(e)=>setSkuSearch(e.target.value)} placeholder="ค้นหา Keyword / ชื่อภายใน" className="pm-input !py-2.5 !pl-9"/></div>
                               <select value={skuSort} onChange={(e)=>setSkuSort(e.target.value)} className="pm-select"><option value="keyword">เรียง Keyword</option><option value="internal">เรียงชื่อภายใน</option></select>
                             </div>
                           </div>
-                          <div className="flex flex-wrap gap-1.5 mt-3">{skuFilterOptions.map(option=><button key={option.id} onClick={()=>setSkuFilter(option.id)} className={`px-3 py-1.5 min-h-[44px] inline-flex items-center rounded-lg border text-xs font-black ${skuFilter===option.id?'bg-[#0b63ce] border-[#0b63ce] text-white':'bg-white border-slate-200 text-slate-500 hover:border-blue-300'}`}>{option.label}</button>)}</div>
+                          <div className="flex flex-wrap gap-1.5 mt-3">{[['ALL','ทุกแพลตฟอร์ม'],['TIKTOK','TikTok'],['SHOPEE','Shopee']].map(([id,label])=><button key={id} onClick={()=>setSkuPlatformFilter(id)} className={`px-3 py-1.5 min-h-[44px] inline-flex items-center rounded-lg border text-xs font-black ${skuPlatformFilter===id?'bg-slate-900 border-slate-900 text-white':'bg-white border-slate-200 text-slate-500 hover:border-slate-400'}`}>{label}</button>)}</div>
+                          <div className="flex flex-wrap gap-1.5 mt-2">{skuFilterOptions.map(option=><button key={option.id} onClick={()=>setSkuFilter(option.id)} className={`px-3 py-1.5 min-h-[44px] inline-flex items-center rounded-lg border text-xs font-black ${skuFilter===option.id?'bg-[#0b63ce] border-[#0b63ce] text-white':'bg-white border-slate-200 text-slate-500 hover:border-blue-300'}`}>{option.label}</button>)}</div>
                         </div>
                         <div className="overflow-x-auto">
-                          <table className="pm-table min-w-[720px]"><thead><tr><th>#</th><th>Keyword</th><th>ชื่อภายใน</th><th className="text-right">จัดการ</th></tr></thead><tbody>
-                            {visibleSkuRules.map((rule,idx)=><tr key={rule.id} className={editingId===rule.id?'opacity-40':''}><td className="text-slate-400 font-black">{(skuPage-1)*skuPageSize+idx+1}</td><td><div className="font-bold text-slate-700 max-w-[380px] break-words">{rule.keyword}</div></td><td><span className="inline-flex px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 font-black">{rule.shortName}</span></td><td><div className="flex justify-end gap-1"><button onClick={()=>handleEditClick(rule)} className="pm-icon-btn" title="แก้ไข"><PMIcon name="edit" className="w-4 h-4"/></button><button onClick={()=>handleDeleteSkuRule(rule)} className="pm-icon-btn pm-icon-danger" title="ลบ"><PMIcon name="trash" className="w-4 h-4"/></button></div></td></tr>)}
-                            {visibleSkuRules.length===0&&<tr><td colSpan="4"><div className="py-12 text-center text-sm font-bold text-slate-400">{skuRules.length===0?'ยังไม่มีข้อมูลคลังคำศัพท์':'ไม่พบกฎที่ตรงกับการค้นหา / ตัวกรอง'}</div></td></tr>}
+                          <table className="pm-table min-w-[820px]"><thead><tr><th>#</th><th>แพลตฟอร์ม</th><th>Keyword</th><th>ชื่อภายใน</th><th className="text-right">จัดการ</th></tr></thead><tbody>
+                            {visibleSkuRules.map((rule,idx)=><tr key={rule.id} className={editingId===rule.id?'opacity-40':''}><td className="text-slate-400 font-black">{(skuPage-1)*skuPageSize+idx+1}</td><td><PMStatusPill tone={rule.platform==='TIKTOK'?'dark':'orange'}>{rule.platform==='TIKTOK'?'TikTok':'Shopee'}</PMStatusPill></td><td><div className="font-bold text-slate-700 max-w-[380px] break-words">{rule.keyword}</div></td><td><span className="inline-flex px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 font-black">{rule.shortName}</span></td><td><div className="flex justify-end gap-1"><button onClick={()=>handleEditClick(rule)} className="pm-icon-btn" title="แก้ไข"><PMIcon name="edit" className="w-4 h-4"/></button><button onClick={()=>handleDeleteSkuRule(rule)} className="pm-icon-btn pm-icon-danger" title="ลบ"><PMIcon name="trash" className="w-4 h-4"/></button></div></td></tr>)}
+                            {visibleSkuRules.length===0&&<tr><td colSpan="5"><div className="py-12 text-center text-sm font-bold text-slate-400">{skuRules.length===0?'ยังไม่มีข้อมูลคลังคำศัพท์':'ไม่พบกฎที่ตรงกับการค้นหา / ตัวกรอง'}</div></td></tr>}
                           </tbody></table>
                         </div>
                         <div className="pm-pagination"><div className="text-xs font-bold text-slate-400">หน้า {skuPage} / {skuPageCount}</div><div className="flex items-center gap-2"><select value={skuPageSize} onChange={(e)=>{setSkuPageSize(Number(e.target.value));setSkuPage(1);}} className="pm-select !py-1.5"><option value="10">10/หน้า</option><option value="20">20/หน้า</option><option value="50">50/หน้า</option></select><button disabled={skuPage<=1} onClick={()=>setSkuPage(p=>Math.max(1,p-1))} className="pm-page-btn">‹</button><button disabled={skuPage>=skuPageCount} onClick={()=>setSkuPage(p=>Math.min(skuPageCount,p+1))} className="pm-page-btn">›</button></div></div>
@@ -4072,17 +4349,41 @@
                   </section>
                 )}
 
+                {activeView === 'marketplace-registry' && (
+                  <section data-pm-view="marketplace-registry" className="pm-page">
+                    <div className="pm-page-head"><div><div className="pm-eyebrow">Marketplace Catalog</div><h2 className="pm-page-title">ทะเบียนสินค้า Marketplace</h2><p className="pm-page-subtitle">เก็บข้อมูลสินค้าตามแพลตฟอร์มไว้ดูและค้นหาแยกจากคลังจับคู่ SKU • ไม่สร้างชื่อภายในหรือ Mapping อัตโนมัติ</p></div><div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-black"><PMIcon name="shield"/> Local-only</div></div>
+
+                    {marketplaceRegistryLoadError && <div role="alert" className="pm-card mb-4 border-2 border-amber-300 bg-amber-50 p-4"><div className="text-sm font-black text-amber-900">อ่านทะเบียนเดิมไม่สำเร็จ</div><div className="mt-1 text-xs font-semibold text-amber-800">{marketplaceRegistryLoadError} • ระบบคงข้อมูลเดิมไว้จนกว่าจะเลือกนำเข้าและยืนยันสร้างทะเบียนใหม่</div></div>}
+
+                    <div className="grid md:grid-cols-2 gap-3 mb-4">
+                      {['TIKTOK','SHOPEE'].map(platform => { const item = marketplaceRegistrySummary?.[platform]; return <div key={platform} className="pm-card p-4"><div className="flex items-center justify-between"><div className="text-xs font-black uppercase tracking-wider text-slate-500">{platform === 'TIKTOK' ? 'TikTok' : 'Shopee'}</div><span className={`text-[11px] font-black px-2 py-1 rounded-full ${item?.captureDate ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{item?.captureDate ? `นำเข้า ${item.captureDate}` : 'ยังไม่มีข้อมูล'}</span></div><div className="grid grid-cols-3 gap-2 mt-3"><div className="pm-mini-stat"><span>สินค้า</span><strong>{item?.productCount || 0}</strong></div><div className="pm-mini-stat"><span>แถว SKU/ตัวเลือก</span><strong>{item?.skuRowCount || 0}</strong></div><div className="pm-mini-stat"><span>แถวไม่มี Seller SKU</span><strong>{item?.sellerSkuMissingCount || 0}</strong></div></div><div className="text-xs font-semibold text-slate-400 mt-2">ร้าน: {item?.shop || 'ยังไม่ได้นำเข้า'} • สินค้าที่ไม่มี SKU ทุกตัวเลือก: {item?.productsWithoutAnySellerSkuCount || 0}</div></div>; })}
+                    </div>
+
+                    <div className="grid xl:grid-cols-2 gap-3 mb-4">
+                      {['TIKTOK','SHOPEE'].map(platform => <div key={platform} className="pm-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div><div className="text-sm font-black text-slate-900">นำเข้า {platform === 'TIKTOK' ? 'TikTok' : 'Shopee'}</div><div className="text-xs font-semibold text-slate-500 mt-1">เลือกไฟล์ Registry JSON ของแพลตฟอร์มนี้ • แทนเฉพาะทะเบียนแพลตฟอร์มเดียวกัน</div></div><label className={`pm-primary-btn cursor-pointer shrink-0 ${marketplaceRegistryBusy ? 'opacity-50 pointer-events-none' : ''}`}><PMIcon name="upload"/> เลือกไฟล์ JSON<input type="file" accept=".json,application/json" disabled={marketplaceRegistryBusy} className="hidden" onChange={event => handleMarketplaceRegistryImport(event, platform)}/></label></div>)}
+                    </div>
+
+                    <div className="pm-card p-4 mb-4"><div className="flex flex-wrap gap-2 items-center justify-between"><div className="flex flex-wrap gap-2"><button onClick={()=>setMarketplaceRegistryPlatformFilter('TIKTOK')} className={`pm-nav-btn !text-xs ${marketplaceRegistryPlatformFilter==='TIKTOK'?'pm-nav-btn-active':''}`}>TikTok</button><button onClick={()=>setMarketplaceRegistryPlatformFilter('SHOPEE')} className={`pm-nav-btn !text-xs ${marketplaceRegistryPlatformFilter==='SHOPEE'?'pm-nav-btn-active':''}`}>Shopee</button><span className="mx-1 border-l border-slate-200"/><button onClick={()=>setMarketplaceRegistryDisplayMode('products')} className={`pm-secondary-btn !py-2 ${marketplaceRegistryDisplayMode==='products'?'!border-blue-400 !bg-blue-50 !text-blue-800':''}`}>สินค้า</button><button onClick={()=>setMarketplaceRegistryDisplayMode('skuRows')} className={`pm-secondary-btn !py-2 ${marketplaceRegistryDisplayMode==='skuRows'?'!border-blue-400 !bg-blue-50 !text-blue-800':''}`}>SKU / ตัวเลือก</button></div><div className="flex items-center gap-2"><input aria-label="ค้นหาทะเบียนสินค้า" value={marketplaceRegistrySearch} onChange={event=>setMarketplaceRegistrySearch(event.target.value)} placeholder="ค้นหาชื่อ, ID, Seller SKU..." className="pm-input !py-2 min-w-[220px]"/><select aria-label="จำนวนรายการต่อหน้า" value={marketplaceRegistryPageSize} onChange={event=>{setMarketplaceRegistryPageSize(Number(event.target.value));setMarketplaceRegistryPage(1);}} className="pm-select !py-2"><option value="20">20/หน้า</option><option value="50">50/หน้า</option><option value="100">100/หน้า</option></select></div></div></div>
+
+                    {!selectedMarketplaceRegistry ? <PMEmptyState icon="box" title={`ยังไม่มีทะเบียน ${marketplaceRegistryPlatformFilter === 'TIKTOK' ? 'TikTok' : 'Shopee'}`} body="นำเข้าไฟล์ Registry JSON ของแพลตฟอร์มนี้เพื่อดูแคตตาล็อกสินค้าและ SKU"/> : <div className="pm-card overflow-x-auto"><table className="pm-table min-w-[860px]"><thead><tr><th>{marketplaceRegistryDisplayMode==='products'?'Product / Item ID':'Product / Model ID'}</th><th>ชื่อสินค้า / ตัวเลือก</th><th>Seller SKU</th><th>Parent SKU</th><th>สถานะ</th></tr></thead><tbody>{visibleMarketplaceRegistryRows.map((row,index)=>{const productName=row.productName||row.title||'-';const productId=row.productId||row.itemId||'-';const skuRow=row.__recordType==='skuRow';const productHasVariantSku=Array.isArray(row.variants)&&row.variants.some(variant=>variant.sellerSku&&variant.sellerSku.trim());const sellerSku=skuRow?(row.sellerSku&&row.sellerSku.trim()?row.sellerSku:'ไม่แสดง'):marketplaceRegistryPlatformFilter==='SHOPEE'?(productHasVariantSku?'อยู่ในตัวเลือก':'ดูตัวเลือก'):(row.sellerSku&&row.sellerSku.trim()?row.sellerSku:productHasVariantSku?'อยู่ในตัวเลือก':'ไม่แสดง');const missingSku=sellerSku==='ไม่แสดง';return <tr key={`${marketplaceRegistryPlatformFilter}-${skuRow?'sku':'product'}-${row.modelId||row.variantOrdinal||productId}-${(marketplaceRegistryPage-1)*marketplaceRegistryPageSize+index}`}><td><div className="font-mono text-xs font-bold text-slate-700 break-all">{skuRow?(row.modelId||productId):productId}</div><div className="text-[11px] text-slate-400">{skuRow?`Product: ${productId}`:row.status||'-'}</div></td><td><div className="text-xs font-bold text-slate-800">{productName}</div>{skuRow&&row.variantName&&<div className="text-[11px] text-slate-500 mt-1">{row.variantName}</div>}{!skuRow&&<div className="text-[11px] text-slate-500 mt-1">{Array.isArray(row.variants)?row.variants.length:0} ตัวเลือก</div>}</td><td><span className={`text-xs font-black ${missingSku?'text-amber-700':marketplaceRegistryDisplayMode==='products'?'text-blue-700':'text-slate-800'}`}>{sellerSku}</span></td><td className="text-xs font-semibold text-slate-600">{row.parentSku||'-'}</td><td><span className={`text-[11px] font-black px-2 py-1 rounded-full ${missingSku?'bg-amber-50 text-amber-700':marketplaceRegistryDisplayMode==='products'?'bg-blue-50 text-blue-700':'bg-emerald-50 text-emerald-700'}`}>{missingSku?'ไม่มี Seller SKU':skuRow?'มี Seller SKU':'ดู SKU/ตัวเลือก'}</span></td></tr>;})}{visibleMarketplaceRegistryRows.length===0&&<tr><td colSpan="5" className="text-center text-xs font-semibold text-slate-400 py-8">ไม่พบรายการที่ตรงกับคำค้นหา</td></tr>}</tbody></table><div className="pm-pagination p-4"><div className="text-xs font-bold text-slate-500">แสดง {visibleMarketplaceRegistryRows.length} จาก {filteredMarketplaceRegistryRows.length} รายการ • หน้า {marketplaceRegistryPage}/{marketplaceRegistryPageCount}</div><div className="flex gap-2"><button disabled={marketplaceRegistryPage<=1} onClick={()=>setMarketplaceRegistryPage(page=>Math.max(1,page-1))} className="pm-page-btn">‹</button><button disabled={marketplaceRegistryPage>=marketplaceRegistryPageCount} onClick={()=>setMarketplaceRegistryPage(page=>Math.min(marketplaceRegistryPageCount,page+1))} className="pm-page-btn">›</button></div></div></div>}
+
+                    {selectedMarketplaceRegistry?.productsWithoutAnySellerSku?.length>0&&<details className="pm-card mt-4 p-4"><summary className="cursor-pointer text-sm font-black text-amber-800">สินค้าที่ไม่มี Seller SKU ในทุกตัวเลือก ({selectedMarketplaceRegistry.productsWithoutAnySellerSku.length})</summary><div className="mt-3 grid md:grid-cols-2 gap-2">{selectedMarketplaceRegistry.productsWithoutAnySellerSku.map(product=><div key={product.productId||product.itemId} className="rounded-lg border border-amber-100 bg-amber-50/60 p-2.5"><div className="text-xs font-bold text-slate-800">{product.productName||product.title||'-'}</div><div className="font-mono text-[11px] text-slate-500 mt-1">{product.productId||product.itemId}</div></div>)}</div></details>}
+
+                    <div className="mt-4 text-xs font-semibold text-slate-500">ข้อมูลทะเบียนเก็บใน Browser เครื่องนี้และอาจอยู่ใน Workspace Backup • ไม่ถูกแปลงเป็น SKU Mapping โดยอัตโนมัติ</div>
+                  </section>
+                )}
+
                 {activeView === 'safety' && (
                   <section data-pm-view="safety" data-pm-layout-v4 className="pm-page">
                     <div className="pm-page-head"><div><div className="pm-eyebrow">Local Safety</div><h2 className="pm-page-title">สำรองข้อมูล & ความปลอดภัย</h2><p className="pm-page-subtitle">สำรอง Workspace, ตรวจพื้นที่ และสร้าง Diagnostics โดยข้อมูลไม่ถูกส่งขึ้น Server</p></div><div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-black"><PMIcon name="shield"/> Local-only</div></div>
 
                     <div className="grid xl:grid-cols-2 gap-4">
                       <div className="pm-card p-5">
-                        <div className="flex items-start gap-3"><div className="pm-feature-icon"><PMIcon name="database"/></div><div className="flex-1"><div className="pm-section-kicker">Workspace Backup</div><h3 className="text-base font-black text-slate-900">ความปลอดภัย Workspace</h3><p className="text-xs font-semibold text-slate-400 mt-1 leading-5">สำรองคลังคำศัพท์, Settings และ Batch เป็น JSON ในเครื่อง ก่อนย้ายเครื่องหรือล้าง Browser</p></div></div>
+                        <div className="flex items-start gap-3"><div className="pm-feature-icon"><PMIcon name="database"/></div><div className="flex-1"><div className="pm-section-kicker">Workspace Backup</div><h3 className="text-base font-black text-slate-900">ความปลอดภัย Workspace</h3><p className="text-xs font-semibold text-slate-400 mt-1 leading-5">สำรองคลังคำศัพท์, Settings, Batch และทะเบียนสินค้า Marketplace เป็น JSON ในเครื่อง ก่อนย้ายเครื่องหรือล้าง Browser</p></div></div>
                         <div className="flex flex-wrap gap-2 mt-5"><button data-pm-action="workspace-backup" onClick={handleWorkspaceBackup} disabled={workspaceBusy||!batchStorageReady} className="pm-primary-btn"><PMIcon name="download"/> สำรอง Workspace</button><label className={`pm-secondary-btn cursor-pointer ${workspaceBusy||!batchStorageReady?'opacity-50 pointer-events-none':''}`}><PMIcon name="upload"/> กู้คืน Workspace<input type="file" accept=".json,application/json" disabled={workspaceBusy||!batchStorageReady} className="hidden" onChange={handleWorkspaceRestoreFile}/></label></div>
                         <div className="mt-4 rounded-xl bg-amber-50 border border-amber-200 px-3 py-3 text-xs font-semibold leading-5 text-amber-800">Backup อาจมีข้อมูลที่อ่านจากใบออเดอร์ ควรเก็บเป็นข้อมูลภายในร้านและไม่อัปโหลดไฟล์จริงขึ้น Public GitHub</div>
 
-                        {restorePreview&&<div className="mt-4 rounded-xl border-2 border-blue-200 bg-blue-50/50 p-4"><div className="text-xs font-black text-blue-600">ตรวจไฟล์ผ่านแล้ว • {restoreFileName||'Backup JSON'}</div><div className="grid grid-cols-3 gap-2 mt-3"><div className="pm-mini-stat"><span>SKU Rules</span><strong>{restorePreview.summary.skuRules}</strong></div><div className="pm-mini-stat"><span>Batches</span><strong>{restorePreview.summary.batches}</strong></div><div className="pm-mini-stat"><span>Orders</span><strong>{restorePreview.summary.orders}</strong></div></div><div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-blue-200"><span className="text-xs font-bold text-red-600">Replace Workspace จะแทนข้อมูล Local ปัจจุบัน</span><div className="flex gap-2"><button onClick={resetRestorePreview} className="pm-ghost-btn">ยกเลิก</button><button onClick={handleConfirmWorkspaceRestore} disabled={workspaceBusy} className="pm-danger-btn">Replace Workspace</button></div></div></div>}
+                        {restorePreview&&<div className="mt-4 rounded-xl border-2 border-blue-200 bg-blue-50/50 p-4"><div className="text-xs font-black text-blue-600">ตรวจไฟล์ผ่านแล้ว • {restoreFileName||'Backup JSON'}</div>{restorePreview.marketplaceSummary&&<div className="mt-2 text-xs font-bold text-blue-800">Marketplace Registry: TikTok {restorePreview.marketplaceSummary.TIKTOK.productCount} สินค้า • Shopee {restorePreview.marketplaceSummary.SHOPEE.productCount} สินค้า</div>}<div className="grid grid-cols-3 gap-2 mt-3"><div className="pm-mini-stat"><span>SKU Rules</span><strong>{restorePreview.summary.skuRules}</strong></div><div className="pm-mini-stat"><span>Batches</span><strong>{restorePreview.summary.batches}</strong></div><div className="pm-mini-stat"><span>Orders</span><strong>{restorePreview.summary.orders}</strong></div></div><div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-blue-200"><span className="text-xs font-bold text-red-600">Replace Workspace จะแทนข้อมูล Local ปัจจุบัน</span><div className="flex gap-2"><button onClick={resetRestorePreview} className="pm-ghost-btn">ยกเลิก</button><button onClick={handleConfirmWorkspaceRestore} disabled={workspaceBusy} className="pm-danger-btn">Replace Workspace</button></div></div></div>}
                       </div>
 
                       <div className="pm-card p-5">
