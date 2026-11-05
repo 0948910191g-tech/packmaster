@@ -364,6 +364,27 @@
     .pm-command-btn { border-radius: 999px; background: rgba(255,255,255,.85); border: 1px solid #fff; color: #3d3a63; box-shadow: 0 2px 8px rgba(110,90,200,.08); }
     .pm-command-btn:hover { background: #fff; border-color: #fff; color: #4535b8; }
     .pm-command-safe { color: #157a50; border-color: rgba(34,160,107,.35); }
+    /* ===== Prototype-G structure: hero card + orb, header steps, metric chips, full-width content ===== */
+    .pm-hero { background: var(--pm-glass); border: 1px solid var(--pm-glass-edge); border-radius: 30px; box-shadow: 0 8px 30px rgba(110,90,200,.10); padding: 26px 30px; align-items: center; }
+    .pm-hero-lead { display: flex; align-items: center; gap: 24px; min-width: 0; }
+    .pm-orb { width: 112px; height: 112px; flex: 0 0 auto; border-radius: 50%; background: radial-gradient(circle at 32% 28%, #fff 0%, #d8ccff 32%, #8fc2ff 62%, #f7b6e6 100%); box-shadow: 0 14px 34px rgba(130,110,240,.35), inset 0 -8px 18px rgba(255,255,255,.5); }
+    .pm-hero .pm-page-title { font-size: clamp(26px, 2.6vw, 36px); }
+    .pm-header-steps { align-items: center; gap: 4px; background: rgba(255,255,255,.7); border-radius: 26px; padding: 4px; }
+    .pm-header-step { height: 42px; padding: 0 18px; border-radius: 21px; border: 0; background: transparent; color: var(--pm-ink-soft); font-size: 13px; font-weight: 600; white-space: nowrap; transition: .16s ease; }
+    .pm-header-step:hover { color: #4535b8; background: rgba(255,255,255,.8); }
+    .pm-header-step-active, .pm-header-step-active:hover { background: var(--pm-grad); color: #fff; font-weight: 700; box-shadow: 0 6px 14px rgba(100,90,230,.30); }
+    .pm-metric-head { display: flex; align-items: center; gap: 10px; }
+    .pm-metric-chip { width: 34px; height: 34px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: #e6e0ff; flex: 0 0 auto; }
+    .pm-metric-chip i { width: 12px; height: 12px; border-radius: 6px; background: #6a58e0; }
+    .pm-metric-green .pm-metric-chip { background: #d7f5e6; } .pm-metric-green .pm-metric-chip i { background: #22a06b; }
+    .pm-metric-amber .pm-metric-chip { background: #ffefc7; } .pm-metric-amber .pm-metric-chip i { background: #d98a00; }
+    .pm-metric-slate .pm-metric-chip { background: #d9ecff; } .pm-metric-slate .pm-metric-chip i { background: #3b82c4; }
+    .pm-metric-red .pm-metric-chip { background: #ffe0e4; } .pm-metric-red .pm-metric-chip i { background: #cc3c4d; }
+    .pm-metric { padding: 18px 20px; gap: 0; }
+    .pm-metric-value { font-size: 34px; margin-top: 12px; }
+    .pm-metric-label { font-size: 13px; font-weight: 600; }
+    @media (min-width: 901px) { .pm-page, .pm-page-wide { max-width: none; margin: 0; } .pm-command-header { justify-content: space-between; } }
+    @media (max-width: 900px) { .pm-hero { padding: 18px; } .pm-orb { width: 72px; height: 72px; } .pm-hero-lead { gap: 14px; } }
     .pm-logo-mark { background: linear-gradient(145deg, #8b7bff, #6aa9ff); border-color: transparent; box-shadow: 0 6px 14px rgba(120,100,240,.32); }
     @media (max-width: 767px) { [data-pm-stepper] { border-radius: 28px; } [data-pm-stepper] button { padding: 6px 10px; } }
 
@@ -1321,7 +1342,7 @@
 
     const PMMetric = ({ label, value, helper = '', tone = 'slate', compact = false }) => (
       <div className={`pm-metric pm-metric-${tone} ${compact ? 'pm-metric-compact' : ''}`}>
-        <div className="pm-metric-label">{label}</div>
+        <div className="pm-metric-head"><span className="pm-metric-chip" aria-hidden="true"><i></i></span><div className="pm-metric-label">{label}</div></div>
         <div className="pm-metric-value">{value}</div>
         {helper && <div className="pm-metric-helper">{helper}</div>}
       </div>
@@ -3515,20 +3536,20 @@
                 <div className="min-w-0">
                   <div className="flex items-center gap-3">
                     <h1 className="text-[24px] lg:text-[28px] font-black tracking-tight text-white leading-none">PackMaster</h1>
-                    <span className="hidden sm:inline-flex px-2 py-1 rounded-md bg-white/10 border border-white/10 text-[9px] font-black tracking-[0.14em] text-blue-100 uppercase">Frontend V3</span>
                   </div>
                   <p className="hidden sm:block text-[11px] lg:text-xs font-semibold text-blue-100/70 mt-1">เครื่องมือจัดการเอกสารและพิมพ์ฉลากจัดส่ง • Marketplace → Packing-ready label</p>
                 </div>
               </div>
 
-              <div className="hidden xl:flex items-center gap-2 ml-auto">
-                <button className="pm-command-btn" onClick={() => navigateView(activeBatchId ? 'upload' : 'batches')}><PMIcon name="file" /><span>อ่าน PDF</span></button>
-                <button className="pm-command-btn" onClick={() => navigateView('sku')}><PMIcon name="barcode" /><span>จับคู่ SKU</span></button>
-                <button className="pm-command-btn" onClick={() => navigateView('batches')}><PMIcon name="layers" /><span>จัดการ Batch</span></button>
-                <button className="pm-command-btn" onClick={openExceptionMode}><PMIcon name="alert" /><span>ตรวจปัญหา</span></button>
-                <button className="pm-command-btn" onClick={() => navigateView('review')}><PMIcon name="printer" /><span>พิมพ์</span></button>
-                <button className="pm-command-btn pm-command-safe" onClick={() => navigateView('safety')}><PMIcon name="shield" /><span>Local Safety</span></button>
-              </div>
+              <nav aria-label="ขั้นตอนการทำงาน" data-pm-header-steps className="pm-header-steps hidden md:flex ml-auto">
+                {[
+                  ['batches', '1', 'งานแพ็ก', () => navigateView('batches')],
+                  ['upload', '2', 'อัปโหลด PDF', () => navigateView(activeBatchId ? 'upload' : 'batches')],
+                  ['review', '3', 'ตรวจและพิมพ์', () => navigateView('review')]
+                ].map(([id, num, label, go]) => (
+                  <button key={id} type="button" onClick={go} aria-current={activeView === id ? 'page' : undefined} className={`pm-header-step ${activeView === id ? 'pm-header-step-active' : ''}`}>{num} {label}</button>
+                ))}
+              </nav>
             </header>
 
             <div className="pm-app-frame">
@@ -3580,13 +3601,19 @@
 
                 {activeView === 'batches' && (
                   <section data-pm-view="batches" data-pm-layout-v4 className="pm-page">
-                    <div className="pm-page-head">
-                      <div>
-                        <div className="pm-eyebrow">Packing Jobs</div>
-                        <h2 className="pm-page-title">งานแพ็ก / Batch</h2>
-                        <p className="pm-page-subtitle">จัดรอบงานให้แยกจากกัน เปิดย้อนกลับได้ และไม่ต้องล้างงานเดิมก่อนเริ่มรอบใหม่</p>
+                    <div className="pm-page-head pm-hero">
+                      <div className="pm-hero-lead">
+                        <div className="pm-orb" aria-hidden="true"></div>
+                        <div>
+                          <div className="pm-eyebrow">Packing Jobs</div>
+                          <h2 className="pm-page-title">งานแพ็ก / Batch</h2>
+                          <p className="pm-page-subtitle">จัดรอบงานให้แยกจากกัน เปิดย้อนกลับได้ และไม่ต้องล้างงานเดิมก่อนเริ่มรอบใหม่</p>
+                        </div>
                       </div>
-                      <button data-pm-action="create-batch" onClick={handleCreateBatch} disabled={batchLoading} className="pm-primary-btn"><PMIcon name="plus" /> เริ่มงานแพ็กใหม่</button>
+                      <div className="pm-page-actions">
+                        {activeBatchId && <button type="button" onClick={() => navigateView('upload')} className="pm-secondary-btn">ขั้นต่อไป: อัปโหลด PDF <PMIcon name="chevron-right" /></button>}
+                        <button data-pm-action="create-batch" onClick={handleCreateBatch} disabled={batchLoading} className="pm-primary-btn"><PMIcon name="plus" /> เริ่มงานแพ็กใหม่</button>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
