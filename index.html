@@ -438,7 +438,7 @@
         window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     }
 
-    const { useState, useEffect, useCallback, useMemo } = React;
+    const { useState, useEffect, useCallback, useMemo, useRef } = React;
 
     const Toast = ({ message, type, onClose }) => {
       useEffect(() => { const timer = setTimeout(() => onClose(), 3000); return () => clearTimeout(timer); }, [onClose]);
