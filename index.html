@@ -3544,8 +3544,8 @@
               <nav aria-label="ขั้นตอนการทำงาน" data-pm-header-steps className="pm-header-steps hidden md:flex ml-auto">
                 {[
                   ['batches', '1', 'งานแพ็ก', () => navigateView('batches')],
-                  ['upload', '2', 'อัปโหลด PDF', () => navigateView(activeBatchId ? 'upload' : 'batches')],
-                  ['review', '3', 'ตรวจและพิมพ์', () => navigateView('review')]
+                  ['upload', '2', 'อัปโหลดไฟล์', () => navigateView(activeBatchId ? 'upload' : 'batches')],
+                  ['review', '3', 'รีวิว & พิมพ์', () => navigateView('review')]
                 ].map(([id, num, label, go]) => (
                   <button key={id} type="button" onClick={go} aria-current={activeView === id ? 'page' : undefined} className={`pm-header-step ${activeView === id ? 'pm-header-step-active' : ''}`}>{num} {label}</button>
                 ))}
@@ -3589,7 +3589,7 @@
               </aside>
 
               <main className="pm-main">
-                {activeBatchId && activeView !== 'batches' && (
+                {activeBatchId && (activeView === 'upload' || activeView === 'review') && (
                   <div data-pm-active-batch-bar className="pm-active-batch-bar no-print">
                     <div className="pm-active-batch-inner">
                       <div className="flex-1 min-w-0"><div className="text-[9px] font-black uppercase tracking-[.12em] text-blue-500">งานที่กำลังทำ</div><div className="text-sm font-black text-slate-900 truncate">{activeBatch?.name || 'Active Batch'}</div></div>
