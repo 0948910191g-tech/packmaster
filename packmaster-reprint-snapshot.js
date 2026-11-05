@@ -16,7 +16,7 @@
     const resolution = String(entry.resolution || '').trim();
     const shortName = String(entry.shortName || '').trim();
     const effectiveQty = Number(entry.effectiveQty);
-    if (!sourceText || !['rule', 'manual'].includes(resolution) || !shortName || !Number.isFinite(effectiveQty) || effectiveQty < 1) return null;
+    if (!sourceText || !['rule', 'manual', 'registry'].includes(resolution) || !shortName || !Number.isFinite(effectiveQty) || effectiveQty < 1) return null;
     return {
       sourceText,
       effectiveQty,
@@ -125,12 +125,30 @@
     return { ok: true, orders: resolved, completedAt: clean.completedAt };
   };
 
+  const exportStore = (storageLike) => {
+    return clone(readStore(storageLike));
+  };
+
+  const replaceStore = (store, storageLike) => {
+    const target = (store && typeof store === 'object' && !Array.isArray(store)) ? store : {};
+    const clean = {};
+    for (const [batchId, snapshot] of Object.entries(target)) {
+      const validated = validateSnapshot(snapshot);
+      if (validated.batchId !== batchId) throw new Error(`Resolved snapshot key mismatch: ${batchId}`);
+      clean[batchId] = validated;
+    }
+    writeStore(clean, storageLike);
+    return clone(clean);
+  };
+
   return {
     STORAGE_KEY,
     validateSnapshot,
     saveBatchSnapshot,
     getBatchSnapshot,
     clearBatchSnapshot,
-    applyBatchSnapshot
+    applyBatchSnapshot,
+    exportStore,
+    replaceStore
   };
 });

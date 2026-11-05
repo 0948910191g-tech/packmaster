@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PackMaster — Operational Packing Workspace</title>
-  
+
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -18,7 +18,11 @@
   <script src="./packmaster-reprint-snapshot.js"></script>
   <script src="./packmaster-workspace.js"></script>
   <script src="./packmaster-marketplace-registry.js"></script>
+  <script src="./packmaster-sku-normalization.js"></script>
   <script src="./packmaster-registry-identity.js"></script>
+  <script src="./packmaster-registry-matcher.js"></script>
+  <script src="./packmaster-cloud-client.js"></script>
+  <script src="./packmaster-cloud-mapping-controller.js"></script>
   <script src="./packmaster-duplicate.js"></script>
   <script src="./packmaster-exceptions.js"></script>
   <script src="./packmaster-pilot-safety.js"></script>
@@ -36,17 +40,17 @@
     tailwind.config = { theme: { extend: { fontFamily: { sans: ['"Noto Sans Thai"', 'sans-serif'] } } } }
   </script>
   <style>
-    @media print { 
+    @media print {
       * {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
         color-adjust: exact !important;
       }
-      @page { size: 100mm 150mm; margin: 0; } 
-      body { background: white !important; } 
+      @page { size: 100mm 150mm; margin: 0; }
+      body { background: white !important; }
       .print-area { display: block !important; }
       .no-print { display: none !important; }
-      
+
       .label-overlay {
         background-color: #ffffff !important;
         backdrop-filter: none !important;
@@ -340,13 +344,13 @@
       }, [order.pdfImage, shouldBakeThermal]);
 
       if (!order || !order.pdfImage) return null;
-      
+
       const itemCount = order.displayItems ? order.displayItems.length : 0;
       let maxLen = itemCount > 0 ? Math.max(...order.displayItems.map(t => t.length), 0) : 0;
-      
+
       let fontSize = '42pt';
       let lineHeight = 1.2;
-      
+
       if (itemCount === 1) {
           fontSize = maxLen > 20 ? '18pt' : maxLen > 12 ? '24pt' : maxLen > 8 ? '32pt' : '40pt';
           lineHeight = 1.1;
@@ -354,17 +358,17 @@
           fontSize = maxLen > 22 ? '13pt' : maxLen > 15 ? '16pt' : maxLen > 10 ? '20pt' : '22pt';
           lineHeight = 1.1;
       } else if (itemCount === 3) {
-          fontSize = maxLen > 20 ? '11pt' : '13pt'; 
+          fontSize = maxLen > 20 ? '11pt' : '13pt';
           lineHeight = 1.1;
       } else {
-          fontSize = '10pt'; 
+          fontSize = '10pt';
           lineHeight = 1.0;
       }
 
       return (
         <div className={`shrink-0 box-border ${isExport ? '' : 'border-2 border-blue-50 shadow-xl shadow-blue-900/5 rounded-2xl'}`} style={{ width: '100mm', height: '150mm', backgroundColor: '#ffffff', position: 'relative', overflow: 'hidden', pageBreakAfter: 'always', margin: 0, display: 'block', isolation: 'isolate' }}>
           <img src={displayImg} alt="Label Base" loading={isExport ? 'eager' : 'lazy'} decoding={isExport ? 'sync' : 'async'} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'fill', zIndex: 0, filter: thermalMode && !isExport ? 'grayscale(100%) brightness(80%) contrast(200%)' : 'none' }} />
-          
+
           {order.displayItems && order.displayItems.length > 0 && (
             <div className="label-overlay" style={{ position: 'absolute', zIndex: 10, boxSizing: 'border-box', bottom: '24px', left: '16px', right: '16px', height: '18%', border: '4px dashed #172554', borderRadius: '14px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '8px', gap: '4px', backgroundColor: 'rgba(255,255,255,0.90)', backdropFilter: 'blur(2px)', overflow: 'hidden' }}>
               {order.displayItems.map((text, idx) => (
@@ -906,7 +910,8 @@
         const sellerParts = rowEntries.filter(item => item.x >= header.sellerX - 2 && item.x < header.qtyX - 5).sort((a, b) => a.index - b.index);
         const productText = productParts.map(item => item.text).join(' ').trim();
         const skuText = skuParts.map(item => item.text).join(' ').trim();
-        const sellerText = sellerParts.map(item => item.text).join(' ').trim();
+        const sellerText = window.PackMasterSkuNormalization.cleanPdfSellerSku(
+          sellerParts.map(item => item.text).join(' '));
         const text = [productText, skuText, sellerText].filter(Boolean).join(' | ');
         const qty = parseInt(marker.text, 10);
 
@@ -914,7 +919,7 @@
           parserWarning = true;
           return;
         }
-        items.push({ text, qty });
+        items.push({ text, qty, ...(sellerText ? { sellerSku: sellerText } : {}) });
       });
 
       if (items.length !== markers.length) parserWarning = true;
@@ -1060,7 +1065,12 @@
       const numberMatches = Array.from(cleanBaseName.matchAll(/\d+/g));
       if (numberMatches.length === 0) return cleanBaseName;
 
-      const bundleSignature = extractBundleSignature(sourceKeyword);
+      const isModelTarget = (match) => {
+        const before = cleanBaseName.substring(0, match.index);
+        return /(?:^|[\s/_-])(?:hoya|v|gen|air|pro|max|mini|plus|model|ver|version|type|ซีรีส์|รุ่น)[\s/_-]*$/i.test(before) || /[a-zA-Z]+$/.test(before);
+      };
+
+      const bundleSignature = extractBundleSignature(sourceKeyword) || extractBundleSignature(cleanBaseName);
       if (bundleSignature) {
         const componentQtys = bundleSignature.split('+').map(value => parseInt(value, 10)).filter(Number.isFinite);
         if (componentQtys.length > 0 && numberMatches.length >= componentQtys.length) {
@@ -1078,7 +1088,35 @@
         }
       }
 
-      const target = numberMatches[numberMatches.length - 1];
+      const words = cleanBaseName.split(/\s+/);
+      const isModelWord = (w) => /^(?:hoya|v|gen|air|pro|max|mini|plus|model|ver|version|type|ซีรีส์|รุ่น)\s*\d+$/i.test(w) || /^[a-zA-Z]+\d+$/i.test(w);
+
+      if (words.length >= 2 && words.every(w => /^[^\d\s]+\d+$/.test(w) && !isModelWord(w))) {
+        return words.map(w => {
+          const match = w.match(/^([^\d\s]+)(\d+)$/);
+          return `${match[1]}${parseInt(match[2], 10) * normalizedQty}`;
+        }).join(' ');
+      }
+
+      const isModelPair = (w1) => /(?:^|[\s/_-])(?:hoya|v|gen|air|pro|max|mini|plus|model|ver|version|type|ซีรีส์|รุ่น)$/i.test(w1);
+      if (words.length >= 4 && words.length % 2 === 0 && words.every((w, i) => i % 2 === 0 ? /^[^\d\s]+$/.test(w) : /^\d+$/.test(w))) {
+        let hasModel = false;
+        for (let i = 0; i < words.length; i += 2) {
+          if (isModelPair(words[i])) hasModel = true;
+        }
+        if (!hasModel) {
+          const result = [];
+          for (let i = 0; i < words.length; i += 2) {
+            result.push(`${words[i]} ${parseInt(words[i + 1], 10) * normalizedQty}`);
+          }
+          return result.join(' ');
+        }
+      }
+
+      const qtyMatches = numberMatches.filter(m => !isModelTarget(m));
+      if (qtyMatches.length === 0) return cleanBaseName;
+
+      const target = qtyMatches[qtyMatches.length - 1];
       const perItemQty = parseInt(target[0], 10);
       if (!Number.isFinite(perItemQty)) return cleanBaseName;
 
@@ -1178,12 +1216,16 @@
     );
 
     function App() {
-      const batchApi = window.PackMasterBatch;
+      // Cloud adapter is opt-in; the existing local workspace stays unchanged until cloud setup is verified.
+      const cloud = window.PackMasterCloud || null;
+      const cloudMode = Boolean(cloud?.cloudBatchApi && typeof cloud.getDocument === 'function' && typeof cloud.saveDocument === 'function');
+      const batchApi = cloudMode ? cloud.cloudBatchApi : window.PackMasterBatch;
       const batchTransitionApi = window.PackMasterBatchTransition;
       const reprintSnapshotApi = window.PackMasterReprintSnapshot;
       const workspaceApi = window.PackMasterWorkspace;
       const marketplaceRegistryApi = window.PackMasterMarketplaceRegistry;
       const registryIdentityApi = window.PackMasterRegistryIdentity;
+      const registryMatcherApi = window.PackMasterRegistryMatcher;
       const duplicateApi = window.PackMasterDuplicate;
       const exceptionApi = window.PackMasterExceptions;
       const pilotSafetyApi = window.PackMasterPilotSafety;
@@ -1218,6 +1260,7 @@
       const [skuSort, setSkuSort] = useState('keyword');
       const [orders, setOrders] = useState([]);
       const [skuRules, setSkuRules] = useState(() => {
+        if (cloudMode) return []; // Never prime central mapping from this browser's local rules.
         try {
           const saved = localStorage.getItem('skuMappingRules');
           if (!saved) return [];
@@ -1234,7 +1277,50 @@
         }
       });
       const [newRule, setNewRule] = useState({ keyword: '', shortName: '' });
-      const [marketplaceRegistryLoad] = useState(() => marketplaceRegistryApi ? marketplaceRegistryApi.loadStore(window.localStorage) : { store: null, error: 'โมดูลทะเบียน Marketplace ยังไม่พร้อม' });
+      // The Cloud packing path has retired the Keyword Dictionary completely.
+      const [cloudBatchError, setCloudBatchError] = useState('');
+      const [cloudRegistryLoaded, setCloudRegistryLoaded] = useState(!cloudMode);
+      const [cloudRegistryError, setCloudRegistryError] = useState('');
+      const [registryAssignments, setRegistryAssignments] = useState(() =>
+        registryMatcherApi ? registryMatcherApi.newAssignments() : null);
+      const [registryAssignmentsLoaded, setRegistryAssignmentsLoaded] = useState(!cloudMode);
+      const [registryAssignmentsError, setRegistryAssignmentsError] = useState('');
+      const [registryAssignmentsBusy, setRegistryAssignmentsBusy] = useState(false);
+      const [registryNameDrafts, setRegistryNameDrafts] = useState({});
+      useEffect(() => {
+        if (!cloudMode || !reprintSnapshotApi || typeof cloud.getDocument !== 'function') return;
+        let active = true;
+        cloud.getDocument('reprintSnapshots').then(doc => {
+          if (!active || !doc || !doc.value) return;
+          reprintSnapshotApi.replaceStore(doc.value);
+        }).catch(err => {
+          console.warn('โหลด Snapshot จาก Cloud ไม่สำเร็จ', err);
+        });
+        return () => { active = false; };
+      }, [cloudMode, cloud, reprintSnapshotApi]);
+
+      useEffect(() => {
+        if (!cloudMode) return;
+        if (!registryMatcherApi || typeof cloud.getRegistryAssignments !== 'function') {
+          setRegistryAssignmentsError('Cloud Registry SKU Matcher ไม่พร้อม');
+          return;
+        }
+        let active = true;
+        cloud.getRegistryAssignments().then(document => {
+          if (!active) return;
+          const validated = registryMatcherApi.validateAssignments(
+            document.value ?? registryMatcherApi.newAssignments());
+          setRegistryAssignments(validated);
+          setRegistryAssignmentsLoaded(true);
+        }).catch(error => {
+          if (active) setRegistryAssignmentsError(error.message || 'โหลดชื่อภายในจาก Cloud ไม่สำเร็จ');
+        });
+        return () => { active = false; };
+      }, [cloudMode, cloud, registryMatcherApi]);
+      const [marketplaceRegistryLoad] = useState(() => marketplaceRegistryApi
+        ? (cloudMode ? { store: marketplaceRegistryApi.createEmptyStore(), error: '' }
+          : marketplaceRegistryApi.loadStore(window.localStorage))
+        : { store: null, error: 'โมดูลทะเบียน Marketplace ยังไม่พร้อม' });
       const [marketplaceRegistry, setMarketplaceRegistry] = useState(() => marketplaceRegistryLoad.store);
       const [marketplaceRegistryLoadError, setMarketplaceRegistryLoadError] = useState(() => marketplaceRegistryLoad.error || '');
       const [marketplaceRegistryPlatformFilter, setMarketplaceRegistryPlatformFilter] = useState('TIKTOK');
@@ -1243,13 +1329,37 @@
       const [marketplaceRegistryPage, setMarketplaceRegistryPage] = useState(1);
       const [marketplaceRegistryPageSize, setMarketplaceRegistryPageSize] = useState(20);
       const [marketplaceRegistryBusy, setMarketplaceRegistryBusy] = useState(false);
+      useEffect(() => {
+        if (!cloudMode) return;
+        if (!marketplaceRegistryApi || typeof cloud.getRegistry !== 'function') {
+          setCloudRegistryError('Cloud Registry module is unavailable');
+          return;
+        }
+        let active = true;
+        Promise.all(['TIKTOK', 'SHOPEE'].map(platform => cloud.getRegistry(platform)))
+          .then(results => {
+            if (!active) return;
+            let store = marketplaceRegistryApi.createEmptyStore();
+            for (const result of results) {
+              if (result.registry) store = marketplaceRegistryApi.replacePlatformRegistry(store,
+                marketplaceRegistryApi.validatePlatformRegistry(result.registry, result.platform));
+            }
+            setMarketplaceRegistry(store);
+            setMarketplaceRegistryLoadError('');
+            setCloudRegistryLoaded(true);
+          }).catch(error => {
+            if (!active) return;
+            setCloudRegistryError(error.message || 'Cloud Registry loading failed');
+          });
+        return () => { active = false; };
+      }, [cloudMode, cloud, marketplaceRegistryApi]);
       const marketplaceCatalogIndex = useMemo(() => {
         if (!registryIdentityApi || !marketplaceRegistryApi || marketplaceRegistryLoadError || !marketplaceRegistry) return null;
         try { return registryIdentityApi.buildIndex(marketplaceRegistry, marketplaceRegistryApi); }
         catch (error) { console.error('Marketplace registry identity index failed', error); return null; }
       }, [marketplaceRegistry, marketplaceRegistryLoadError]);
-      const [editingId, setEditingId] = useState(null); 
-      
+      const [editingId, setEditingId] = useState(null);
+
       const [uploadError, setUploadError] = useState('');
       const [loadingStatus, setLoadingStatus] = useState({ active: false, current: 0, total: 0 });
       const [exportStatus, setExportStatus] = useState({ active: false, current: 0, total: 0 });
@@ -1273,6 +1383,11 @@
       // Phase 2 — Local-first Batch System
       const [batches, setBatches] = useState([]);
       const [activeBatchId, setActiveBatchId] = useState(null);
+      const activeBatchIdRef = useRef(activeBatchId);
+      useEffect(() => {
+        activeBatchIdRef.current = activeBatchId;
+        if (typeof window !== 'undefined') window.__pmActiveBatchId = activeBatchId;
+      }, [activeBatchId]);
       const [batchStorageReady, setBatchStorageReady] = useState(false);
       const [batchLoading, setBatchLoading] = useState(true);
       const [batchViewFilter, setBatchViewFilter] = useState('ACTIVE');
@@ -1297,9 +1412,11 @@
       });
 
       const activeBatch = useMemo(() => batches.find(batch => batch.id === activeBatchId) || null, [batches, activeBatchId]);
-      const getBatchArchivedAt = (batch) => archiveApi && batch
-        ? archiveApi.getArchivedAt(batch.id, batch.archivedAt || null)
-        : (batch?.archivedAt || null);
+      const getBatchArchivedAt = (batch) => cloudMode
+        ? (batch?.archivedAt || null)
+        : archiveApi && batch
+          ? archiveApi.getArchivedAt(batch.id, batch.archivedAt || null)
+          : (batch?.archivedAt || null);
       const visibleBatches = useMemo(() => batches.filter(batch => {
         const archivedAt = getBatchArchivedAt(batch);
         if (batchViewFilter === 'ARCHIVED') return Boolean(archivedAt);
@@ -1344,7 +1461,13 @@
         setBatchSourceSummaries(Object.fromEntries(entries));
       }, [visibleBatches, activeBatchId, orders, batchSourceFilesApi]);
 
-      useEffect(() => { localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); }, [skuRules]);
+      useEffect(() => {
+        // Legacy Keyword Dictionary stays local-only for the old non-Cloud pilot.
+        // It is never read or written by the Cloud Matcher.
+        if (cloudMode) return;
+        try { localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); }
+        catch (error) { console.error('Local SKU rules save failed', error); }
+      }, [skuRules, cloudMode]);
       useEffect(() => { localStorage.setItem('thermalMode', JSON.stringify(thermalMode)); }, [thermalMode]);
 
       useEffect(() => {
@@ -1366,7 +1489,8 @@
               setBatchStorageReady(true);
             }
           } catch (err) {
-            console.error('PackMaster IndexedDB init failed', err);
+            console.error('PackMaster Batch storage init failed', err);
+            if (cloudMode) setCloudBatchError(err.message || 'Cloud Workspace could not load Batches');
             if (!cancelled) {
               setBatchStorageReady(false);
               setToast({ show: true, message: 'เปิด Local Batch storage ไม่สำเร็จ — งานปัจจุบันยังใช้ต่อได้ใน Session นี้', type: 'error' });
@@ -1381,6 +1505,17 @@
       }, []);
 
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
+      const exportUnsavedCloudMapping = () => {
+        const blob = new Blob([JSON.stringify(registryAssignments, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'PackMaster_Registry_SKU_Assignments_' + new Date().toISOString().slice(0, 10) + '.json';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+      };
 
       const refreshStorageHealth = useCallback(async () => {
         if (!storageHealthApi) {
@@ -1429,11 +1564,22 @@
         setShowLocalDataNotice(false);
       };
 
-      const getMatchResult = useCallback((textToSearch) => {
-        return matchSkuRule(textToSearch, skuRules);
-      }, [skuRules]);
+      const getMatchResult = useCallback((item, platform) => {
+        if (!cloudMode) return matchSkuRule(typeof item === 'string' ? item : item?.text, skuRules);
+        if (!registryMatcherApi || !marketplaceCatalogIndex || !registryAssignmentsLoaded || !registryAssignments) {
+          return { status: 'unmatched', reason: 'registry_not_ready' };
+        }
+        return registryMatcherApi.match(marketplaceCatalogIndex, platform, item,
+          registryAssignments, registryIdentityApi);
+      }, [cloudMode, skuRules, registryMatcherApi, marketplaceCatalogIndex,
+        registryAssignments, registryAssignmentsLoaded, registryIdentityApi]);
 
       const handleFileUpload = async (e) => {
+        const uploadBatchId = activeBatchId;
+        const uploadBatch = activeBatch;
+        if (typeof window !== 'undefined') {
+          window.__pmActiveBatchId = activeBatchId;
+        }
         let files = Array.from(e.target.files);
         if (files.length === 0) return;
 
@@ -1510,7 +1656,7 @@
         }
 
         setLoadingStatus({ active: true, current: 0, total: 'เช็คจำนวนหน้า...' });
-        setUploadError(''); 
+        setUploadError('');
 
         try {
           const pdfjs = window.pdfjsLib;
@@ -1518,13 +1664,13 @@
 
           let totalNewPages = 0;
           let pdfManifests = [];
-          
+
           for (const file of files) {
             if (!file.name.toLowerCase().endsWith('.pdf')) continue;
             let pdf = null;
             try {
               const arrayBuffer = await file.arrayBuffer();
-              pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+              pdf = await pdfjs.getDocument({ data: arrayBuffer, isEvalSupported: false }).promise;
               totalNewPages += pdf.numPages;
               pdfManifests.push({ file, numPages: pdf.numPages });
             } finally {
@@ -1550,26 +1696,26 @@
 
           let allNewOrders = [];
           let currentPageCount = 0;
-          
+
           for (const { file, numPages } of pdfManifests) {
             let pdf = null;
             try {
               const arrayBuffer = await file.arrayBuffer();
-              pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+              pdf = await pdfjs.getDocument({ data: arrayBuffer, isEvalSupported: false }).promise;
               for (let i = 1; i <= numPages; i++) {
               currentPageCount++;
-              
+
               if (currentPageCount % 5 === 0 || currentPageCount === totalNewPages) {
                   setLoadingStatus(prev => ({ ...prev, current: currentPageCount, total: totalNewPages }));
                   await new Promise(resolve => setTimeout(resolve, 1));
               }
-              
+
               const page = await pdf.getPage(i);
               const textContent = await page.getTextContent();
               const fullText = textContent.items.map(item => item.str).join(' ');
               const positionedItems = toPositionedPdfItems(textContent);
 
-              const viewport = page.getViewport({ scale: 2.5 }); 
+              const viewport = page.getViewport({ scale: 2.5 });
               const canvas = document.createElement('canvas');
               const context = canvas.getContext('2d');
               canvas.height = viewport.height; canvas.width = viewport.width;
@@ -1588,46 +1734,46 @@
 
               const tableStartRegex = /(?:ชื่[\s\u200B]*อ[\s\u200B]*สิ[\s\u200B]*น[\s\u200B]*ค้[\s\u200B]*า|P[\s\u200B]*r[\s\u200B]*o[\s\u200B]*d[\s\u200B]*u[\s\u200B]*c[\s\u200B]*t|#\s*ชื่[\s\u200B]*อ)/i;
               const tableStartMatch = zone.match(tableStartRegex);
-              
+
               if (tableStartMatch) {
                   zone = zone.substring(tableStartMatch.index);
                   zone = zone.replace(/(?:ชื่[\s\u200B]*อ[\s\u200B]*สิ[\s\u200B]*น[\s\u200B]*ค้[\s\u200B]*า|P[\s\u200B]*r[\s\u200B]*o[\s\u200B]*d[\s\u200B]*u[\s\u200B]*c[\s\u200B]*t[\s\u200B]*N[\s\u200B]*a[\s\u200B]*m[\s\u200B]*e|#\s*ชื่[\s\u200B]*อ)/gi, '');
                   zone = zone.replace(/(?:ตั[\s\u200B]*ว[\s\u200B]*เ[\s\u200B]*ลื[\s\u200B]*อ[\s\u200B]*ก|จ[\s\u200B]*[ำํา]+[\s\u200B]*น[\s\u200B]*ว[\s\u200B]*น|S[\s\u200B]*K[\s\u200B]*U|S[\s\u200B]*e[\s\u200B]*l[\s\u200B]*l[\s\u200B]*e[\s\u200B]*r|Q[\s\u200B]*t[\s\u200B]*y)/gi, '');
-                  
+
                   const footerRegex = /(?:[Ss]hopee\s*Order|[Oo]rder\s*No|[Pp]rint\s*Date|[Pp]age\s*\d|[Pp]owered\s*by|ผู้รับ\s*\(TO\)|[Tt]ikTok\s*Shop|[Oo]rder\s*ID|[Hh]opee|[Rr]der\s*No|[Rr]int\s*Date|[Aa]ge\s*\d|[Oo]wered|[Ii]kTok)/i;
                   const footerMatch = zone.match(footerRegex);
                   if (footerMatch) {
                       zone = zone.substring(0, footerMatch.index);
                   }
               }
-              
-              zone = zone.replace(/\b2\d{5}[A-Z0-9]{8,}\b/gi, ''); 
+
+              zone = zone.replace(/\b2\d{5}[A-Z0-9]{8,}\b/gi, '');
               zone = zone.replace(/\b12160\b/g, '');
 
               zone = zone.replace(/(?:ไม่ต้องเก็บเงิน|เก็บเงินปลายทาง|PICK[\s-]*UP|NDD|HOME|OFFICE|ROS|SUB|CON|LGN|DROP|Bulky)/gi, '');
-              zone = zone.replace(/\b[A-Z0-9]{1,4}-\([A-Z0-9.]+\)/gi, ''); 
-              zone = zone.replace(/\b[A-Z]+-[A-Z]\s+-\s+[ก-๙]+\b/gi, ''); 
-              zone = zone.replace(/\b[A-Z0-9]+_[0-9]+_[A-Z0-9]+_[A-Z0-9-]+\b/gi, ''); 
+              zone = zone.replace(/\b[A-Z0-9]{1,4}-\([A-Z0-9.]+\)/gi, '');
+              zone = zone.replace(/\b[A-Z]+-[A-Z]\s+-\s+[ก-๙]+\b/gi, '');
+              zone = zone.replace(/\b[A-Z0-9]+_[0-9]+_[A-Z0-9]+_[A-Z0-9-]+\b/gi, '');
 
-              zone = zone.replace(/\b[A-Z]\d\s+[A-Z0-9]+-\d+\b/gi, ''); 
-              zone = zone.replace(/\b[A-Z]\d-\([A-Z0-9.]+\)\b/gi, ''); 
-              zone = zone.replace(/\b\d{3}[A-Z]\b/gi, ''); 
-              zone = zone.replace(/\b\d{5}\b/g, ''); 
-              zone = zone.replace(/\b0\d{8,9}\b/g, ''); 
-              zone = zone.replace(/\b\d{6}[A-Z0-9]{5,}\b/gi, ''); 
+              zone = zone.replace(/\b[A-Z]\d\s+[A-Z0-9]+-\d+\b/gi, '');
+              zone = zone.replace(/\b[A-Z]\d-\([A-Z0-9.]+\)\b/gi, '');
+              zone = zone.replace(/\b\d{3}[A-Z]\b/gi, '');
+              zone = zone.replace(/\b\d{5}\b/g, '');
+              zone = zone.replace(/\b0\d{8,9}\b/g, '');
+              zone = zone.replace(/\b\d{6}[A-Z0-9]{5,}\b/gi, '');
               zone = zone.replace(/\b(?:TH|JT|SPX)[A-Z0-9]+\b/gi, '');
-              zone = zone.replace(/\b\d{12,}\b/g, ''); 
+              zone = zone.replace(/\b\d{12,}\b/g, '');
               zone = zone.replace(/(?:บ้านเลขที่|เลขที่|หมู่ที่|หมู่|ม\.|ซอย|ซ\.|ถนน|ถ\.)\s*\d+[\/\d]*/g, '');
-              zone = zone.replace(/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/g, ''); 
-              zone = zone.replace(/\d{1,2}:\d{2}/g, ''); 
-              
+              zone = zone.replace(/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/g, '');
+              zone = zone.replace(/\d{1,2}:\d{2}/g, '');
+
               // 🟢 ตัดข้อความส่วนยอดรวมทิ้ง ป้องกันระบบดึงเลขผิดมาใส่ SKU
               const endOfTableRegex = /(?:จ[ำํา]นวนรวม|ยอดรวม|รวมทั้งสิ้น|Total\s*Qty|Qty\s*Total)/i;
               const endOfTableMatch = zone.match(endOfTableRegex);
               if (endOfTableMatch) {
                   zone = zone.substring(0, endOfTableMatch.index);
               }
-              
+
               zone = zone.replace(/In\s*transit\s*by[\s:]*[\d\/:\s]+/gi, '');
               zone = zone.replace(/(?:TikTok\s*Shop|Shopee)/gi, '');
 
@@ -1647,7 +1793,7 @@
                   } else {
                   let remainingText = zone.trim();
                   let currentItemNum = 1;
-                  
+
                   let isNewFormat = false;
                   let firstMarker = remainingText.match(/(?:^|\s)1\s+(\d+)(?:\s+|$)/);
                   if (firstMarker) {
@@ -1664,11 +1810,11 @@
                           if (match) {
                               let textWithoutQty = match[1].replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ').trim();
                               let itemQty = parseInt(match[2], 10);
-                              
+
                               textWithoutQty = textWithoutQty.replace(/^\s*\d+([.)\]]|\s+)(?=[^\d]|$)/, '').trim();
-                              
+
                               parsedItems.push({ text: textWithoutQty, qty: itemQty });
-                              
+
                               remainingText = remainingText.substring(match[0].length).trim();
                               currentItemNum++;
                           } else {
@@ -1680,17 +1826,17 @@
                           let prefixRegexStr = `(?:^|\\s)${currentItemNum}(?:\\s*[.)\\]]\\s*|\\s+|(?=\\(|\\[))`;
                           let currentPrefixRegex = new RegExp(prefixRegexStr);
                           let currentMatch = remainingText.match(currentPrefixRegex);
-                          
-                          if (!currentMatch) break; 
-                          
-                          let nextPrefixRegex = new RegExp(`(?:^|\\s)${currentItemNum + 1}(?:\\s*[.)\\]]\\s*|\\s+|(?=\\(|\\[))`); 
+
+                          if (!currentMatch) break;
+
+                          let nextPrefixRegex = new RegExp(`(?:^|\\s)${currentItemNum + 1}(?:\\s*[.)\\]]\\s*|\\s+|(?=\\(|\\[))`);
                           let nextMatch = remainingText.match(nextPrefixRegex);
-                          
+
                           if (nextMatch) {
                               let textAfterNext = remainingText.substring(nextMatch.index + nextMatch[0].length).trim();
                               let cleanAfter = textAfterNext.replace(/(?:ไม่ต้องเก็บเงิน|เก็บเงินปลายทาง|PICK[\s-]*UP|NDD|HOME|OFFICE|ROS)/gi, '').replace(/\b[A-Z0-9_-]+\b/gi, '').trim();
                               if (!/[a-zA-Zก-๙]/.test(cleanAfter) || cleanAfter.length < 5) {
-                                  nextMatch = null; 
+                                  nextMatch = null;
                               }
                           }
 
@@ -1702,7 +1848,7 @@
                               itemStr = remainingText.substring(currentMatch.index + currentMatch[0].length);
                               remainingText = '';
                           }
-                          
+
                           let textWithoutQty = itemStr.replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ').trim();
                           textWithoutQty = textWithoutQty.replace(/^\s*\d+([.)\]]|\s+)(?=[^\d]|$)/, '').trim();
 
@@ -1711,13 +1857,13 @@
                           if (endDigitsMatch) {
                               let prefixIdx = endDigitsMatch.index - 1;
                               let prefixChar = prefixIdx >= 0 ? textWithoutQty.charAt(prefixIdx) : ' ';
-                              
+
                               if (/\s|[ก-๙]|\)|\]|\}/.test(prefixChar) || prefixIdx < 0) {
                                   itemQty = parseInt(endDigitsMatch[1], 10);
                                   textWithoutQty = textWithoutQty.substring(0, endDigitsMatch.index).trim();
                               }
                           }
-                          
+
                           parsedItems.push({ text: textWithoutQty, qty: itemQty });
                           currentItemNum++;
                       }
@@ -1727,27 +1873,27 @@
 
               if (parsedItems.length === 0 && platform !== 'TIKTOK' && !parserWarning) {
                   let itemStr = zone.trim();
-                  
+
                   let textWithoutQty = itemStr.replace(/[\u200B-\u200F\uFEFF\xA0]/g, ' ').trim();
                   textWithoutQty = textWithoutQty.replace(/^\s*\d+([.)\]]|\s+)(?=[^\d]|$)/, '').trim();
-                  
+
                   let itemQty = 1;
                   let endDigitsMatch = textWithoutQty.match(/(\d+)\s*(?:หมายเหตุ|PICKUP|[Nn][Ss]|[-_]+)?\s*$/i);
                   if (endDigitsMatch) {
                       let prefixIdx = endDigitsMatch.index - 1;
                       let prefixChar = prefixIdx >= 0 ? textWithoutQty.charAt(prefixIdx) : ' ';
-                      
+
                       if (/\s|[ก-๙]|\)|\]|\}/.test(prefixChar) || prefixIdx < 0) {
                           itemQty = parseInt(endDigitsMatch[1], 10);
                           textWithoutQty = textWithoutQty.substring(0, endDigitsMatch.index).trim();
                       }
                   }
-                  
+
                   parsedItems.push({ text: textWithoutQty, qty: itemQty });
               }
 
               const trackingMatch = fullText.match(/(TH\d{10,}|JT\d{10,}|SPX[A-Z0-9]+|KER[A-Z0-9]+|KA[A-Z0-9]+|66\d{10,}|82\d{10,}|\b\d{12}\b)/i);
-              
+
               let currentOrderId = null;
               let orderMatch = fullText.match(/(?:Shopee\s*Order\s*No\.?|Order\s*ID)[\s:]*([A-Z0-9]+)/i);
               if (orderMatch) {
@@ -1755,38 +1901,47 @@
               }
 
               if (currentOrderId) {
-                  let existingOrder = allNewOrders.find(o => o.orderId === currentOrderId && !o.isContinuation);
+                  let existingOrder = allNewOrders.find(o => o.orderId === currentOrderId && !o.isContinuation && o.sourceFileName === file.name);
                   if (existingOrder) {
-                      if (parsedItems.length > 0) {
-                          existingOrder.parsedItems.push(...parsedItems);
-                      }
-                      if (Number.isFinite(declaredTotalQty)) existingOrder.declaredTotalQty = declaredTotalQty;
-                      existingOrder.parserWarning = Boolean(existingOrder.parserWarning || parserWarning);
-                      
-                      if (!existingOrder.tracking || existingOrder.tracking.startsWith('PAGE-')) {
-                          existingOrder.tracking = trackingMatch ? trackingMatch[0] : existingOrder.tracking;
-                      }
+                      const existingQty = (existingOrder.parsedItems || []).reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+                      const alreadyComplete = Number.isFinite(existingOrder.declaredTotalQty) && existingQty >= existingOrder.declaredTotalQty;
+                      const itemsIdentical = existingOrder.parsedItems.length === parsedItems.length &&
+                          existingOrder.parsedItems.every((item, idx) => item.text === parsedItems[idx]?.text && item.qty === parsedItems[idx]?.qty);
+                      const sameTracking = Boolean(trackingMatch && existingOrder.tracking === trackingMatch[0]);
+                      const isDuplicate = alreadyComplete || (itemsIdentical && sameTracking);
 
-                      allNewOrders.push({ 
-                          id: `label-${Date.now()}-${allNewOrders.length}-${i}`, 
-                          tracking: trackingMatch ? trackingMatch[0] : existingOrder.tracking, 
-                          parsedItems: [], 
-                          pdfImage,
-                          sourceFileName: file.name,
-                          sourcePage: i,
-                          platform,
-                          orderId: currentOrderId,
-                          declaredTotalQty: null,
-                          parserWarning: false,
-                          isContinuation: true 
-                      });
-                      continue; 
+                      if (!isDuplicate) {
+                          if (parsedItems.length > 0) {
+                              existingOrder.parsedItems.push(...parsedItems);
+                          }
+                          if (Number.isFinite(declaredTotalQty)) existingOrder.declaredTotalQty = declaredTotalQty;
+                          existingOrder.parserWarning = Boolean(existingOrder.parserWarning || parserWarning);
+
+                          if (!existingOrder.tracking || existingOrder.tracking.startsWith('PAGE-')) {
+                              existingOrder.tracking = trackingMatch ? trackingMatch[0] : existingOrder.tracking;
+                          }
+
+                          allNewOrders.push({
+                              id: `label-${Date.now()}-${allNewOrders.length}-${i}`,
+                              tracking: trackingMatch ? trackingMatch[0] : existingOrder.tracking,
+                              parsedItems: [],
+                              pdfImage,
+                              sourceFileName: file.name,
+                              sourcePage: i,
+                              platform,
+                              orderId: currentOrderId,
+                              declaredTotalQty: null,
+                              parserWarning: false,
+                              isContinuation: true
+                          });
+                          continue;
+                      }
                   }
               }
 
-              allNewOrders.push({ 
-                  id: `label-${Date.now()}-${allNewOrders.length}-${i}`, 
-                  tracking: trackingMatch ? trackingMatch[0] : `PAGE-${i}`, 
+              allNewOrders.push({
+                  id: `label-${Date.now()}-${allNewOrders.length}-${i}`,
+                  tracking: trackingMatch ? trackingMatch[0] : `PAGE-${i}`,
                   parsedItems: parsedItems,
                   pdfImage,
                   sourceFileName: file.name,
@@ -1801,7 +1956,7 @@
               if (pdf) await pdf.destroy();
             }
           }
-          
+
           if (allNewOrders.length > 0) {
             const duplicateSignals = duplicateApi
               ? duplicateApi.findOrderDuplicateSignals(allNewOrders, orders)
@@ -1821,7 +1976,37 @@
               }
             }
 
-            resetActiveBatchCompletion();
+            const nextOrders = [...orders, ...allNewOrders];
+            if (cloudMode) {
+              if (!batchStorageReady || !batchApi || !uploadBatch) {
+                throw new Error('Cloud Batch ยังไม่พร้อมบันทึก กรุณาโหลดข้อมูลอีกครั้ง');
+              }
+              // Commit the PDF-derived orders before showing success or changing local state.
+              // Otherwise a 4 MiB Free-plan limit or network error can produce a phantom import.
+              try {
+                const meta = batchApi.buildBatchMeta(uploadBatch, reviewSummary, {
+                  printedAt: null, now: new Date()
+                });
+                const storedMeta = await batchApi.saveBatch(meta, nextOrders);
+                upsertBatchMeta(storedMeta);
+              } catch (error) {
+                error.cloudSaveFailed = true;
+                throw error;
+              }
+            } else {
+              if (batchStorageReady && batchApi && uploadBatch) {
+                try {
+                  const meta = batchApi.buildBatchMeta(uploadBatch, reviewSummary, {
+                    printedAt: null, now: new Date()
+                  });
+                  const storedMeta = await batchApi.saveBatch(meta, nextOrders);
+                  upsertBatchMeta(storedMeta);
+                } catch (saveErr) {
+                  console.error('Save upload batch failed', saveErr);
+                }
+              }
+              resetActiveBatchCompletion();
+            }
 
             if (duplicateApi && acceptedSourceFiles.length > 0) {
               try {
@@ -1832,21 +2017,33 @@
               }
             }
 
-            setOrders(prev => [...prev, ...allNewOrders]); 
-            setActiveTab('preview');
-            setActiveView('review');
-            showToast(`เพิ่มข้อมูลสำเร็จ ${allNewOrders.length} ใบ`, 'success');
+            const currentLiveBatchId = (typeof window !== 'undefined' && window.__pmActiveBatchId !== undefined)
+              ? window.__pmActiveBatchId
+              : ((typeof activeBatchIdRef !== 'undefined' && activeBatchIdRef.current !== undefined)
+                ? activeBatchIdRef.current
+                : activeBatchId);
+
+            if (currentLiveBatchId === uploadBatchId) {
+              setOrders(nextOrders);
+              setActiveTab('preview');
+              setActiveView('review');
+            }
+            showToast(cloudMode
+              ? `บันทึก Cloud สำเร็จแล้ว ${allNewOrders.length} ใบ`
+              : `เพิ่มข้อมูลสำเร็จ ${allNewOrders.length} ใบ`, 'success');
           }
         } catch (err) {
           console.error(err);
           let errMsg = err.message || err.toString();
-          setUploadError(`ระบบขัดข้อง: ${errMsg}`);
-          showToast('อ่านไฟล์ไม่สำเร็จ', 'error');
+          setUploadError(`${err.cloudSaveFailed ? 'บันทึก Cloud ไม่สำเร็จ' : 'อ่านไฟล์ไม่สำเร็จ'}: ${errMsg}`);
+          showToast(err.cloudSaveFailed
+            ? 'บันทึกออเดอร์ขึ้น Cloud ไม่สำเร็จ — ยังไม่ได้เพิ่มออเดอร์ใน Batch'
+            : 'อ่านไฟล์ไม่สำเร็จ', 'error');
         } finally {
           setLoadingStatus({ active: false, current: 0, total: 0 });
         }
-        
-        e.target.value = null; 
+
+        e.target.value = null;
       };
 
       const LiveMappedOrders = useMemo(() => orders.map(o => {
@@ -1855,9 +2052,10 @@
             const skuAcknowledged = reviewOverridesApi ? reviewOverridesApi.getReviewAcknowledgement(o, 'sku') : false;
             const qtyAcknowledged = reviewOverridesApi ? reviewOverridesApi.getReviewAcknowledgement(o, 'qty') : false;
             const failedItems = [];
-            if (o.parserWarning && !skuAcknowledged) failedItems.push('⚠️ ตรวจสอบ SKU');
-            if (o.parserWarning && !qtyAcknowledged) failedItems.push('⚠️ ตรวจสอบ Qty');
-            return { ...o, displayItems: failedItems, originalQty: 0, qtyWarning: Boolean(o.parserWarning), unresolvedSku: Boolean(o.parserWarning) };
+            if (!skuAcknowledged) failedItems.push('• ⚠️ ตรวจสอบ SKU');
+            if (!qtyAcknowledged) failedItems.push('• ⚠️ ตรวจสอบ Qty');
+            if (failedItems.length === 0) failedItems.push('• ⚠️ ตรวจสอบ SKU');
+            return { ...o, displayItems: failedItems, originalQty: 0, qtyWarning: true, unresolvedSku: true, parserWarning: true, resolvedAudit: [] };
         }
 
         const skuMap = new Map();
@@ -1878,7 +2076,7 @@
                 resolvedAudit.push({ sourceText: item.text || '', effectiveQty, resolution: 'manual', keyword: item.text || '', shortName: baseName });
                 return;
             }
-            const match = getMatchResult(item.text);
+            const match = getMatchResult(item, o.platform);
             if (match.status === 'matched' && match.rule) {
                 const baseName = match.rule.shortName.trim().replace(/\u00A0/g, ' ');
                 const current = skuMap.get(baseName) || { qty: 0, sourceKeyword: match.rule.keyword || '' };
@@ -1886,7 +2084,7 @@
                     qty: current.qty + effectiveQty,
                     sourceKeyword: current.sourceKeyword || match.rule.keyword || ''
                 });
-                resolvedAudit.push({ sourceText: item.text || '', effectiveQty, resolution: 'rule', keyword: match.rule.keyword || '', shortName: baseName });
+                resolvedAudit.push({ sourceText: item.text || '', effectiveQty, resolution: cloudMode ? 'registry' : 'rule', keyword: match.rule.keyword || '', shortName: baseName });
             } else if (match.status === 'ambiguous') {
                 hasAmbiguous = true;
             } else {
@@ -2043,14 +2241,14 @@
         if (!row || !row.order) return '';
         const types = row.types || [];
         let seed = '';
-        if (pilotSafetyApi && types.some(type => type === 'REVIEW_SKU' || type === 'UNMAPPED')) {
+        if (!cloudMode && pilotSafetyApi && types.some(type => type === 'REVIEW_SKU' || type === 'UNMAPPED')) {
           try { seed = pilotSafetyApi.getSkuFixSeed(row, getMatchResult) || ''; }
           catch (error) { console.warn('Pilot Safety seed unavailable', error); }
         }
         if (seed) return seed;
         const parsedItems = Array.isArray(row.order.parsedItems) ? row.order.parsedItems : [];
         const unresolved = parsedItems.find(item => {
-          try { return getMatchResult(item && item.text).status !== 'matched'; }
+          try { return getMatchResult(item, row.order.platform).status !== 'matched'; }
           catch (error) { return true; }
         });
         return String((unresolved || parsedItems[0])?.text || '').trim();
@@ -2110,7 +2308,7 @@
           showToast('ไม่พบข้อความสินค้าใน Order นี้ — กรุณาตรวจใบจริง', 'error');
           return;
         }
-        const suggestions = getReviewKeywordSuggestions(seed);
+        const suggestions = cloudMode ? [] : getReviewKeywordSuggestions(seed);
         setQuickMapState({ open: true, row, sourceText: seed, keyword: '', shortName: '', suggestions });
       };
 
@@ -2194,7 +2392,52 @@
         setQuickMapState({ open: false, row: null, keyword: '', shortName: '' });
       };
 
-      const handleSaveQuickMapping = () => {
+      const saveRegistryAssignment = async (platform, item, internalName) => {
+        if (!cloudMode || !registryMatcherApi || !registryIdentityApi ||
+            !marketplaceCatalogIndex || !registryAssignmentsLoaded ||
+            registryAssignmentsError || registryAssignmentsBusy) {
+          throw new Error('Cloud Registry SKU mapping is not ready');
+        }
+        const evidence = registryIdentityApi.resolve(marketplaceCatalogIndex, platform, item);
+        if (evidence.status !== 'found') {
+          throw new Error(evidence.status === 'ambiguous'
+            ? 'Seller SKU นี้ซ้ำในทะเบียน ต้องแก้ทะเบียนก่อนผูกชื่อภายใน'
+            : 'ไม่พบ Seller SKU ที่ระบุชัดเจนในทะเบียนของแพลตฟอร์มนี้');
+        }
+        const next = registryMatcherApi.upsertAssignment(
+          registryAssignments, platform, evidence, internalName);
+        setRegistryAssignmentsBusy(true);
+        try {
+          await cloud.saveRegistryAssignments(next);
+          setRegistryAssignments(next);
+        } catch (error) {
+          if (error.status === 409) {
+            setRegistryAssignmentsError('ชื่อภายในตามทะเบียนถูกแก้จากอีกเครื่อง กรุณาโหลด Cloud ใหม่');
+          }
+          throw error;
+        } finally {
+          setRegistryAssignmentsBusy(false);
+        }
+      };
+
+      const handleSaveQuickMapping = async () => {
+        if (cloudMode) {
+          const order = quickMapState.row?.order;
+          const item = (order?.parsedItems || []).find(entry =>
+            String(entry.text || '').trim() === String(quickMapState.sourceText || '').trim());
+          if (!item || !order) {
+            showToast('ไม่พบรายการใน Order กรุณาตรวจข้อมูลจากใบจริง', 'error');
+            return;
+          }
+          try {
+            await saveRegistryAssignment(order.platform, item, quickMapState.shortName);
+            showToast('ผูก Seller SKU กับชื่อภายในบน Cloud แล้ว • ไม่ได้ใช้ Keyword เดิม', 'success');
+            setQuickMapState({ open: false, row: null, keyword: '', shortName: '' });
+          } catch (error) {
+            showToast('ยังบันทึกชื่อภายในไม่ได้: ' + error.message, 'error');
+          }
+          return;
+        }
         const keyword = String(quickMapState.keyword || '');
         const shortName = String(quickMapState.shortName || '');
         if (!keyword.trim() || !shortName.trim()) {
@@ -2278,6 +2521,7 @@
           return true;
         } catch (err) {
           console.error('Save active batch failed', err);
+          if (cloudMode) setCloudBatchError(err.message || 'Cloud Batch save failed');
           showToast('บันทึก Batch ไม่สำเร็จ — ยังไม่สลับงานเพื่อป้องกันข้อมูลหาย', 'error');
           return false;
         }
@@ -2316,6 +2560,7 @@
 
             upsertBatchMeta(nextBatch);
             setActiveBatchId(nextBatch.id);
+            if (typeof window !== 'undefined') window.__pmActiveBatchId = nextBatch.id;
             setOrders([]);
             setReviewSearch('');
             setReviewPlatform('ALL');
@@ -2346,6 +2591,7 @@
             if (!stored.meta) throw new Error('Batch metadata not found');
             upsertBatchMeta(stored.meta);
             setActiveBatchId(stored.meta.id);
+            if (typeof window !== 'undefined') window.__pmActiveBatchId = stored.meta.id;
             setOrders(Array.isArray(stored.orders) ? stored.orders : []);
             setReviewSearch('');
             setReviewPlatform('ALL');
@@ -2371,6 +2617,7 @@
 
         await runBatchTransition(async () => {
           setActiveBatchId(null);
+          if (typeof window !== 'undefined') window.__pmActiveBatchId = null;
           setOrders([]);
           setReviewSearch('');
           setReviewPlatform('ALL');
@@ -2381,12 +2628,26 @@
         });
       };
 
+      const changeCloudBatchArchive = async (batch, archivedAt) => {
+        if (activeBatchId === batch.id) {
+          throw new Error('กรุณากลับไปหน้า Batch List และบันทึกงานที่เปิดอยู่ก่อน');
+        }
+        // Reload the authoritative Batch and orders before changing metadata.
+        // The CAS write rejects another device's edit between load and save.
+        const fresh = await batchApi.loadBatch(batch.id);
+        if (!fresh.meta) throw new Error('Cloud Batch no longer exists');
+        const updated = await batchApi.saveBatch({
+          ...fresh.meta, archivedAt, updatedAt: new Date().toISOString()
+        }, fresh.orders);
+        upsertBatchMeta(updated);
+      };
       const handleArchiveBatch = async (batch) => {
-        if (!batch || !batch.id || !archiveApi) { showToast('Local Archive module ยังไม่พร้อม', 'error'); return; }
+        if (!batch || !batch.id || (!cloudMode && !archiveApi)) { showToast('Archive module ยังไม่พร้อม', 'error'); return; }
         const unresolved = (batch.reviewSkuCount || 0) + (batch.reviewQtyCount || 0) + (batch.unmappedCount || 0);
         if (unresolved > 0 && !window.confirm(`Batch นี้ยังมี ${unresolved} รายการที่ต้องตรวจ\n\nต้องการเก็บเข้าคลังต่อหรือไม่?`)) return;
         try {
-          archiveApi.archiveBatch(batch.id, new Date());
+          if (cloudMode) await changeCloudBatchArchive(batch, new Date().toISOString());
+          else archiveApi.archiveBatch(batch.id, new Date());
           setBatches(prev => [...prev]);
           setSelectedArchivedBatchIds(prev => prev.filter(id => id !== batch.id));
           showToast('เก็บ Batch เข้าคลังแล้ว', 'success');
@@ -2394,9 +2655,10 @@
       };
 
       const handleRestoreArchivedBatch = async (batch) => {
-        if (!batch || !batch.id || !archiveApi) { showToast('Local Archive module ยังไม่พร้อม', 'error'); return; }
+        if (!batch || !batch.id || (!cloudMode && !archiveApi)) { showToast('Archive module ยังไม่พร้อม', 'error'); return; }
         try {
-          archiveApi.restoreBatch(batch.id, new Date());
+          if (cloudMode) await changeCloudBatchArchive(batch, null);
+          else archiveApi.restoreBatch(batch.id, new Date());
           setBatches(prev => [...prev]);
           setSelectedArchivedBatchIds(prev => prev.filter(id => id !== batch.id));
           showToast('นำ Batch กลับจากคลังแล้ว', 'success');
@@ -2542,7 +2804,12 @@
             catch (archiveError) { console.warn('Clear archive sidecar failed', archiveError); }
           }
           if (reprintSnapshotApi) {
-            try { reprintSnapshotApi.clearBatchSnapshot(batch.id); }
+            try {
+              reprintSnapshotApi.clearBatchSnapshot(batch.id);
+              if (typeof cloudMode !== 'undefined' && cloudMode && typeof cloud !== 'undefined' && typeof cloud.saveDocument === 'function') {
+                cloud.saveDocument('reprintSnapshots', reprintSnapshotApi.exportStore()).catch(err => console.warn('Sync reprintSnapshots to Cloud failed', err));
+              }
+            }
             catch (snapshotError) { console.warn('Clear resolved snapshot sidecar failed', snapshotError); }
           }
           setBatches(prev => prev.filter(item => item.id !== batch.id));
@@ -2556,7 +2823,12 @@
       const resetActiveBatchCompletion = () => {
         if (!activeBatch || !activeBatch.printedAt || !batchApi) return;
         if (reprintSnapshotApi) {
-          try { reprintSnapshotApi.clearBatchSnapshot(activeBatch.id); }
+          try {
+            reprintSnapshotApi.clearBatchSnapshot(activeBatch.id);
+            if (typeof cloudMode !== 'undefined' && cloudMode && typeof cloud !== 'undefined' && typeof cloud.saveDocument === 'function') {
+              cloud.saveDocument('reprintSnapshots', reprintSnapshotApi.exportStore()).catch(err => console.warn('Sync reprintSnapshots to Cloud failed', err));
+            }
+          }
           catch (snapshotError) { console.warn('Clear resolved snapshot failed', snapshotError); }
         }
         const resetMeta = batchApi.buildBatchMeta(activeBatch, reviewSummary, { printedAt: null, now: new Date() });
@@ -2571,15 +2843,33 @@
           showToast('ยังบันทึก Snapshot สำหรับ Reprint ไม่ได้ จึงยังไม่พิมพ์แบบ Completed', 'error');
           return false;
         }
+        const previousSnapshot = reprintSnapshotApi.getBatchSnapshot(activeBatch.id);
         const printedAt = new Date().toISOString();
         const completedMeta = batchApi.buildBatchMeta(activeBatch, reviewSummary, { printedAt, now: new Date() });
+        let snapshotCreated = false;
         try {
-          reprintSnapshotApi.saveBatchSnapshot(activeBatch.id, LiveMappedOrders, printedAt, order => getReviewFlags(order).ready);
-          await batchApi.saveBatch(completedMeta, orders);
-          upsertBatchMeta(completedMeta);
+          if (!activeBatch.printedAt) {
+            reprintSnapshotApi.saveBatchSnapshot(activeBatch.id, MappedOrders.map(order => ({ ...order, resolvedAudit: order.resolvedAudit || [] })), printedAt, () => true);
+            snapshotCreated = true;
+          }
+          const savedMeta = await batchApi.saveBatch(completedMeta, orders);
+          upsertBatchMeta(savedMeta || completedMeta);
+          if (typeof cloudMode !== 'undefined' && cloudMode && typeof cloud !== 'undefined' && typeof cloud.saveDocument === 'function') {
+            await cloud.saveDocument('reprintSnapshots', reprintSnapshotApi.exportStore());
+          }
           return true;
         } catch (err) {
-          try { reprintSnapshotApi.clearBatchSnapshot(activeBatch.id); } catch (cleanupError) { console.warn('Rollback resolved snapshot failed', cleanupError); }
+          if (snapshotCreated) {
+            try {
+              if (previousSnapshot) {
+                reprintSnapshotApi.saveBatchSnapshot(activeBatch.id, previousSnapshot.orders, previousSnapshot.completedAt, () => true);
+              } else {
+                reprintSnapshotApi.clearBatchSnapshot(activeBatch.id);
+              }
+            } catch (cleanupError) {
+              console.warn('Rollback resolved snapshot failed', cleanupError);
+            }
+          }
           console.error('Mark batch completed with snapshot failed', err);
           showToast('บันทึกผลสำหรับ Reprint ไม่สำเร็จ — ยังไม่เปลี่ยน Batch เป็น Completed', 'error');
           return false;
@@ -2617,10 +2907,6 @@
       };
 
       const handlePrint = async (mode = 'FULL_BATCH', override = false) => {
-        if (mode === 'FULL_BATCH' && printBlocked && !override) {
-          showToast(`ยังพิมพ์ทั้ง Batch ไม่ได้ — มี Exception ${exceptionRows.length} รายการ`, 'error');
-          return;
-        }
         const scopedOrders = printScopeApi
           ? printScopeApi.selectPrintOrders(MappedOrders, mode, order => getReviewFlags(order).ready)
           : (mode === 'READY_ONLY' ? MappedOrders.filter(order => getReviewFlags(order).ready) : MappedOrders);
@@ -2628,20 +2914,13 @@
           showToast('ไม่มีรายการพร้อมพิมพ์ใน Scope นี้', 'error');
           return;
         }
-        if (mode === 'FULL_BATCH' && printBlocked && override) {
-          const confirmed = window.confirm(`Batch นี้ยังมี ${exceptionRows.length} Exception
-
-ต้องการพิมพ์ทั้ง Batch ต่อหรือไม่? รายการที่ยังไม่พร้อมอาจมีชื่อสินค้าไม่สมบูรณ์`);
-          if (!confirmed) return;
-        }
-
         setPrintScopeMode(mode);
         setPrintRenderActive(true);
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
         try {
           await waitForPrintRender(document.querySelector('.print-area'), scopedOrders, thermalMode);
-          if (mode === 'FULL_BATCH' && !printBlocked) {
+          if (mode === 'FULL_BATCH') {
             const completed = await markActiveBatchPrinted();
             if (!completed) return;
           }
@@ -2657,15 +2936,16 @@
       const handleEmergencyPrint = () => handlePrint('FULL_BATCH', true);
 
       useEffect(() => {
-        if (!activeBatchId || !activeBatch || !batchApi || !batchStorageReady || batchLoading) return;
+        if (!activeBatchId || !activeBatch || !batchApi || !batchStorageReady || batchLoading || (cloudMode && loadingStatus.active)) return;
 
         const timer = setTimeout(async () => {
           try {
-            const updated = batchApi.buildBatchMeta(activeBatch, reviewSummary, { printedAt: printBlocked ? null : activeBatch.printedAt, now: new Date() });
+            const updated = batchApi.buildBatchMeta(activeBatch, reviewSummary, { printedAt: activeBatch.printedAt, now: new Date() });
             const storedMeta = await batchApi.saveBatch(updated, orders);
             upsertBatchMeta(storedMeta);
           } catch (err) {
             console.error('Auto-save batch failed', err);
+            if (cloudMode) setCloudBatchError(err.message || 'Cloud Batch auto-save failed');
             showToast('Auto-save Batch ไม่สำเร็จ กรุณาอย่าเพิ่งสลับงาน', 'error');
           }
         }, 600);
@@ -2681,7 +2961,9 @@
         reviewSummary.unmapped,
         activeBatch && activeBatch.printedAt,
         batchStorageReady,
-        batchLoading
+        batchLoading,
+        cloudMode,
+        loadingStatus.active
       ]);
 
       const resetRestorePreview = () => {
@@ -2707,7 +2989,12 @@
             if (!replace) return;
           }
           const nextStore = marketplaceRegistryApi.replacePlatformRegistry(currentStore, importedRegistry);
-          marketplaceRegistryApi.saveStore(window.localStorage, nextStore);
+          if (cloudMode) {
+            if (!cloudRegistryLoaded) throw new Error('Cloud Registry has not finished loading');
+            await cloud.saveRegistry(expectedPlatform, importedRegistry);
+          } else {
+            marketplaceRegistryApi.saveStore(window.localStorage, nextStore);
+          }
           setMarketplaceRegistry(nextStore);
           setMarketplaceRegistryLoadError('');
           setMarketplaceRegistrySearch('');
@@ -2715,6 +3002,7 @@
           showToast('นำเข้า ' + expectedPlatform + ' แล้ว • สินค้า ' + importedRegistry.summary.listedProductCount + ' • แถว SKU/ตัวเลือก ' + importedRegistry.summary.skuModelRowCount, 'success');
         } catch (err) {
           console.error('Marketplace registry import failed', err);
+          if (cloudMode && err.status === 409) setCloudRegistryError('ทะเบียนกลางถูกแก้จากอีกเครื่อง กรุณาโหลด Cloud ใหม่ก่อนแก้ไข');
           showToast('นำเข้าทะเบียนไม่สำเร็จ: ' + (err.message || 'รูปแบบไฟล์ไม่ถูกต้อง'), 'error');
         } finally {
           event.target.value = '';
@@ -2745,7 +3033,9 @@
               thermalMode,
               duplicateFingerprints: duplicateApi ? duplicateApi.exportFingerprintStore() : {},
               archiveState: archiveApi ? archiveApi.exportArchiveStore() : {},
-              marketplaceRegistry: marketplaceRegistryLoadError ? null : marketplaceRegistry
+              marketplaceRegistry: marketplaceRegistryLoadError ? null : marketplaceRegistry,
+              reprintSnapshots: reprintSnapshotApi ? reprintSnapshotApi.exportStore() : {},
+              registryAssignments: registryAssignments || null
             },
             appVersion: document.title
           });
@@ -2810,6 +3100,10 @@
       };
 
       const handleConfirmWorkspaceRestore = async () => {
+        if (cloudMode) {
+          showToast('Cloud Mode ยังไม่รองรับการ Replace Workspace กรุณาใช้เครื่องมือย้ายข้อมูลที่ตรวจสอบแล้ว', 'error');
+          return;
+        }
         if (!restorePreview || !restorePreview.backup || !workspaceApi || !batchApi) return;
         if (!batchStorageReady) {
           showToast('Browser storage ยังไม่พร้อม จึงยัง Replace Workspace ไม่ได้', 'error');
@@ -2832,6 +3126,8 @@
         const previousArchiveState = archiveApi ? archiveApi.exportArchiveStore() : {};
         const previousMarketplaceRegistry = marketplaceRegistry;
         const previousMarketplaceRegistryLoadError = marketplaceRegistryLoadError;
+        const previousReprintSnapshots = reprintSnapshotApi ? reprintSnapshotApi.exportStore() : {};
+        const previousRegistryAssignments = registryAssignments;
         let previousMarketplaceRegistryRaw = null;
         try { previousMarketplaceRegistryRaw = window.localStorage.getItem(marketplaceRegistryApi.STORAGE_KEY); } catch (error) {}
         let safetyBackup = null;
@@ -2853,7 +3149,9 @@
               thermalMode: previousThermalMode,
               duplicateFingerprints: previousDuplicateFingerprints,
               archiveState: previousArchiveState,
-              marketplaceRegistry: previousMarketplaceRegistryLoadError ? null : previousMarketplaceRegistry
+              marketplaceRegistry: previousMarketplaceRegistryLoadError ? null : previousMarketplaceRegistry,
+              reprintSnapshots: previousReprintSnapshots,
+              registryAssignments: registryAssignments || null
             },
             appVersion: document.title
           });
@@ -2862,6 +3160,22 @@
           await workspaceApi.replaceWorkspaceBatches(backup, batchApi);
           if (duplicateApi) duplicateApi.replaceFingerprintStore(backup.settings.duplicateFingerprints || {});
           if (archiveApi) archiveApi.replaceArchiveStore(backup.settings.archiveState || {});
+          if (reprintSnapshotApi && backup.settings.reprintSnapshots) {
+            reprintSnapshotApi.replaceStore(backup.settings.reprintSnapshots);
+          }
+          if (backup.settings.registryAssignments != null) {
+            const restoredAssignments = registryMatcherApi
+              ? registryMatcherApi.validateAssignments(backup.settings.registryAssignments)
+              : backup.settings.registryAssignments;
+            setRegistryAssignments(restoredAssignments);
+            if (cloudMode && typeof cloud?.saveRegistryAssignments === 'function') {
+              try {
+                await cloud.saveRegistryAssignments(restoredAssignments);
+              } catch (cloudRegErr) {
+                console.warn('Sync restored registryAssignments to Cloud failed', cloudRegErr);
+              }
+            }
+          }
           if (backup.settings.marketplaceRegistry != null) {
             marketplaceRegistryApi.saveStore(window.localStorage, backup.settings.marketplaceRegistry);
             setMarketplaceRegistry(backup.settings.marketplaceRegistry);
@@ -2893,6 +3207,13 @@
               await workspaceApi.replaceWorkspaceBatches(safetyBackup, batchApi);
               if (duplicateApi) duplicateApi.replaceFingerprintStore(previousDuplicateFingerprints);
               if (archiveApi) archiveApi.replaceArchiveStore(previousArchiveState);
+              if (reprintSnapshotApi && previousReprintSnapshots) reprintSnapshotApi.replaceStore(previousReprintSnapshots);
+              if (previousRegistryAssignments) {
+                setRegistryAssignments(previousRegistryAssignments);
+                if (cloudMode && typeof cloud?.saveRegistryAssignments === 'function') {
+                  try { await cloud.saveRegistryAssignments(previousRegistryAssignments); } catch (e) {}
+                }
+              }
               if (previousMarketplaceRegistryRaw == null) window.localStorage.removeItem(marketplaceRegistryApi.STORAGE_KEY);
               else window.localStorage.setItem(marketplaceRegistryApi.STORAGE_KEY, previousMarketplaceRegistryRaw);
               setMarketplaceRegistry(previousMarketplaceRegistry);
@@ -2920,14 +3241,6 @@
 
       const handleExportPDF = async (mode = 'FULL_BATCH', override = false) => {
         if (MappedOrders.length === 0) return;
-        if (mode === 'FULL_BATCH' && printBlocked && !override) {
-          showToast(`ยัง Save PDF ทั้ง Batch ไม่ได้ — มี Exception ${exceptionRows.length} รายการ`, 'error');
-          return;
-        }
-        if (mode === 'FULL_BATCH' && printBlocked && override) {
-          const confirmed = window.confirm(`Batch นี้ยังมี ${exceptionRows.length} Exception\n\nต้องการ Save PDF ทั้ง Batch ต่อหรือไม่?`);
-          if (!confirmed) return;
-        }
         const ordersToExport = printScopeApi
           ? printScopeApi.selectPrintOrders(MappedOrders, mode, order => getReviewFlags(order).ready)
           : (mode === 'READY_ONLY' ? MappedOrders.filter(order => getReviewFlags(order).ready) : MappedOrders);
@@ -2936,7 +3249,7 @@
           return;
         }
         setExportStatus({ active: true, current: 0, total: ordersToExport.length });
-        
+
         await new Promise(resolve => setTimeout(resolve, 100));
 
         try {
@@ -2974,8 +3287,15 @@
           }
 
           pdf.save(`PackMaster_Labels_${new Date().getTime()}.pdf`);
-          if (mode === 'FULL_BATCH' && !printBlocked) await markActiveBatchPrinted();
-          showToast(`ดาวน์โหลด PDF เรียบร้อย ${exportedPages} หน้า`, 'success');
+          let printMarkSucceeded = true;
+          if (mode === 'FULL_BATCH') {
+            printMarkSucceeded = await markActiveBatchPrinted();
+          }
+          if (printMarkSucceeded) {
+            showToast(`ดาวน์โหลด PDF เรียบร้อย ${exportedPages} หน้า`, 'success');
+          } else {
+            showToast(`ดาวน์โหลด PDF แล้ว ${exportedPages} หน้า แต่บันทึกสถานะพิมพ์ไม่สำเร็จ`, 'error');
+          }
         } catch (err) {
           console.error('PackMaster PDF export failed:', err);
           showToast(err.message || 'สร้างไฟล์ PDF ล้มเหลว', 'error');
@@ -3278,6 +3598,23 @@
       return (
         <div className="min-h-screen bg-[#f8fafc] text-blue-950 font-sans relative">
           {toast.show && <Toast message={toast.message} type={toast.type} onClose={() => setToast({ ...toast, show: false })} />}
+          {cloudMode && (!registryAssignmentsLoaded || registryAssignmentsError || !cloudRegistryLoaded || cloudRegistryError || cloudBatchError) && (
+            <div data-pm-cloud-blocker className="no-print fixed inset-0 z-[99999] bg-slate-950/70 flex items-center justify-center p-4" role="alertdialog" aria-modal="true" aria-label="สถานะระบบข้อมูลกลาง">
+              <div className="w-[min(520px,100%)] rounded-2xl bg-white p-6 shadow-2xl">
+                <h2 className="text-xl font-black text-slate-900">PackMaster Cloud Workspace</h2>
+                <p className="text-sm font-semibold text-slate-600 mt-2">
+                  {registryAssignmentsError || cloudRegistryError || cloudBatchError
+                    ? 'ข้อมูลกลางมีปัญหาหรือถูกแก้ไขจากอีกเครื่อง ระบบหยุดเขียนข้อมูลเพื่อป้องกันการทับงาน'
+                    : 'กำลังโหลดทะเบียน SKU และชื่อภายในจากฐานกลาง ก่อนเริ่มงานแพ็ก'}
+                </p>
+                {(registryAssignmentsError || cloudRegistryError || cloudBatchError) && <p role="alert" className="mt-3 p-3 rounded-lg bg-red-50 text-red-800 text-xs break-words">{registryAssignmentsError || cloudRegistryError || cloudBatchError}</p>}
+                <div className="flex flex-wrap gap-2 mt-5">
+                  {registryAssignmentsLoaded && <button type="button" className="pm-secondary-btn" onClick={exportUnsavedCloudMapping}>สำรองชื่อภายในตามทะเบียน</button>}
+                  <button type="button" className="pm-primary-btn" onClick={() => window.location.reload()}>โหลด Cloud ใหม่</button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {quickMapState.open && (
             <div data-pm-quick-mapping className="pm-quick-map-backdrop no-print" role="dialog" aria-modal="true" aria-label="ตรวจและแก้ Exception">
@@ -3298,7 +3635,7 @@
                     {marketplaceCatalogIndex?.[quickMapState.row?.order?.platform]?.captureDate && (
                       <div data-pm-registry-evidence className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                         <div className="text-xs font-black text-slate-800">ตรวจ Seller SKU จากทะเบียน {quickMapState.row?.order?.platform}</div>
-                        <div className="mt-1 text-[10px] text-slate-500 font-semibold">ข้อมูลอ้างอิงเท่านั้น • ไม่เปลี่ยนชื่อภายในหรือสถานะพร้อมพิมพ์</div>
+                        <div className="mt-1 text-[10px] text-slate-500 font-semibold">{cloudMode ? 'ใช้ Seller SKU ตรงตัวและชื่อภายในที่ยืนยันแล้วเท่านั้น • ไม่มี Keyword fallback' : 'ข้อมูลอ้างอิงเท่านั้น • ไม่เปลี่ยนชื่อภายในหรือสถานะพร้อมพิมพ์'}</div>
                         <div className="mt-2 space-y-2">
                           {(quickMapState.row?.order?.parsedItems || []).map((item, index) => {
                             const evidence = registryIdentityApi.resolve(marketplaceCatalogIndex, quickMapState.row.order.platform, item);
@@ -3315,26 +3652,26 @@
                     )}
 
                     {(quickMapState.row?.types || []).some(type => type === 'REVIEW_SKU' || type === 'UNMAPPED') && <>
-                      <div className="mt-4"><label className="pm-label">Keyword ที่ใช้จับคู่ (เฉพาะตอนบันทึกเป็น Mapping)</label><input value={reviewKeywordSuggestionsApi?.formatReviewDisplayText ? reviewKeywordSuggestionsApi.formatReviewDisplayText(quickMapState.keyword) : quickMapState.keyword} onChange={(e)=>setQuickMapState(prev=>({ ...prev, keyword:e.target.value }))} className="pm-input" /></div>
-                      <div data-pm-keyword-suggestions className="mt-3">
+                      {!cloudMode && <div className="mt-4"><label className="pm-label">Keyword ที่ใช้จับคู่ (เฉพาะตอนบันทึกเป็น Mapping)</label><input value={reviewKeywordSuggestionsApi?.formatReviewDisplayText ? reviewKeywordSuggestionsApi.formatReviewDisplayText(quickMapState.keyword) : quickMapState.keyword} onChange={(e)=>setQuickMapState(prev=>({ ...prev, keyword:e.target.value }))} className="pm-input" /></div>}
+                      {!cloudMode && <div data-pm-keyword-suggestions className="mt-3">
                         <div className="flex items-center justify-between gap-2"><label className="pm-label mb-0">Keyword แนะนำที่ผ่าน Safety Check</label><span className="text-[10px] font-semibold text-slate-400">ไม่ Auto-fill • ไม่ Auto-save</span></div>
                         {(quickMapState.suggestions || []).length > 0 ? <div className="mt-2 grid gap-2">{(quickMapState.suggestions || []).map((suggestion,index)=>{const selected=quickMapState.keyword===suggestion.value;return <button key={`${suggestion.value}-${index}`} type="button" data-pm-keyword-suggestion onClick={()=>setQuickMapState(prev => ({ ...prev, keyword: suggestion.value }))} className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${selected ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-100' : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-blue-50/40'}`}><div className="flex items-start justify-between gap-3"><span className="text-xs font-black text-slate-800 break-words">{suggestion.displayValue || suggestion.value}</span><span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-black ${suggestion.confidence === 'recommended' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>{suggestion.confidence === 'recommended' ? 'ปลอดภัย' : 'ตรวจอีกครั้ง'}</span></div><div className="mt-1 text-[10px] font-semibold text-slate-500">{suggestion.confidence === 'recommended' ? 'ผ่าน Smart Matcher กับคลังและ Batch ปัจจุบัน' : 'เฉพาะที่สุดจากใบจริง • ระบบจะเช็ก Safety อีกครั้งก่อนบันทึก'}</div></button>})}</div> : <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-500">ยังตั้งชื่อเฉพาะ Order นี้ได้ — กรุณาอ้างอิงใบจริงด้านซ้ายและใช้ Keyword ที่เฉพาะเจาะจง</div>}
-                      </div>
-                      <div className="mt-3"><label className="pm-label">ชื่อภายใน / ผลลัพธ์ที่จะพิมพ์</label><input autoFocus list="pm-internal-name-options" value={quickMapState.shortName} onChange={(e)=>setQuickMapState(prev=>({ ...prev, shortName:e.target.value }))} placeholder="ค้นหาจากคลัง หรือกรอกชื่อใหม่" className="pm-input text-base font-black" /><datalist id="pm-internal-name-options">{internalNameChoices.map(name=><option key={name} value={name} />)}</datalist></div>
-                      <div className="mt-3 grid sm:grid-cols-2 gap-2"><button onClick={handleSaveQuickMapping} disabled={!quickMapState.keyword.trim() || !quickMapState.shortName.trim()} className="pm-secondary-btn justify-center">บันทึกเป็น Mapping และใช้</button><button onClick={handleApplyQuickOrderName} disabled={!quickMapState.shortName.trim()} className="pm-primary-btn justify-center">ใช้กับ Order นี้</button></div>
+                      </div>}
+                      <div className="mt-3"><label className="pm-label">ชื่อภายใน / ผลลัพธ์ที่จะพิมพ์</label><input autoFocus list="pm-internal-name-options" value={quickMapState.shortName} onChange={(e)=>setQuickMapState(prev=>({ ...prev, shortName:e.target.value }))} placeholder={cloudMode ? 'ระบุชื่อในคลัง PPG ที่ตรวจสอบแล้ว' : 'ค้นหาจากคลัง หรือกรอกชื่อใหม่'} className="pm-input text-base font-black" /><datalist id="pm-internal-name-options">{(cloudMode ? [...new Set((registryAssignments?.entries || []).map(entry => entry.shortName))] : internalNameChoices).map(name=><option key={name} value={name} />)}</datalist></div>
+                      <div className="mt-3 grid sm:grid-cols-2 gap-2"><button onClick={handleSaveQuickMapping} disabled={registryAssignmentsBusy || !quickMapState.shortName.trim() || (!cloudMode && !quickMapState.keyword.trim())} className="pm-secondary-btn justify-center">{cloudMode ? 'ยืนยันชื่อภายในให้ Seller SKU นี้' : 'บันทึกเป็น Mapping และใช้'}</button><button onClick={handleApplyQuickOrderName} disabled={!quickMapState.shortName.trim()} className="pm-primary-btn justify-center">ใช้กับ Order นี้</button></div>
                     </>}
 
                     {(quickMapState.row?.types || []).includes('REVIEW_SKU') && <label data-pm-review-confirm-sku className="mt-4 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 cursor-pointer"><input type="checkbox" className="mt-0.5 w-4 h-4" checked={reviewOverridesApi ? reviewOverridesApi.getReviewAcknowledgement(quickMapState.row?.order,'sku') : false} onChange={(e)=>handleSetReviewConfirmation('sku',e.target.checked)} /><span><span className="block text-xs font-black text-emerald-900">SKU ถูกต้อง</span><span className="block text-[10px] font-semibold text-emerald-700/75 mt-0.5">ติ๊กเมื่อเทียบกับใบจริงแล้ว ชื่อ/การจับคู่ถูกต้อง</span></span></label>}
 
                     {(quickMapState.row?.types || []).includes('REVIEW_QTY') && <div className="mt-4 rounded-xl border border-red-200 bg-red-50/50 p-3"><div className="flex items-center justify-between gap-2"><div><div className="text-xs font-black text-red-900">ตรวจสอบ Qty</div><div className="text-[10px] font-semibold text-red-700/70 mt-0.5">แก้เฉพาะ Review layer • Qty ที่ Parser อ่านเดิมยังถูกเก็บไว้</div></div></div><div className="mt-3 space-y-2">{(quickMapState.row?.order?.parsedItems || []).map((item,index)=>{const itemKey=reviewOverridesApi?reviewOverridesApi.getItemKey(index):`row:${index}`;const hasDraft=Object.prototype.hasOwnProperty.call(quickMapState.qtyDrafts||{},itemKey);const effectiveQty=reviewOverridesApi?reviewOverridesApi.getEffectiveItemQty(quickMapState.row.order,item,index):item.qty;const value=hasDraft?quickMapState.qtyDrafts[itemKey]:String(effectiveQty);return <div key={`${item.text}-${index}`} className="rounded-lg bg-white border border-red-100 p-2.5"><div className="text-[10px] font-bold text-slate-600 break-words mb-2">{item.text || `รายการ ${index+1}`}</div><div className="flex items-center gap-2"><span className="text-[10px] font-black text-slate-400">Qty</span><input data-pm-review-qty-override type="number" min="1" step="1" value={value} onChange={(e)=>setQuickMapState(prev=>({ ...prev, qtyDrafts:{ ...(prev.qtyDrafts||{}), [itemKey]:e.target.value } }))} className="pm-input !py-2 w-24 text-center font-black" /><span className="text-[10px] font-semibold text-slate-400">Parser เดิม: {item.qty}</span></div></div>})}</div><button onClick={handleSaveQtyReviewCorrections} className="pm-secondary-btn w-full justify-center mt-3">บันทึก Qty ที่แก้</button><label data-pm-review-confirm-qty className="mt-3 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 cursor-pointer"><input type="checkbox" className="mt-0.5 w-4 h-4" checked={reviewOverridesApi ? reviewOverridesApi.getReviewAcknowledgement(quickMapState.row?.order,'qty') : false} onChange={(e)=>handleSetReviewConfirmation('qty',e.target.checked)} /><span><span className="block text-xs font-black text-emerald-900">Qty ถูกต้อง</span><span className="block text-[10px] font-semibold text-emerald-700/75 mt-0.5">ติ๊กหลังตรวจใบจริง หรือหลังแก้ Qty ด้านบนแล้ว</span></span></label></div>}
 
-                    <div className="mt-5 flex flex-col sm:flex-row sm:justify-between gap-2"><button onClick={handleOpenQuickMapInLibrary} className="pm-secondary-btn">เปิดคลังคำศัพท์</button><button onClick={()=>setQuickMapState({ open:false, row:null, keyword:'', shortName:'' })} className="pm-ghost-btn">ปิดหน้าต่าง</button></div>
+                    <div className="mt-5 flex flex-col sm:flex-row sm:justify-between gap-2"><button onClick={cloudMode ? () => { setQuickMapState({ open:false, row:null, keyword:'', shortName:'' }); setActiveView('marketplace-registry'); } : handleOpenQuickMapInLibrary} className="pm-secondary-btn">{cloudMode ? 'เปิดทะเบียนสินค้า' : 'เปิดคลังคำศัพท์'}</button><button onClick={()=>setQuickMapState({ open:false, row:null, keyword:'', shortName:'' })} className="pm-ghost-btn">ปิดหน้าต่าง</button></div>
                   </div>
                 </div>
               </div>
             </div>
           )}
-          
+
           {exportStatus.active && (
             <div className="fixed inset-0 bg-blue-950/20 z-[9999] flex flex-col items-center justify-center no-print backdrop-blur-sm">
                 <div className="bg-white p-12 rounded-[2rem] text-center shadow-2xl border border-blue-50 min-w-[360px]">
@@ -3357,6 +3694,8 @@
                   <div className="flex items-center gap-3">
                     <h1 className="text-[24px] lg:text-[28px] font-black tracking-tight text-white leading-none">PackMaster</h1>
                     <span className="hidden sm:inline-flex px-2 py-1 rounded-md bg-white/10 border border-white/10 text-[9px] font-black tracking-[0.14em] text-blue-100 uppercase">Frontend V3</span>
+                    {cloudMode && <span data-pm-cloud-workspace className="inline-flex px-2 py-1 rounded-md bg-emerald-500/20 border border-emerald-400/20 text-[9px] font-black text-emerald-100">Cloud Workspace</span>}
+                    {cloudMode && <button type="button" data-pm-cloud-logout className="px-2 py-1 rounded-md text-[10px] text-white border border-white/20" onClick={() => cloud.logout().then(() => window.location.replace('./login.html')).catch(error => showToast('ออกจากระบบไม่สำเร็จ: ' + error.message, 'error'))}>ออกจากระบบ</button>}
                   </div>
                   <p className="hidden sm:block text-[11px] lg:text-xs font-semibold text-blue-100/70 mt-1">เครื่องมือจัดการเอกสารและพิมพ์ฉลากจัดส่ง • Marketplace → Packing-ready label</p>
                 </div>
@@ -3383,7 +3722,7 @@
                   <nav data-pm-primary-nav className="space-y-1.5">
                     {[
                       ['batches','box','งานแพ็ก'],
-                      ['sku','barcode','คลังคำศัพท์'],
+                      ['sku','barcode',cloudMode ? 'SKU ทะเบียนสินค้า' : 'คลังคำศัพท์'],
                       ['review','review','รีวิว & พิมพ์']
                     ].map(([id, icon, label]) => (
                       <button key={id} aria-label={label} title={sidebarCollapsed ? label : undefined} onClick={() => navigateView(id)} className={`pm-nav-btn ${activeView === id ? 'pm-nav-btn-active' : ''}`}>
@@ -3401,9 +3740,9 @@
                   </div>
                 </div>
                 <div className="mt-auto p-3 border-t border-white/10">
-                  <div className="pm-local-workspace-card rounded-xl bg-white/[0.06] border border-white/[0.08] p-3" title={sidebarCollapsed ? 'Local Workspace • ข้อมูลอยู่ใน Browser เครื่องนี้' : undefined}>
-                    <div className="flex items-center gap-2 text-blue-100"><span className="w-2 h-2 rounded-full bg-emerald-400 flex-none"></span><span className="pm-local-workspace-copy text-[11px] font-black">Local Workspace</span></div>
-                    <div className="pm-local-workspace-copy text-[9px] leading-4 font-semibold text-blue-100/45 mt-1">ข้อมูลอยู่ใน Browser เครื่องนี้</div>
+                  <div className="pm-local-workspace-card rounded-xl bg-white/[0.06] border border-white/[0.08] p-3" title={sidebarCollapsed ? (cloudMode ? 'Cloud Workspace • ข้อมูลกลาง' : 'Local Workspace • ข้อมูลอยู่ใน Browser เครื่องนี้') : undefined}>
+                    <div className="flex items-center gap-2 text-blue-100"><span className="w-2 h-2 rounded-full bg-emerald-400 flex-none"></span><span className="pm-local-workspace-copy text-[11px] font-black">{cloudMode ? 'Cloud Workspace' : 'Local Workspace'}</span></div>
+                    <div className="pm-local-workspace-copy text-[9px] leading-4 font-semibold text-blue-100/45 mt-1">{cloudMode ? 'ทะเบียน SKU และ Batch บนฐานกลาง' : 'ข้อมูลอยู่ใน Browser เครื่องนี้'}</div>
                   </div>
                 </div>
               </aside>
@@ -3578,7 +3917,7 @@
                           </div>
 
                           <div className={`pm-card p-5 border-l-4 ${exceptionRows.length > 0 ? 'border-l-amber-400' : 'border-l-emerald-500'}`}>
-                            <div className="flex items-start gap-3"><PMIcon name={exceptionRows.length > 0 ? 'alert' : 'check'} className={`w-5 h-5 shrink-0 ${exceptionRows.length > 0 ? 'text-amber-600' : 'text-emerald-600'}`} /><div><div className="text-sm font-black text-slate-900">{exceptionRows.length > 0 ? `ยังมี ${exceptionRows.length} Exception` : 'Batch พร้อมพิมพ์'}</div><p className="text-xs font-semibold text-slate-400 mt-1">{exceptionRows.length > 0 ? 'แนะนำให้แก้ Exception ให้ครบก่อนพิมพ์ • หากงานเร่ง สามารถพิมพ์เฉพาะ Ready หรือยืนยัน Override ทั้ง Batch ในหน้า Review' : 'ไม่มีรายการที่ระบบต้องให้คนตรวจเพิ่มเติม'}</p></div></div>
+                            <div className="flex items-start gap-3"><PMIcon name={exceptionRows.length > 0 ? 'alert' : 'check'} className={`w-5 h-5 shrink-0 ${exceptionRows.length > 0 ? 'text-amber-600' : 'text-emerald-600'}`} /><div><div className="text-sm font-black text-slate-900">{exceptionRows.length > 0 ? `ยังมี ${exceptionRows.length} Exception` : 'Batch พร้อมพิมพ์'}</div><p className="text-xs font-semibold text-slate-400 mt-1">{exceptionRows.length > 0 ? 'สามารถตรวจรายการเพิ่มเติมหรือพิมพ์ทั้ง Batch ได้' : 'ไม่มีรายการที่ระบบต้องให้คนตรวจเพิ่มเติม'}</p></div></div>
                           </div>
                         </div>
                       </div>
@@ -3586,7 +3925,22 @@
                   </section>
                 )}
 
-                {activeView === 'sku' && (
+                {activeView === 'sku' && cloudMode && (
+                  <section data-pm-registry-matcher-page className="pm-page">
+                    <div className="pm-card p-6">
+                      <div className="pm-eyebrow">Registry-only SKU Matcher</div>
+                      <h2 className="pm-page-title">SKU ทะเบียนสินค้า</h2>
+                      <p className="pm-page-subtitle mt-2">เลิกใช้ Keyword Dictionary ใน Cloud แล้ว จับคู่ด้วย Seller SKU ที่ตรงตัวของ TikTok หรือ Shopee และต้องผูกชื่อภายในก่อนพิมพ์</p>
+                      <div className="grid grid-cols-2 gap-3 mt-5">
+                        <div className="pm-mini-stat"><span>SKU ที่ยืนยันชื่อภายใน</span><strong>{registryAssignments?.entries?.length || 0}</strong></div>
+                        <div className="pm-mini-stat"><span>แหล่งจับคู่</span><strong>ทะเบียนสินค้า</strong></div>
+                      </div>
+                      <button type="button" className="pm-primary-btn mt-5" onClick={() => navigateView('marketplace-registry')}>เปิดทะเบียนและผูกชื่อภายใน</button>
+                    </div>
+                  </section>
+                )}
+
+                {activeView === 'sku' && !cloudMode && (
                   <section data-pm-view="sku" data-pm-layout-v4 className="pm-page">
                     <div className="pm-page-head">
                       <div><div className="pm-eyebrow">SKU Dictionary</div><h2 className="pm-page-title">คลังคำศัพท์</h2><p className="pm-page-subtitle">จัดการ Keyword → ชื่อภายในที่ทีมแพ็กเข้าใจ โดยไม่เปลี่ยน Data Shape เดิม</p></div>
@@ -3644,11 +3998,11 @@
                 {activeView === 'review' && (
                   <section data-pm-view="review" data-pm-review-layout className="pm-page pm-page-wide">
                     <div className="pm-page-head">
-                      <div><div className="pm-eyebrow">Exceptions-first QC</div><h2 className="pm-page-title">รีวิว & พิมพ์</h2><p className="pm-page-subtitle">{activeBatch ? `${activeBatch.name} • ` : ''}ตรวจเฉพาะรายการที่ระบบไม่มั่นใจ แล้วพิมพ์เมื่อ Batch พร้อม</p></div>
+                      <div><div className="pm-eyebrow">Exceptions-first QC</div><h2 className="pm-page-title">รีวิว & พิมพ์</h2><p className="pm-page-subtitle">{activeBatch ? `${activeBatch.name} • ` : ''}ตรวจเฉพาะรายการที่ระบบไม่มั่นใจ แล้วพิมพ์เมื่อ Batch พร้อม • สถานะพิมพ์แล้วหมายถึงระบบเริ่มสั่งพิมพ์หรือส่งออก ไม่ยืนยันว่ากระดาษออกจากเครื่องพิมพ์จริง</p></div>
                       <div className="pm-page-actions">
                         <button onClick={()=>setThermalMode(!thermalMode)} className={`pm-secondary-btn ${thermalMode?'!border-emerald-200 !text-emerald-700':''}`}><PMIcon name="printer"/> Thermal {thermalMode?'ON':'OFF'}</button>
                         <button onClick={handleClearActiveBatch} disabled={orders.length===0} className="pm-ghost-btn"><PMIcon name="refresh"/> ล้างออเดอร์</button>
-                        {printBlocked ? <><button data-pm-action="save-ready-pdf" onClick={()=>handleExportPDF('READY_ONLY')} disabled={exportStatus.active || reviewSummary.ready === 0} className="pm-secondary-btn"><PMIcon name="download"/> Save Ready PDF</button><button data-pm-action="print-ready" onClick={()=>handlePrint('READY_ONLY')} disabled={reviewSummary.ready === 0} className="pm-primary-btn"><PMIcon name="printer"/> พิมพ์ Ready</button></> : <><button data-pm-action="save-pdf" onClick={()=>handleExportPDF('FULL_BATCH')} disabled={exportStatus.active || orders.length === 0} className="pm-secondary-btn"><PMIcon name="download"/> Save PDF</button><button data-pm-action="print" onClick={()=>handlePrint('FULL_BATCH')} disabled={orders.length === 0} className="pm-primary-btn"><PMIcon name="printer"/> พิมพ์</button></>}
+                        <button data-pm-action="save-pdf" onClick={()=>handleExportPDF('FULL_BATCH')} disabled={exportStatus.active || orders.length === 0} className="pm-secondary-btn"><PMIcon name="download"/> Save PDF</button><button data-pm-action="print" onClick={()=>handlePrint('FULL_BATCH')} disabled={orders.length === 0} className="pm-primary-btn"><PMIcon name="printer"/> พิมพ์</button>
                       </div>
                     </div>
 
@@ -3658,7 +4012,7 @@
                       ].map(([status,label,value,tone])=><button key={status} onClick={()=>setReviewStatus(status)} className={`pm-summary-btn ${reviewStatus===status?'pm-summary-selected':''}`}><PMMetric label={label} value={value} tone={tone} compact /></button>)}
                     </div>
 
-                    {printBlocked && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3 text-amber-800"><PMIcon name="lock" className="w-5 h-5 shrink-0"/><div className="flex-1"><div className="text-sm font-black">Print Safety ทำงานอยู่</div><div className="text-xs font-semibold opacity-70">ยังมี {exceptionRows.length} Exception — แนะนำให้แก้ Exception ให้ครบก่อนพิมพ์ แต่สามารถพิมพ์เฉพาะรายการพร้อม หรือยืนยัน Override ทั้ง Batch ได้</div></div></div>}
+                    {printBlocked && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3 text-amber-800"><PMIcon name="lock" className="w-5 h-5 shrink-0"/><div className="flex-1"><div className="text-sm font-black">รายการที่ยังต้องตรวจ</div><div className="text-xs font-semibold opacity-70">ยังมี {exceptionRows.length} รายการที่ต้องตรวจ สามารถพิมพ์ทั้ง Batch ได้</div></div></div>}
 
                     {exceptionMode && <div data-pm-exception-mode className="pm-exception-mode-banner mb-4"><PMIcon name="alert" className="w-5 h-5 text-amber-600 shrink-0"/><div className="flex-1"><div className="text-sm font-black text-amber-900">โหมดตรวจปัญหา • {exceptionRows.length} รายการ</div><div className="text-[11px] font-semibold text-amber-700/70">ซ่อนรายการพร้อมพิมพ์ชั่วคราว เพื่อโฟกัสเฉพาะ Order ที่ต้องตัดสินใจ</div></div><button onClick={()=>setExceptionMode(false)} className="pm-secondary-btn">ออกจากโหมดตรวจปัญหา</button></div>}
 
@@ -3708,13 +4062,13 @@
                     )}
 
                     {ReviewDisplayOrders.length>0&&<div className="pm-pagination mt-4"><div className="text-[11px] font-bold text-slate-400">หน้า {reviewPage} / {reviewDisplayPageCount} • แสดง {visibleReviewDisplayOrders.length} รายการ</div><div className="flex items-center gap-2"><select value={reviewPageSize} onChange={(e)=>{setReviewPageSize(Number(e.target.value));setReviewPage(1);}} className="pm-select !py-1.5"><option value="12">12/หน้า</option><option value="24">24/หน้า</option><option value="48">48/หน้า</option></select><button disabled={reviewPage<=1} onClick={()=>setReviewPage(p=>Math.max(1,p-1))} className="pm-page-btn">‹</button><button disabled={reviewPage>=reviewDisplayPageCount} onClick={()=>setReviewPage(p=>Math.min(reviewDisplayPageCount,p+1))} className="pm-page-btn">›</button></div></div>}
-                    {orders.length>0&&<div data-pm-review-action-dock className="pm-review-action-wrap no-print"><div data-pm-review-action-bar className="pm-review-action-bar"><div className="min-w-0"><div className={`text-sm font-black ${printBlocked?'text-amber-800':'text-emerald-700'}`}>{printBlocked?`พร้อม ${reviewSummary.ready}/${reviewSummary.total} • ต้องตรวจ ${exceptionRows.length}`:`พร้อมพิมพ์ ${reviewSummary.ready}/${reviewSummary.total}`}</div><div className="text-[10px] font-semibold text-slate-400 mt-0.5">{printBlocked?'แนะนำให้แก้รายการที่ต้องตรวจให้ครบ หรือเลือกพิมพ์เฉพาะ Ready / Override ทั้ง Batch':'Batch นี้ไม่มี Exception ที่บล็อกการพิมพ์'}</div></div><div className="flex flex-wrap gap-2">{printBlocked?<><button onClick={openExceptionMode} className="pm-warning-btn"><PMIcon name="alert"/> แก้ {exceptionRows.length} รายการ</button><button onClick={()=>handleExportPDF('READY_ONLY')} disabled={exportStatus.active||reviewSummary.ready===0} className="pm-secondary-btn"><PMIcon name="download"/> Save Ready PDF</button><button onClick={()=>handlePrint('READY_ONLY')} disabled={reviewSummary.ready===0} className="pm-primary-btn"><PMIcon name="printer"/> พิมพ์เฉพาะรายการพร้อม</button><button onClick={()=>handleExportPDF('FULL_BATCH', true)} className="pm-warning-btn">Save PDF ทั้ง Batch</button><button onClick={handleEmergencyPrint} className="pm-warning-btn">พิมพ์ทั้ง Batch</button></>:<><button onClick={()=>handleExportPDF('FULL_BATCH')} disabled={exportStatus.active||orders.length===0} className="pm-secondary-btn"><PMIcon name="download"/> Save PDF</button><button onClick={()=>handlePrint('FULL_BATCH')} disabled={orders.length===0} className="pm-primary-btn"><PMIcon name="printer"/> พิมพ์ {reviewSummary.total} ใบ</button></>}</div></div></div>}
+                    {orders.length>0&&<div data-pm-review-action-dock className="pm-review-action-wrap no-print"><div data-pm-review-action-bar className="pm-review-action-bar"><div className="min-w-0"><div className={`text-sm font-black ${printBlocked?'text-amber-800':'text-emerald-700'}`}>{printBlocked?`พร้อม ${reviewSummary.ready}/${reviewSummary.total} • ต้องตรวจ ${exceptionRows.length}`:`พร้อมพิมพ์ ${reviewSummary.ready}/${reviewSummary.total}`}</div><div className="text-[10px] font-semibold text-slate-400 mt-0.5">{printBlocked?'สามารถตรวจรายการเพิ่มเติมหรือพิมพ์ทั้ง Batch ได้':'Batch นี้ไม่มีรายการที่ต้องตรวจ'} • สถานะพิมพ์แล้วหมายถึงระบบเริ่มสั่งพิมพ์หรือส่งออก ไม่ยืนยันว่ากระดาษออกจากเครื่องพิมพ์จริง</div></div><div className="flex flex-wrap gap-2">{printBlocked?<><button onClick={openExceptionMode} className="pm-warning-btn"><PMIcon name="alert"/> แก้ {exceptionRows.length} รายการ</button><button onClick={()=>handleExportPDF('FULL_BATCH')} className="pm-secondary-btn">Save PDF ทั้ง Batch</button><button onClick={handleEmergencyPrint} className="pm-primary-btn">พิมพ์ทั้ง Batch</button></>:<><button onClick={()=>handleExportPDF('FULL_BATCH')} disabled={exportStatus.active||orders.length===0} className="pm-secondary-btn"><PMIcon name="download"/> Save PDF</button><button onClick={()=>handlePrint('FULL_BATCH')} disabled={orders.length===0} className="pm-primary-btn"><PMIcon name="printer"/> พิมพ์ {reviewSummary.total} ใบ</button></>}</div></div></div>}
                   </section>
                 )}
 
                 {activeView === 'marketplace-registry' && (
                   <section data-pm-view="marketplace-registry" className="pm-page">
-                    <div className="pm-page-head"><div><div className="pm-eyebrow">Marketplace Catalog</div><h2 className="pm-page-title">ทะเบียนสินค้า Marketplace</h2><p className="pm-page-subtitle">เก็บข้อมูลสินค้าตามแพลตฟอร์มไว้ดูและค้นหาแยกจากคลังจับคู่ SKU • ไม่สร้างชื่อภายในหรือ Mapping อัตโนมัติ</p></div><div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-black"><PMIcon name="shield"/> Local-first • Optional Cloud</div></div>
+                    <div className="pm-page-head"><div><div className="pm-eyebrow">Marketplace Catalog</div><h2 className="pm-page-title">ทะเบียนสินค้า Marketplace</h2><p className="pm-page-subtitle">{cloudMode ? 'ทะเบียนสินค้าคือแหล่งจับคู่ SKU หลัก ผูก Seller SKU แต่ละแพลตฟอร์มเข้ากับชื่อภายในที่ยืนยันแล้วเท่านั้น' : 'เก็บข้อมูลสินค้าตามแพลตฟอร์มไว้ดูและค้นหาแยกจากคลังจับคู่ SKU • ไม่สร้างชื่อภายในหรือ Mapping อัตโนมัติ'}</p></div><div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-black"><PMIcon name="shield"/> {cloudMode ? 'Cloud Registry • Exact SKU Only' : 'Local-first • Optional Cloud'}</div></div>
 
                     {marketplaceRegistryLoadError && <div role="alert" className="pm-card mb-4 border-2 border-amber-300 bg-amber-50 p-4"><div className="text-sm font-black text-amber-900">อ่านทะเบียนเดิมไม่สำเร็จ</div><div className="mt-1 text-xs font-semibold text-amber-800">{marketplaceRegistryLoadError} • ระบบคงข้อมูลเดิมไว้จนกว่าจะเลือกนำเข้าและยืนยันสร้างทะเบียนใหม่</div></div>}
 
@@ -3723,22 +4077,92 @@
                     </div>
 
                     <div className="grid xl:grid-cols-2 gap-3 mb-4">
-                      {['TIKTOK','SHOPEE'].map(platform => <div key={platform} className="pm-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div><div className="text-sm font-black text-slate-900">นำเข้า {platform === 'TIKTOK' ? 'TikTok' : 'Shopee'}</div><div className="text-xs font-semibold text-slate-500 mt-1">เลือกไฟล์ Registry JSON ของแพลตฟอร์มนี้ • แทนเฉพาะทะเบียนแพลตฟอร์มเดียวกัน</div></div><label className={`pm-primary-btn cursor-pointer shrink-0 ${marketplaceRegistryBusy || registrySyncBusy ? 'opacity-50 pointer-events-none' : ''}`}><PMIcon name="upload"/> เลือกไฟล์ JSON<input type="file" accept=".json,application/json" disabled={marketplaceRegistryBusy || registrySyncBusy} className="hidden" onChange={event => handleMarketplaceRegistryImport(event, platform)}/></label></div>)}
+                      {['TIKTOK','SHOPEE'].map(platform => <div key={platform} className="pm-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div><div className="text-sm font-black text-slate-900">นำเข้า {platform === 'TIKTOK' ? 'TikTok' : 'Shopee'}</div><div className="text-xs font-semibold text-slate-500 mt-1">เลือกไฟล์ Registry JSON ของแพลตฟอร์มนี้ • แทนเฉพาะทะเบียนแพลตฟอร์มเดียวกัน</div></div><label className={`pm-primary-btn cursor-pointer shrink-0 ${marketplaceRegistryBusy ? 'opacity-50 pointer-events-none' : ''}`}><PMIcon name="upload"/> เลือกไฟล์ JSON<input type="file" accept=".json,application/json" disabled={marketplaceRegistryBusy} className="hidden" onChange={event => handleMarketplaceRegistryImport(event, platform)}/></label></div>)}
                     </div>
 
                     <div data-pm-registry-cloud-sync className="pm-card p-4 mb-4">
                       <div className="font-black text-sm text-slate-800">Cloud Registry</div>
-                      <p className="text-xs font-semibold text-slate-500 mt-1">ซิงก์ทะเบียน TikTok และ Shopee ผ่านหน้าจัดการที่ไม่โหลดสคริปต์จาก CDN ภายนอก • ไม่ส่งข้อมูลลูกค้าหรือคลัง Mapping ขึ้น Cloud</p>
-                      <a href="./registry-sync.html" rel="noopener noreferrer" className="pm-primary-btn inline-flex mt-3">เปิดหน้าซิงก์ทะเบียนอย่างปลอดภัย</a>
+                      <p className="text-xs font-semibold text-slate-500 mt-1">{cloudMode
+                        ? 'ทะเบียน TikTok และ Shopee โหลดจากฐานข้อมูลกลางโดยอัตโนมัติ การนำเข้า JSON จะอัปเดตฐานกลางและตรวจ Revision'
+                        : 'ซิงก์ทะเบียน TikTok และ Shopee ผ่านหน้าจัดการที่ไม่โหลดสคริปต์จาก CDN ภายนอก • ไม่ส่งข้อมูลลูกค้าหรือคลัง Mapping ขึ้น Cloud'}</p>
+                      {!cloudMode && <a href="./registry-sync.html" rel="noopener noreferrer" className="pm-primary-btn inline-flex mt-3">เปิดหน้าซิงก์ทะเบียนอย่างปลอดภัย</a>}
                     </div>
 
                     <div className="pm-card p-4 mb-4"><div className="flex flex-wrap gap-2 items-center justify-between"><div className="flex flex-wrap gap-2"><button onClick={()=>setMarketplaceRegistryPlatformFilter('TIKTOK')} className={`pm-nav-btn !text-xs ${marketplaceRegistryPlatformFilter==='TIKTOK'?'pm-nav-btn-active':''}`}>TikTok</button><button onClick={()=>setMarketplaceRegistryPlatformFilter('SHOPEE')} className={`pm-nav-btn !text-xs ${marketplaceRegistryPlatformFilter==='SHOPEE'?'pm-nav-btn-active':''}`}>Shopee</button><span className="mx-1 border-l border-slate-200"/><button onClick={()=>setMarketplaceRegistryDisplayMode('products')} className={`pm-secondary-btn !py-2 ${marketplaceRegistryDisplayMode==='products'?'!border-blue-400 !bg-blue-50 !text-blue-800':''}`}>สินค้า</button><button onClick={()=>setMarketplaceRegistryDisplayMode('skuRows')} className={`pm-secondary-btn !py-2 ${marketplaceRegistryDisplayMode==='skuRows'?'!border-blue-400 !bg-blue-50 !text-blue-800':''}`}>SKU / ตัวเลือก</button></div><div className="flex items-center gap-2"><input aria-label="ค้นหาทะเบียนสินค้า" value={marketplaceRegistrySearch} onChange={event=>setMarketplaceRegistrySearch(event.target.value)} placeholder="ค้นหาชื่อ, ID, Seller SKU..." className="pm-input !py-2 min-w-[220px]"/><select aria-label="จำนวนรายการต่อหน้า" value={marketplaceRegistryPageSize} onChange={event=>{setMarketplaceRegistryPageSize(Number(event.target.value));setMarketplaceRegistryPage(1);}} className="pm-select !py-2"><option value="20">20/หน้า</option><option value="50">50/หน้า</option><option value="100">100/หน้า</option></select></div></div></div>
+
+                    {cloudMode && (
+                      <div data-pm-registry-assignments className="pm-card p-4 mb-4">
+                        <div className="flex flex-wrap gap-3 items-center justify-between">
+                          <div>
+                            <h3 className="text-base font-black text-slate-900">ผูก Seller SKU กับชื่อภายใน PPG</h3>
+                            <p className="text-xs font-semibold text-slate-500 mt-1">จับคู่ตรงตัวตามแพลตฟอร์ม • Seller SKU ที่ซ้ำ/หายจะเข้า Review เท่านั้น ไม่มี Keyword Fallback</p>
+                          </div>
+                          <span className="rounded-lg bg-blue-50 text-blue-700 font-black text-xs px-3 py-2">
+                            ยืนยันแล้ว {(registryAssignments?.entries || []).filter(entry => entry.platform === marketplaceRegistryPlatformFilter).length} SKU
+                          </span>
+                        </div>
+                        {selectedMarketplaceRegistry && (
+                          <div className="overflow-x-auto mt-3 max-h-[560px] overflow-y-auto">
+                            <table className="pm-table min-w-[800px]">
+                              <thead><tr><th>Marketplace SKU / สินค้า</th><th>สถานะ</th><th>ชื่อภายในที่ยืนยันแล้ว</th><th>บันทึก</th></tr></thead>
+                              <tbody>
+                                {(selectedMarketplaceRegistry.skuRows || [])
+                                  .filter(row => {
+                                    const search = marketplaceRegistrySearch.trim().toLowerCase();
+                                    return !search || [row.sellerSku, row.productName, row.title, row.variantName,
+                                      row.productId, row.itemId, row.modelId].some(value =>
+                                        String(value || '').toLowerCase().includes(search));
+                                  })
+                                  .slice(0, 50).map((row, index) => {
+                                    const platform = marketplaceRegistryPlatformFilter;
+                                    const sku = String(row.sellerSku || '').trim();
+                                    const key = platform + ':' + (registryMatcherApi?.normalizeSku(sku) || 'missing-' + index);
+                                    const evidence = sku && registryIdentityApi && marketplaceCatalogIndex
+                                      ? registryIdentityApi.resolve(marketplaceCatalogIndex, platform, { sellerSku: sku })
+                                      : { status: 'no_identity' };
+                                    const assignment = (registryAssignments?.entries || []).find(entry =>
+                                      entry.platform === platform && registryMatcherApi?.normalizeSku(entry.sellerSku) ===
+                                      registryMatcherApi?.normalizeSku(sku) && entry.productId ===
+                                      String(row.productId || row.itemId || '') &&
+                                      (entry.modelId || null) === (row.modelId || null));
+                                    const draft = Object.prototype.hasOwnProperty.call(registryNameDrafts, key)
+                                      ? registryNameDrafts[key] : assignment?.shortName || '';
+                                    const canSave = evidence.status === 'found' && draft.trim() && !registryAssignmentsBusy;
+                                    return <tr key={platform + '-' + (row.modelId || row.productId || row.itemId) + '-' + index}>
+                                      <td>
+                                        <div className="font-mono text-xs font-black text-blue-900">{sku || 'ไม่มี Seller SKU'}</div>
+                                        <div className="text-[11px] text-slate-600">{row.productName || row.title || '-'}{row.variantName ? ' • ' + row.variantName : ''}</div>
+                                      </td>
+                                      <td><span className={`text-xs font-black ${evidence.status === 'found' ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                        {evidence.status === 'ambiguous' ? 'Seller SKU ซ้ำ' :
+                                          evidence.status === 'no_identity' ? 'ไม่มี SKU' :
+                                          evidence.status === 'found' ? (assignment ? 'ผูกชื่อแล้ว' : 'รอชื่อภายใน') : 'ตรวจทะเบียน'}
+                                      </span></td>
+                                      <td><input aria-label={`ชื่อภายใน Seller SKU ${sku}`} className="pm-input !py-2 min-w-[220px]"
+                                        value={draft} maxLength={150} disabled={evidence.status !== 'found' || registryAssignmentsBusy}
+                                        placeholder="ชื่อสินค้าในคลัง PPG" onChange={event => setRegistryNameDrafts(prev =>
+                                          ({ ...prev, [key]: event.target.value }))} /></td>
+                                      <td><button type="button" className="pm-secondary-btn !py-2" disabled={!canSave}
+                                        onClick={() => saveRegistryAssignment(platform, { sellerSku: sku }, draft)
+                                          .then(() => showToast('บันทึกชื่อภายในจากทะเบียนกลางแล้ว', 'success'))
+                                          .catch(error => showToast('บันทึกไม่ได้: ' + error.message, 'error'))}>
+                                        ยืนยัน
+                                      </button></td>
+                                    </tr>;
+                                  })}
+                              </tbody>
+                            </table>
+                            <p className="text-[11px] font-semibold text-slate-500 mt-3">แสดงสูงสุด 50 แถว ใช้ช่องค้นหาด้านบนเพื่อหา Seller SKU อื่น ๆ • รายการที่มี SKU ซ้ำต้องแก้ทะเบียนก่อน</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {!selectedMarketplaceRegistry ? <PMEmptyState icon="box" title={`ยังไม่มีทะเบียน ${marketplaceRegistryPlatformFilter === 'TIKTOK' ? 'TikTok' : 'Shopee'}`} body="นำเข้าไฟล์ Registry JSON ของแพลตฟอร์มนี้เพื่อดูแคตตาล็อกสินค้าและ SKU"/> : <div className="pm-card overflow-x-auto"><table className="pm-table min-w-[860px]"><thead><tr><th>{marketplaceRegistryDisplayMode==='products'?'Product / Item ID':'Product / Model ID'}</th><th>ชื่อสินค้า / ตัวเลือก</th><th>Seller SKU</th><th>Parent SKU</th><th>สถานะ</th></tr></thead><tbody>{visibleMarketplaceRegistryRows.map((row,index)=>{const productName=row.productName||row.title||'-';const productId=row.productId||row.itemId||'-';const skuRow=row.__recordType==='skuRow';const productHasVariantSku=Array.isArray(row.variants)&&row.variants.some(variant=>variant.sellerSku&&variant.sellerSku.trim());const sellerSku=skuRow?(row.sellerSku&&row.sellerSku.trim()?row.sellerSku:'ไม่แสดง'):marketplaceRegistryPlatformFilter==='SHOPEE'?(productHasVariantSku?'อยู่ในตัวเลือก':'ดูตัวเลือก'):(row.sellerSku&&row.sellerSku.trim()?row.sellerSku:productHasVariantSku?'อยู่ในตัวเลือก':'ไม่แสดง');const missingSku=sellerSku==='ไม่แสดง';return <tr key={`${marketplaceRegistryPlatformFilter}-${skuRow?'sku':'product'}-${row.modelId||row.variantOrdinal||productId}-${(marketplaceRegistryPage-1)*marketplaceRegistryPageSize+index}`}><td><div className="font-mono text-xs font-bold text-slate-700 break-all">{skuRow?(row.modelId||productId):productId}</div><div className="text-[11px] text-slate-400">{skuRow?`Product: ${productId}`:row.status||'-'}</div></td><td><div className="text-xs font-bold text-slate-800">{productName}</div>{skuRow&&row.variantName&&<div className="text-[11px] text-slate-500 mt-1">{row.variantName}</div>}{!skuRow&&<div className="text-[11px] text-slate-500 mt-1">{Array.isArray(row.variants)?row.variants.length:0} ตัวเลือก</div>}</td><td><span className={`text-xs font-black ${missingSku?'text-amber-700':marketplaceRegistryDisplayMode==='products'?'text-blue-700':'text-slate-800'}`}>{sellerSku}</span></td><td className="text-xs font-semibold text-slate-600">{row.parentSku||'-'}</td><td><span className={`text-[11px] font-black px-2 py-1 rounded-full ${missingSku?'bg-amber-50 text-amber-700':marketplaceRegistryDisplayMode==='products'?'bg-blue-50 text-blue-700':'bg-emerald-50 text-emerald-700'}`}>{missingSku?'ไม่มี Seller SKU':skuRow?'มี Seller SKU':'ดู SKU/ตัวเลือก'}</span></td></tr>;})}{visibleMarketplaceRegistryRows.length===0&&<tr><td colSpan="5" className="text-center text-xs font-semibold text-slate-400 py-8">ไม่พบรายการที่ตรงกับคำค้นหา</td></tr>}</tbody></table><div className="pm-pagination p-4"><div className="text-xs font-bold text-slate-500">แสดง {visibleMarketplaceRegistryRows.length} จาก {filteredMarketplaceRegistryRows.length} รายการ • หน้า {marketplaceRegistryPage}/{marketplaceRegistryPageCount}</div><div className="flex gap-2"><button disabled={marketplaceRegistryPage<=1} onClick={()=>setMarketplaceRegistryPage(page=>Math.max(1,page-1))} className="pm-page-btn">‹</button><button disabled={marketplaceRegistryPage>=marketplaceRegistryPageCount} onClick={()=>setMarketplaceRegistryPage(page=>Math.min(marketplaceRegistryPageCount,page+1))} className="pm-page-btn">›</button></div></div></div>}
 
                     {selectedMarketplaceRegistry?.productsWithoutAnySellerSku?.length>0&&<details className="pm-card mt-4 p-4"><summary className="cursor-pointer text-sm font-black text-amber-800">สินค้าที่ไม่มี Seller SKU ในทุกตัวเลือก ({selectedMarketplaceRegistry.productsWithoutAnySellerSku.length})</summary><div className="mt-3 grid md:grid-cols-2 gap-2">{selectedMarketplaceRegistry.productsWithoutAnySellerSku.map(product=><div key={product.productId||product.itemId} className="rounded-lg border border-amber-100 bg-amber-50/60 p-2.5"><div className="text-xs font-bold text-slate-800">{product.productName||product.title||'-'}</div><div className="font-mono text-[11px] text-slate-500 mt-1">{product.productId||product.itemId}</div></div>)}</div></details>}
 
-                    <div className="mt-4 text-xs font-semibold text-slate-500">ข้อมูลทะเบียนเก็บใน Browser เครื่องนี้และอาจอยู่ใน Workspace Backup • ไม่ถูกแปลงเป็น SKU Mapping โดยอัตโนมัติ</div>
+                    <div className="mt-4 text-xs font-semibold text-slate-500">{cloudMode ? 'ทะเบียน TikTok/Shopee และชื่อภายในที่ยืนยันแล้วเป็นข้อมูลกลางบน Cloud • Seller SKU ซ้ำหรือไม่มีรหัสต้องตรวจด้วยคน • ไม่ใช้ Keyword Matcher เดิม' : 'ข้อมูลทะเบียนเก็บใน Browser เครื่องนี้และอาจอยู่ใน Workspace Backup • ไม่ถูกแปลงเป็น SKU Mapping โดยอัตโนมัติ'}</div>
                   </section>
                 )}
 

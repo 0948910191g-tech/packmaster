@@ -1,5 +1,11 @@
 # Private Cloudflare deployment configuration and local credentials
 cloudflare/wrangler.toml
+cloudflare/**/wrangler.toml
+cloudflare/**/.dev.vars*
+cloudflare/**/.env*
+cloudflare/**/.wrangler/
+cloudflare/workspace/public/
+cloudflare/workspace/.build-cache/
 cloudflare/.dev.vars*
 cloudflare/.env*
 cloudflare/.wrangler/

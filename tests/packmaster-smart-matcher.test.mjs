@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import {
@@ -16,6 +17,7 @@ import {
 } from './fixtures/smart-matcher-cases.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 const html = fs.readFileSync(path.join(here, '..', 'index.html'), 'utf8');
 const helperStart = html.indexOf('const normalizeMatchText');
 const helperEnd = html.indexOf('const waitForLabelRender');
@@ -33,7 +35,7 @@ globalThis.__packmasterSmart = {
   hasQtyWarning,
   getAggregatedShortName
 };`;
-const context = {};
+const context = { window: { PackMasterSkuNormalization: require('../packmaster-sku-normalization.js') } };
 vm.createContext(context);
 vm.runInContext(helperSource, context);
 const {
@@ -99,6 +101,20 @@ const groupedTikTok = parseTikTokPositionedItems(tikTokGroupedHeader, 1);
 assert.equal(groupedTikTok.parserWarning, false, 'Grouped Product Name / Seller SKU headers must be accepted');
 assert.equal(groupedTikTok.items.length, 1, 'Grouped TikTok header must still produce one row');
 assert.equal(groupedTikTok.items[0].qty, 1);
+assert.ok(groupedTikTok.items[0].sellerSku, 'Explicit TikTok Seller SKU column must survive PDF parsing');
+assert.equal(groupedTikTok.items[0].sellerSku, groupedTikTok.items[0].text.split(' | ').at(-1));
+
+// Regression: the last TikTok table row can absorb footer text in the Seller SKU
+// column because it has no following Qty marker defining the row's lower bound.
+const footerPolluted = parseTikTokPositionedItems([
+  ...tikTokGroupedHeader,
+  { text: 'Qty Total:', x: 174, y: 46, index: tikTokGroupedHeader.length },
+  { text: 'Order ID: REDACTED', x: 174, y: 49, index: tikTokGroupedHeader.length + 1 }
+], 1);
+assert.equal(footerPolluted.items.length, 1);
+assert.equal(footerPolluted.items[0].sellerSku, groupedTikTok.items[0].sellerSku,
+  'The Seller SKU field must not contain shipment totals or order identifiers');
+
 
 // 2026-08-14 real failure case: a purple HOYA Baby 24-carton label was printed as the pink internal SKU.
 // The TikTok parser preserves Product / SKU / Seller SKU separated by " | ". A stale shared mapping can be a

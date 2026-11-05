@@ -9,9 +9,9 @@ test('review screen keeps safety detection but provides safe scoped actions', ()
   mustInclude('<script src="./packmaster-pilot-safety.js"></script>');
   mustInclude('const pilotSafetyApi = window.PackMasterPilotSafety;');
   mustInclude('const printBlocked = pilotSafetyApi ? pilotSafetyApi.hasBlockingExceptions(exceptionRows) : exceptionRows.length > 0;');
-  mustInclude('Print Safety ทำงานอยู่');
-  assert.match(html, /พิมพ์ Ready|พิมพ์เฉพาะรายการพร้อม/);
-  assert.match(html, /Save Ready PDF/);
+  mustInclude('รายการที่ยังต้องตรวจ');
+  assert.doesNotMatch(html, /พิมพ์ Ready|พิมพ์เฉพาะรายการพร้อม/);
+  assert.doesNotMatch(html, /Save Ready PDF/);
   assert.match(html, /พิมพ์ทั้ง Batch/);
 });
 
@@ -19,7 +19,7 @@ test('normal full-batch flow remains safe while override is explicit', () => {
   assert.match(html, /handlePrint\(['"]FULL_BATCH['"]/);
   assert.match(html, /handleExportPDF\(['"]FULL_BATCH['"]/);
   assert.match(html, /window\.confirm\(/);
-  assert.match(html, /mode === ['"]FULL_BATCH['"] && printBlocked && !override/);
+  assert.doesNotMatch(html, /mode === ['"]FULL_BATCH['"] && printBlocked && !override/);
 });
 
 test('SKU/unmapped Review keeps Pilot Safety source identity and never auto-selects a Keyword', () => {
@@ -35,8 +35,8 @@ test('SKU/unmapped Review keeps Pilot Safety source identity and never auto-sele
   mustInclude('ตรวจรายการ');
 });
 
-test('batch status UI remains exception-first even after emergency output', () => {
+test('batch status UI preserves printed state after full output', () => {
   mustInclude('const getEffectiveBatchStatus = (batch) => pilotSafetyApi ? pilotSafetyApi.getEffectiveBatchStatus(batch) : batch.status;');
-  mustInclude('printedAt: printBlocked ? null : activeBatch.printedAt');
-  assert.match(html, /mode === ['"]FULL_BATCH['"] && !printBlocked/);
+  mustInclude('printedAt: activeBatch.printedAt');
+  assert.match(html, /mode === ['"]FULL_BATCH['"]/);
 });

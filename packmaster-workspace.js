@@ -1,8 +1,8 @@
 (function (root, factory) {
-  const api = factory();
+  const api = factory(root);
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.PackMasterWorkspace = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (root) {
   'use strict';
 
   const SCHEMA = 'packmaster-workspace-backup';
@@ -31,6 +31,44 @@
     }
     if (typeof candidate.appVersion !== 'string') throw new Error('appVersion must be a string');
     if (!isPlainObject(candidate.settings)) throw new Error('settings must be an object');
+    if (candidate.settings.reprintSnapshots != null) {
+      if (!isPlainObject(candidate.settings.reprintSnapshots)) {
+        throw new Error('settings.reprintSnapshots must be an object');
+      }
+      const snapshotValidator = (typeof root !== 'undefined' && root && root.PackMasterReprintSnapshot && typeof root.PackMasterReprintSnapshot.validateSnapshot === 'function')
+        ? root.PackMasterReprintSnapshot.validateSnapshot
+        : null;
+
+      for (const [batchId, snap] of Object.entries(candidate.settings.reprintSnapshots)) {
+        if (snapshotValidator) {
+          const validated = snapshotValidator(snap);
+          if (validated.batchId !== batchId) throw new Error(`Resolved snapshot key mismatch: ${batchId}`);
+        } else {
+          if (!isPlainObject(snap) || snap.batchId !== batchId) {
+            throw new Error(`Invalid reprintSnapshots entry for batch: ${batchId}`);
+          }
+          if (typeof snap.completedAt !== 'string' || Number.isNaN(Date.parse(snap.completedAt))) {
+            throw new Error(`Invalid reprintSnapshots completedAt for batch: ${batchId}`);
+          }
+          if (!Array.isArray(snap.orders)) {
+            throw new Error(`Invalid reprintSnapshots orders for batch: ${batchId}`);
+          }
+          const seenIds = new Set();
+          for (const order of snap.orders) {
+            if (!isPlainObject(order) || typeof order.id !== 'string' || !order.id.trim()) {
+              throw new Error(`Invalid reprintSnapshots order in batch: ${batchId}`);
+            }
+            if (seenIds.has(order.id)) {
+              throw new Error(`Duplicate reprintSnapshots order id: ${order.id}`);
+            }
+            seenIds.add(order.id);
+            if (!Array.isArray(order.displayItems) || !Array.isArray(order.resolvedAudit)) {
+              throw new Error(`Invalid reprintSnapshots order structure in batch: ${batchId}`);
+            }
+          }
+        }
+      }
+    }
 
     requireArray(candidate.skuRules, 'skuRules');
     requireArray(candidate.batches, 'batches');
@@ -61,7 +99,14 @@
       if (!batchIds.has(record.batchId)) throw new Error(`batchOrders references missing batch: ${record.batchId}`);
       if (orderRecordIds.has(record.batchId)) throw new Error(`Duplicate batchOrders record: ${record.batchId}`);
       requireArray(record.orders, `batchOrders[${record.batchId}].orders`);
+      const seenOrderIds = new Set();
       record.orders.forEach((order, orderIndex) => {
+        if (order && typeof order.id === 'string') {
+          if (seenOrderIds.has(order.id)) {
+            throw new Error(`Duplicate order.id in batch ${record.batchId}: ${order.id}`);
+          }
+          seenOrderIds.add(order.id);
+        }
         const orderPath = `batchOrders[${record.batchId}].orders[${orderIndex}]`;
         if (!isPlainObject(order) || typeof order.id !== 'string' || !order.id.trim()) {
           throw new Error(`${orderPath}.id must be a non-empty string`);

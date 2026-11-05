@@ -18,8 +18,8 @@
     const unmapped = toCount(value.unmappedCount);
 
     if (total === 0) return 'WAITING';
-    if (reviewSku > 0 || reviewQty > 0 || unmapped > 0) return 'REVIEW';
     if (value.printedAt || value.status === 'COMPLETED') return 'COMPLETED';
+    if (reviewSku > 0 || reviewQty > 0 || unmapped > 0) return 'REVIEW';
     if (value.status === 'REVIEW') return 'REVIEW';
     return 'READY';
   };

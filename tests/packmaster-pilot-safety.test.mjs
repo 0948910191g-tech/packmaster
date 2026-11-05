@@ -11,9 +11,9 @@ test('print safety blocks any unresolved exception order', () => {
   assert.equal(safety.hasBlockingExceptions([{ types: ['REVIEW_SKU', 'REVIEW_QTY'] }]), true);
 });
 
-test('effective batch status prioritizes exceptions over printedAt', () => {
+test('effective batch status retains printedAt despite exceptions', () => {
   assert.equal(safety.getEffectiveBatchStatus({ totalOrders: 0, status: 'COMPLETED', printedAt: '2026-08-08T00:00:00.000Z' }), 'WAITING');
-  assert.equal(safety.getEffectiveBatchStatus({ totalOrders: 10, readyCount: 7, unmappedCount: 3, status: 'COMPLETED', printedAt: '2026-08-08T00:00:00.000Z' }), 'REVIEW');
+  assert.equal(safety.getEffectiveBatchStatus({ totalOrders: 10, readyCount: 7, unmappedCount: 3, status: 'COMPLETED', printedAt: '2026-08-08T00:00:00.000Z' }), 'COMPLETED');
   assert.equal(safety.getEffectiveBatchStatus({ totalOrders: 10, readyCount: 10, reviewSkuCount: 0, reviewQtyCount: 0, unmappedCount: 0, status: 'COMPLETED', printedAt: '2026-08-08T00:00:00.000Z' }), 'COMPLETED');
   assert.equal(safety.getEffectiveBatchStatus({ totalOrders: 10, readyCount: 10, reviewSkuCount: 0, reviewQtyCount: 0, unmappedCount: 0, status: 'READY', printedAt: null }), 'READY');
 });

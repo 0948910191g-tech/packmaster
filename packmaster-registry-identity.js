@@ -1,15 +1,15 @@
 (function (root, factory) {
-  const api = factory();
+  const api = factory(typeof module !== 'undefined' && module.exports
+    ? require('./packmaster-sku-normalization.js')
+    : root.PackMasterSkuNormalization);
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.PackMasterRegistryIdentity = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (skuNormalization) {
   'use strict';
 
+  if (!skuNormalization) throw new Error('Seller SKU normalization module is required');
   const PLATFORMS = ['TIKTOK', 'SHOPEE'];
-  const normalizeSellerSku = value => typeof value === 'string'
-    ? value.normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '')
-      .trim().replace(/\s+/g, ' ').toUpperCase()
-    : '';
+  const normalizeSellerSku = skuNormalization.normalizeSellerSku;
 
   const buildIndex = (storeCandidate, registryApi) => {
     if (!registryApi || typeof registryApi.validateStore !== 'function') {
@@ -25,6 +25,7 @@
         if (!key) continue;
         if (!sellerSkus.has(key)) sellerSkus.set(key, []);
         sellerSkus.get(key).push({
+          platform,
           sellerSku: row.sellerSku,
           productId: platform === 'TIKTOK' ? row.productId : row.itemId,
           productName: platform === 'TIKTOK' ? row.productName : row.title,
@@ -40,18 +41,18 @@
   const extractSellerSku = (platform, item) => {
     if (!PLATFORMS.includes(platform) || !item) return null;
     if (typeof item.sellerSku === 'string' && item.sellerSku.trim()) {
-      return item.sellerSku.trim();
+      return skuNormalization.cleanPdfSellerSku(item.sellerSku) || null;
     }
     const text = typeof item === 'string' ? item : item.text;
     if (typeof text !== 'string') return null;
     // Only accept an explicit Seller SKU field or TikTok's known
     // "Product | Variant | Seller SKU" parser format, never fuzzy product names.
     const explicit = text.match(/(?:^|[|\n])\s*Seller\s*SKU\s*[:：]\s*([^|\n]+)/i);
-    if (explicit?.[1]?.trim()) return explicit[1].trim();
+    if (explicit?.[1]?.trim()) return skuNormalization.cleanPdfSellerSku(explicit[1]) || null;
     if (platform === 'TIKTOK') {
       const pieces = text.split('|');
       if (pieces.length === 3 && pieces.every(piece => piece.trim())) {
-        return pieces[2].trim();
+        return skuNormalization.cleanPdfSellerSku(pieces[2]) || null;
       }
     }
     return null;

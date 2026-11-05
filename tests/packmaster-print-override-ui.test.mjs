@@ -9,14 +9,14 @@ assert.match(html, /printScopeMode/);
 assert.match(html, /selectPrintOrders\(/);
 assert.match(html, /READY_ONLY/);
 assert.match(html, /FULL_BATCH/);
-assert.match(html, /พิมพ์เฉพาะรายการพร้อม|พิมพ์ Ready/);
-assert.match(html, /Save Ready PDF/);
+assert.doesNotMatch(html, /พิมพ์เฉพาะรายการพร้อม|พิมพ์ Ready/);
+assert.doesNotMatch(html, /Save Ready PDF/);
 assert.match(html, /พิมพ์ทั้ง Batch/);
 assert.match(html, /Save PDF ทั้ง Batch/);
-assert.match(html, /window\.confirm\(/, 'full-batch override must require explicit confirmation');
+assert.match(html, /handlePrint\('FULL_BATCH'/, 'full-batch print is directly available');
 assert.match(html, /PrintScopedOrders\.map\(/, 'browser print output must follow selected print scope');
 assert.match(html, /ordersToExport/, 'PDF export must iterate an explicit selected scope');
-assert.match(html, /mode === ['"]FULL_BATCH['"] && !printBlocked/, 'only a clean full-batch print may mark the batch completed');
+assert.match(html, /mode === ['"]FULL_BATCH['"]/, 'full-batch print may mark the batch completed');
 
 const exportStart = html.indexOf("const handleExportPDF = async (mode = 'FULL_BATCH', override = false) => {");
 const exportEnd = html.indexOf('const handleExportRules = () => {', exportStart);

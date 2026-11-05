@@ -1,0 +1,21 @@
+name = "packmaster-workspace-api"
+main = "workspace-worker.mjs"
+compatibility_date = "2026-10-01"
+
+[[d1_databases]]
+binding = "WORKSPACE_DB"
+database_name = "packmaster-workspace"
+database_id = "REPLACE_WITH_WORKSPACE_DATABASE_ID"
+
+[[d1_databases]]
+binding = "REGISTRY_DB"
+database_name = "packmaster-registry"
+database_id = "REPLACE_WITH_REGISTRY_DATABASE_ID"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
+
+[vars]
+ALLOWED_ORIGINS = "https://0948910191g-tech.github.io"
