@@ -415,7 +415,20 @@
       .pm-local-workspace-card { background: rgba(255,255,255,.75) !important; border-color: #fff !important; border-radius: 22px !important; }
       .pm-local-workspace-card .text-blue-100 { color: var(--pm-ink) !important; }
       .pm-local-workspace-card .pm-local-workspace-copy { color: var(--pm-ink-soft) !important; }
+      /* design-G alignment: rail size, glass strength, nav height */
+      .pm-sidebar { width: 236px; flex-basis: 236px; border-radius: 36px; background: rgba(255,255,255,.6); }
+      .pm-sidebar.pm-sidebar-collapsed { width: 84px; flex-basis: 84px; border-radius: 42px; }
+      .pm-nav-btn { min-height: 50px; }
+      .pm-command-header { background: rgba(255,255,255,.6); min-height: 68px; padding: 10px 14px 10px 26px; }
+      .pm-command-header .bg-white\/10 { display: none !important; }
     }
+    /* design-G alignment: headings use the theme font, header title 22px, legible cloud chip + logout */
+    h1, h2, h3, h4, .pm-page-title { font-family: 'Noto Sans Thai', system-ui, sans-serif; }
+    .pm-command-header h1 { font-size: 22px !important; font-weight: 800; line-height: 1.1; }
+    .pm-command-header p { font-size: 12px !important; font-weight: 500; margin-top: 2px !important; }
+    [data-pm-cloud-workspace] { background: #d7f5e6 !important; border: 1px solid #fff !important; color: #0f5d3c !important; font-size: 11px !important; font-weight: 800; border-radius: 999px !important; padding: 4px 10px !important; }
+    [data-pm-cloud-logout] { color: var(--pm-ink-soft) !important; background: rgba(255,255,255,.85); border: 1px solid #fff !important; border-radius: 999px !important; padding: 4px 12px !important; font-weight: 700; }
+    [data-pm-cloud-logout]:hover { color: #4535b8 !important; background: #fff; }
     @media (max-width: 900px) {
       .pm-command-header { background: rgba(255,255,255,.85); border-bottom-color: rgba(120,100,200,.15); box-shadow: 0 6px 18px rgba(110,90,200,.10); }
       .pm-command-header h1 { color: var(--pm-ink) !important; }
@@ -3886,8 +3899,8 @@
               <nav aria-label="ขั้นตอนการทำงาน" data-pm-header-steps className="pm-header-steps hidden md:flex ml-auto">
                 {[
                   ['batches', '1', 'งานแพ็ก', () => navigateView('batches')],
-                  ['upload', '2', 'อัปโหลดไฟล์', () => navigateView(activeBatchId ? 'upload' : 'batches')],
-                  ['review', '3', 'รีวิว & พิมพ์', () => navigateView('review')]
+                  ['upload', '2', 'อัปโหลด PDF', () => navigateView(activeBatchId ? 'upload' : 'batches')],
+                  ['review', '3', 'ตรวจและพิมพ์', () => navigateView('review')]
                 ].map(([id, num, label, go]) => (
                   <button key={id} type="button" onClick={go} aria-current={activeView === id ? 'page' : undefined} className={`pm-header-step ${activeView === id ? 'pm-header-step-active' : ''}`}>{num} {label}</button>
                 ))}
