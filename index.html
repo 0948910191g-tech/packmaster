@@ -429,6 +429,18 @@
     [data-pm-cloud-workspace] { background: #d7f5e6 !important; border: 1px solid #fff !important; color: #0f5d3c !important; font-size: 11px !important; font-weight: 800; border-radius: 999px !important; padding: 4px 10px !important; }
     [data-pm-cloud-logout] { color: var(--pm-ink-soft) !important; background: rgba(255,255,255,.85); border: 1px solid #fff !important; border-radius: 999px !important; padding: 4px 12px !important; font-weight: 700; }
     [data-pm-cloud-logout]:hover { color: #4535b8 !important; background: #fff; }
+    /* design-G alignment (7-9): batch list cards, upload page */
+    .pm-bar { height: 10px; border-radius: 5px; background: rgba(120,100,200,.14); overflow: hidden; }
+    .pm-bar-fill { height: 10px; border-radius: 5px; background: linear-gradient(90deg,#8b7bff,#6aa9ff); transition: width .3s ease; }
+    .pm-bar-done { background: linear-gradient(90deg,#4cc9a0,#6aa9ff); }
+    .pm-bar-text { margin-top: 6px; font-size: 12px; font-weight: 600; color: var(--pm-ink-soft); }
+    .pm-upload-icon { border-radius: 50%; background: #e6e0ff; color: #5b4bd6; }
+    .pm-issue-row { border-radius: 999px; min-height: 46px; padding: 0 16px; background: rgba(255,255,255,.7); border: 1px solid #fff; color: var(--pm-ink); text-align: left; }
+    .pm-issue-row:hover { background: #fff; color: #4535b8; border-color: #fff; }
+    .pm-issue-row > span.flex-1 { text-align: left; }
+    .pm-card.border-l-4 { border-left-width: 1px; border-color: #fff; }
+    .pm-card.border-l-amber-400 { background: rgba(255,248,230,.82); }
+    .pm-card.border-l-emerald-500 { background: rgba(236,252,244,.82); }
     @media (max-width: 900px) {
       .pm-command-header { background: rgba(255,255,255,.85); border-bottom-color: rgba(120,100,200,.15); box-shadow: 0 6px 18px rgba(110,90,200,.10); }
       .pm-command-header h1 { color: var(--pm-ink) !important; }
@@ -3966,7 +3978,7 @@
                         </div>
                       </div>
                       <div className="pm-page-actions">
-                        {activeBatchId && <button type="button" onClick={() => navigateView('upload')} className="pm-secondary-btn">ขั้นต่อไป: อัปโหลด PDF <PMIcon name="chevron-right" /></button>}
+                        <button type="button" data-pm-action="next-upload" onClick={() => navigateView('upload')} className="pm-secondary-btn">ขั้นต่อไป: อัปโหลด PDF <PMIcon name="chevron-right" /></button>
                         <button data-pm-action="create-batch" onClick={handleCreateBatch} disabled={batchLoading} className="pm-primary-btn"><PMIcon name="plus" /> เริ่มงานแพ็กใหม่</button>
                       </div>
                     </div>
@@ -3987,9 +3999,9 @@
                     )}
 
                     <div className="pm-card p-4 mb-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                      <div className="flex gap-1.5 p-1 rounded-xl bg-slate-100 w-fit">
+                      <div className="flex flex-wrap gap-2 w-fit">
                         {[['ACTIVE','กำลังใช้งาน'],['ARCHIVED','เก็บแล้ว'],['ALL','ทั้งหมด']].map(([id,label]) => (
-                          <button key={id} onClick={() => { setBatchViewFilter(id); setSelectedArchivedBatchIds([]); }} className={`px-4 py-2 rounded-lg text-xs font-black transition ${batchViewFilter === id ? 'bg-white text-[#0b63ce] shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>{label}{id === 'ARCHIVED' ? ` (${archivedBatchCount})` : ''}</button>
+                          <button key={id} onClick={() => { setBatchViewFilter(id); setSelectedArchivedBatchIds([]); }} className={`pm-chip ${batchViewFilter === id ? 'pm-chip-active' : ''}`}>{label}{id === 'ARCHIVED' ? ` (${archivedBatchCount})` : ''}</button>
                         ))}
                       </div>
                       <div className="flex items-center gap-2">
@@ -4024,14 +4036,9 @@
                                   <p className="text-[11px] font-semibold text-slate-400 mt-1">อัปเดต {formatBatchUpdated(batch.updatedAt)}</p>
                                   <div data-pm-batch-source-files className="mt-2 flex items-start gap-1.5 text-[10px] font-bold text-slate-500" title={batchSourceSummaries[batch.id]?.label || 'กำลังอ่านไฟล์...'}><PMIcon name="file" className="w-3.5 h-3.5 mt-0.5 shrink-0 text-blue-500"/><span className="truncate">ไฟล์: {batchSourceSummaries[batch.id]?.label || 'กำลังอ่านไฟล์...'}</span></div>
                                 </div>
-                                <div className="grid grid-cols-3 gap-2 flex-1">
-                                  <div className="pm-mini-stat"><span>Orders</span><strong>{total.toLocaleString()}</strong></div>
-                                  <div className="pm-mini-stat pm-mini-ready"><span>Ready</span><strong>{ready.toLocaleString()}</strong></div>
-                                  <div className="pm-mini-stat pm-mini-review"><span>Review</span><strong>{review.toLocaleString()}</strong></div>
-                                </div>
-                                <div className="xl:w-[18%]">
-                                  <div className="flex items-center justify-between text-[10px] font-black text-slate-400 mb-1"><span>ความพร้อม</span><span>{progress}%</span></div>
-                                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className={`h-full rounded-full ${review > 0 ? 'bg-amber-400' : ready > 0 ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{width:`${progress}%`}}></div></div>
+                                <div data-pm-batch-progress className="flex-1 min-w-0 xl:max-w-[34%]">
+                                  <div className="pm-bar"><div className={`pm-bar-fill ${total > 0 && review === 0 && ready === total ? 'pm-bar-done' : ''}`} style={{width:`${progress}%`}}></div></div>
+                                  <div className="pm-bar-text">{total.toLocaleString()} ออเดอร์ · พร้อม {ready.toLocaleString()} · ต้องตรวจ {review.toLocaleString()} · {progress}%</div>
                                 </div>
                                 <div className="flex items-center gap-2 xl:justify-end">
                                   {archived && <label className="flex items-center gap-1.5 px-2 text-[10px] font-black text-slate-500"><input type="checkbox" checked={selectedArchivedBatchIds.includes(batch.id)} onChange={() => toggleArchivedSelection(batch.id)} /> เลือก</label>}
@@ -4049,11 +4056,14 @@
 
                 {activeView === 'upload' && (
                   <section data-pm-view="upload" className="pm-page">
-                    <div className="pm-page-head">
-                      <div>
-                        <div className="pm-eyebrow">Upload & Processing</div>
-                        <h2 className="pm-page-title">อัปโหลดคำสั่งซื้อ</h2>
-                        <p className="pm-page-subtitle">อัปโหลดไฟล์จาก Shopee และ TikTok แล้วระบบจะอ่าน PDF → จับคู่ SKU → ส่งเฉพาะ Exceptions ไปรีวิว</p>
+                    <div className="pm-page-head pm-hero">
+                      <div className="pm-hero-lead">
+                        <div className="pm-orb" aria-hidden="true"></div>
+                        <div>
+                          <div className="pm-eyebrow">Upload & Processing</div>
+                          <h2 className="pm-page-title">อัปโหลดคำสั่งซื้อ</h2>
+                          <p className="pm-page-subtitle">อัปโหลดไฟล์จาก Shopee และ TikTok แล้วระบบจะอ่าน PDF → จับคู่ SKU → ส่งเฉพาะ Exceptions ไปรีวิว</p>
+                        </div>
                       </div>
                       {activeBatchId && <button onClick={handleBackToBatchList} className="pm-secondary-btn"><PMIcon name="arrow-left" /> กลับรายการ Batch</button>}
                     </div>
@@ -4077,7 +4087,7 @@
                         <div className="space-y-4">
                           <div className="pm-card p-5">
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
-                              <div><div className="text-[10px] uppercase tracking-[0.15em] font-black text-blue-600">Active Batch</div><div className="flex items-center gap-2 mt-1"><div className="text-lg font-black text-slate-900">{activeBatch?.name || 'Active Batch'}</div>{activeBatch && (() => { const ui = getBatchStatusUi(getEffectiveBatchStatus(activeBatch)); return <span className={`px-2 py-1 rounded-full border text-[9px] font-black ${ui.className}`}>{ui.label}</span>; })()}</div><div className="text-xs font-semibold text-slate-400 mt-1">สูงสุดรวม 150 ใบต่อ Batch • Duplicate Guard ทำงานอัตโนมัติ</div></div>
+                              <div><div className="pm-eyebrow">Active Batch</div><div className="flex items-center gap-2 mt-1"><div className="text-lg font-black text-slate-900">{activeBatch?.name || 'Active Batch'}</div>{activeBatch && (() => { const ui = getBatchStatusUi(getEffectiveBatchStatus(activeBatch)); return <span className={`px-2 py-1 rounded-full border text-[9px] font-black ${ui.className}`}>{ui.label}</span>; })()}</div><div className="text-xs font-semibold text-slate-400 mt-1">สูงสุดรวม 150 ใบต่อ Batch • Duplicate Guard ทำงานอัตโนมัติ</div></div>
                               {orders.length > 0 && <button onClick={() => navigateView('review')} className="pm-primary-btn">รีวิว & พิมพ์ <PMIcon name="arrow-right" /></button>}
                             </div>
 
@@ -4086,7 +4096,7 @@
                                 <div className="text-center py-8"><div className="pm-spinner mx-auto mb-4"></div><h3 className="text-lg font-black text-slate-900">กำลังประมวลผล PDF</h3><p className="text-xs font-bold text-slate-500 mt-2">อ่านหน้าที่ {loadingStatus.current} จาก {loadingStatus.total || '...'}</p>{loadingStatus.total > 0 && <div className="max-w-sm mx-auto mt-4 h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-blue-600 rounded-full transition-all" style={{width:`${Math.min(100,(loadingStatus.current/loadingStatus.total)*100)}%`}}></div></div>}</div>
                               ) : (
                                 <div className="text-center py-8">
-                                  <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4"><PMIcon name="upload" className="w-7 h-7" /></div>
+                                  <div className="pm-upload-icon w-14 h-14 flex items-center justify-center mx-auto mb-4"><PMIcon name="upload" className="w-7 h-7" /></div>
                                   <h3 className="text-lg font-black text-slate-900">ลากและวางไฟล์ PDF ที่นี่</h3>
                                   <p className="text-xs font-semibold text-slate-400 mt-2 mb-5">หรือเลือกไฟล์ Shopee / TikTok จากเครื่อง • เพิ่มหลายไฟล์ได้</p>
                                   <label data-pm-action="upload-pdf" className="pm-primary-btn inline-flex cursor-pointer"><PMIcon name="file" /> เลือกไฟล์ PDF<input type="file" accept=".pdf" multiple className="hidden" onChange={handleFileUpload} /></label>
