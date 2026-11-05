@@ -244,6 +244,162 @@
       .pm-page-actions > * { flex: 1 1 auto; }
       .pm-metric-value { font-size: 20px; }
     }
+
+    :focus-visible {
+      outline: 2px solid #0b63ce;
+      outline-offset: 2px;
+    }
+    .pm-primary-btn:focus-visible,
+    .pm-secondary-btn:focus-visible,
+    .pm-ghost-btn:focus-visible,
+    .pm-danger-btn:focus-visible,
+    .pm-success-btn:focus-visible,
+    .pm-warning-btn:focus-visible,
+    .pm-nav-btn:focus-visible,
+    .pm-command-btn:focus-visible,
+    .pm-icon-btn:focus-visible,
+    .pm-page-btn:focus-visible,
+    .pm-view-toggle:focus-visible,
+    .pm-sidebar-toggle:focus-visible,
+    .pm-mobile-menu:focus-visible,
+    .pm-summary-btn:focus-visible {
+      outline: 2px solid #f5b301;
+      outline-offset: 2px;
+      box-shadow: 0 0 0 4px rgba(245, 179, 1, 0.25);
+    }
+    .pm-input:focus-visible,
+    .pm-select:focus-visible,
+    textarea.pm-input:focus-visible {
+      outline: 2px solid #0b63ce;
+      outline-offset: 1px;
+      border-color: #0b63ce;
+      box-shadow: 0 0 0 3px rgba(11, 99, 206, 0.18);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+      .pm-spinner {
+        animation: none !important;
+        border-top-color: #0b63ce !important;
+      }
+    }
+
+    /* ===== Aurora Glass theme (design G): pastel glass, rounded pills, logo toggles sidebar ===== */
+    :root {
+      --pm-canvas: #f3effc;
+      --pm-blue: #5b4bd6;
+      --pm-glass: rgba(255,255,255,.72);
+      --pm-glass-edge: rgba(255,255,255,.95);
+      --pm-glass-shadow: 0 8px 24px rgba(110,90,200,.09);
+      --pm-grad: linear-gradient(135deg, #6a55ea, #4a86ea);
+      --pm-ink: #25234a;
+      --pm-ink-soft: #5d5a7a;
+    }
+    body { background: linear-gradient(160deg, #eef0ff 0%, #f6eefc 45%, #fdeef4 100%) fixed; }
+    .pm-shell { background: transparent; color: var(--pm-ink); position: relative; }
+    .pm-shell::before { content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background: radial-gradient(520px 520px at 8% 0%, rgba(185,168,255,.50), transparent 70%),
+                  radial-gradient(480px 480px at 100% 22%, rgba(159,210,255,.45), transparent 70%),
+                  radial-gradient(520px 520px at 45% 105%, rgba(255,184,220,.42), transparent 70%); }
+    .pm-main { background: transparent; position: relative; z-index: 1; }
+    .pm-card, .pm-metric, .pm-order-card, .pm-active-batch-bar, .pm-review-action-bar { background: var(--pm-glass); border: 1px solid var(--pm-glass-edge); box-shadow: var(--pm-glass-shadow); }
+    .pm-card { border-radius: 26px; }
+    .pm-metric { border-radius: 24px; padding: 16px 18px; }
+    .pm-metric-value { color: var(--pm-ink); font-weight: 800; letter-spacing: -.03em; }
+    .pm-metric-label, .pm-metric-helper { color: var(--pm-ink-soft); }
+    .pm-metric-green .pm-metric-value { color: #157a50; }
+    .pm-metric-amber .pm-metric-value { color: #8a5300; }
+    .pm-metric-green { background: rgba(236,252,244,.78); border-color: #fff; }
+    .pm-metric-amber { background: rgba(255,248,230,.80); border-color: #fff; }
+    .pm-metric-blue { background: rgba(236,242,255,.80); border-color: #fff; }
+    .pm-order-card { border-radius: 22px; }
+    .pm-active-batch-bar { border-radius: 24px; margin: 12px var(--pm-page-pad-x) 0; border-bottom: 1px solid var(--pm-glass-edge); }
+    .pm-review-action-bar { border-radius: 26px; }
+    .pm-eyebrow, .pm-section-kicker { color: #6a58e0; }
+    .pm-page-title { color: var(--pm-ink); font-weight: 800; letter-spacing: -.03em; }
+    .pm-page-subtitle { color: var(--pm-ink-soft); }
+    .pm-primary-btn, .pm-secondary-btn, .pm-ghost-btn, .pm-danger-btn, .pm-success-btn, .pm-warning-btn { border-radius: 999px; padding: 0 22px; }
+    .pm-primary-btn { background: var(--pm-grad); border: 0; color: #fff; box-shadow: 0 10px 22px rgba(100,90,230,.32); }
+    .pm-primary-btn:hover:not(:disabled) { background: linear-gradient(135deg, #5a45da, #3b78de); }
+    .pm-secondary-btn, .pm-ghost-btn { background: rgba(255,255,255,.88); border: 1px solid #fff; color: #3d3a63; }
+    .pm-secondary-btn:hover:not(:disabled), .pm-ghost-btn:hover:not(:disabled) { background: #fff; color: #4535b8; border-color: #fff; }
+    .pm-info-banner { background: rgba(237,233,255,.82); border: 1px solid #fff; color: #3b3190; border-radius: 22px; }
+    .pm-step { border-radius: 999px; background: rgba(255,255,255,.55); border: 1px solid rgba(255,255,255,.9); color: var(--pm-ink-soft); }
+    .pm-step-icon { border-radius: 999px; }
+    .pm-step-active { background: rgba(255,255,255,.88); color: #4535b8; border-color: #fff; }
+    .pm-step-active .pm-step-icon { color: #5b4bd6; }
+    .pm-step-current { background: var(--pm-grad); border-color: transparent; color: #fff; box-shadow: 0 8px 18px rgba(100,90,230,.28); }
+    .pm-step-current .pm-step-icon { color: #5b4bd6; }
+    .pm-input, .pm-select { border-radius: 16px; border-color: #ddd8f5; }
+    .pm-upload-zone { border-radius: 26px; border-color: #c9c0f3; background: rgba(255,255,255,.6); }
+    .pm-quick-map-panel { border-radius: 28px; }
+    .pm-table thead th { background: rgba(243,239,252,.8); color: var(--pm-ink-soft); }
+    :focus-visible { outline-color: #5b4bd6; }
+
+    /* ===== QA pass: unified chips + quieter upload sub-steps ===== */
+    .pm-chip { min-height: 44px; padding: 0 18px; border-radius: 999px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 800; white-space: nowrap; background: rgba(255,255,255,.72); border: 1px solid #fff; color: #4a4770; box-shadow: 0 2px 8px rgba(110,90,200,.06); transition: .16s ease; }
+    .pm-chip:hover { background: #fff; color: #4535b8; }
+    .pm-chip-active, .pm-chip-active:hover { background: var(--pm-grad); border-color: transparent; color: #fff; box-shadow: 0 8px 18px rgba(100,90,230,.28); }
+    .pm-substeps .pm-step { min-height: 36px; padding: 0 6px; background: transparent; border: 0; box-shadow: none; font-size: 12px; font-weight: 700; color: var(--pm-ink-soft); justify-content: center; }
+    .pm-substeps .pm-step-icon { display: none; }
+    .pm-substeps .pm-step-active { color: #4535b8; background: transparent; }
+    .pm-substeps .pm-step-current { background: rgba(255,255,255,.88); color: #4535b8; box-shadow: 0 4px 12px rgba(110,90,200,.14); border: 1px solid #fff; font-weight: 800; }
+    /* global stepper: same glass pills as the rest of the theme (overrides the Tailwind blue/emerald state classes) */
+    [data-pm-stepper] { border-radius: 999px; padding: 6px; }
+    [data-pm-stepper] > div { gap: 4px; }
+    [data-pm-stepper] button { border-radius: 999px; border: 1px solid transparent !important; background: transparent !important; box-shadow: none !important; padding: 6px 14px; min-height: 48px; color: var(--pm-ink); }
+    [data-pm-stepper] button:not(:disabled):hover { background: rgba(255,255,255,.7) !important; }
+    [data-pm-stepper] button.ring-2 { background: rgba(255,255,255,.95) !important; border-color: #fff !important; box-shadow: 0 6px 16px rgba(110,90,200,.16) !important; }
+    [data-pm-stepper] .text-slate-500 { color: var(--pm-ink-soft); }
+    [data-pm-stepper] .bg-blue-600 { background: var(--pm-grad) !important; }
+    [data-pm-stepper] .bg-emerald-500 { background: #22a06b !important; }
+    .pm-command-header .bg-white\/10 { background: rgba(106,88,224,.10) !important; border-color: rgba(106,88,224,.18) !important; color: #4535b8 !important; }
+    .pm-logo-mark { background: linear-gradient(145deg, #8b7bff, #6aa9ff); border-color: transparent; box-shadow: 0 6px 14px rgba(120,100,240,.32); }
+    @media (max-width: 767px) { [data-pm-stepper] { border-radius: 28px; } [data-pm-stepper] button { padding: 6px 10px; } }
+
+    @media (min-width: 901px) {
+      .pm-shell { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto 1fr; gap: 16px; padding: 18px; box-sizing: border-box; min-height: 100vh; }
+      .pm-app-frame { display: contents; }
+      .pm-command-header { grid-column: 2; grid-row: 1; height: auto; min-height: 68px; top: 18px; padding: 10px 26px; background: var(--pm-glass); border: 1px solid var(--pm-glass-edge); border-radius: 34px; backdrop-filter: blur(18px); box-shadow: 0 8px 30px rgba(110,90,200,.10); }
+      .pm-command-header .pm-logo-mark { display: none; }
+      .pm-brand-wrap { min-width: 0; }
+      .pm-command-header h1 { color: var(--pm-ink) !important; letter-spacing: -.02em; }
+      .pm-command-header p { color: var(--pm-ink-soft) !important; }
+      .pm-sidebar { grid-column: 1; grid-row: 1 / span 2; align-self: start; top: 18px; height: calc(100vh - 36px); min-height: 0; background: var(--pm-glass); border: 1px solid var(--pm-glass-edge); border-radius: 34px; backdrop-filter: blur(18px); box-shadow: 0 8px 30px rgba(110,90,200,.12); overflow-y: auto; }
+      .pm-sidebar.pm-sidebar-collapsed { border-radius: 34px; }
+      .pm-sidebar-toggle-wrap { justify-content: flex-start; padding: 14px 12px 0; }
+      .pm-sidebar-collapsed .pm-sidebar-toggle-wrap { justify-content: center; padding-left: 0; padding-right: 0; }
+      .pm-sidebar-toggle { width: 52px; height: 52px; border-radius: 26px; border: 0; color: #fff; background: linear-gradient(145deg, #8b7bff, #6aa9ff); box-shadow: 0 8px 18px rgba(120,100,240,.38); }
+      .pm-sidebar-toggle:hover { color: #fff; background: linear-gradient(145deg, #7b69f0, #5c9bf5); transform: translateY(-1px); }
+      .pm-sidebar .pm-sidebar-section-label { color: var(--pm-ink-soft) !important; }
+      .pm-sidebar .border-white\/10 { border-color: rgba(120,100,200,.18) !important; }
+      .pm-nav-btn { color: #3d3a63; border-radius: 999px; min-height: 48px; }
+      .pm-nav-btn:hover { color: #4535b8; background: rgba(255,255,255,.7); }
+      .pm-nav-btn-active { color: #fff; background: var(--pm-grad); border-color: transparent; box-shadow: 0 8px 18px rgba(100,90,230,.30); }
+      .pm-nav-btn-active:hover { color: #fff; background: var(--pm-grad); }
+      .pm-local-workspace-card { background: rgba(255,255,255,.75) !important; border-color: #fff !important; border-radius: 22px !important; }
+      .pm-local-workspace-card .text-blue-100 { color: var(--pm-ink) !important; }
+      .pm-local-workspace-card .pm-local-workspace-copy { color: var(--pm-ink-soft) !important; }
+    }
+    @media (max-width: 900px) {
+      .pm-command-header { background: rgba(255,255,255,.85); border-bottom-color: rgba(120,100,200,.15); box-shadow: 0 6px 18px rgba(110,90,200,.10); }
+      .pm-command-header h1 { color: var(--pm-ink) !important; }
+      .pm-command-header p { color: var(--pm-ink-soft) !important; }
+      .pm-mobile-menu { color: #4535b8; background: rgba(255,255,255,.8); border-color: rgba(120,100,200,.2); }
+      .pm-sidebar, .pm-sidebar.pm-sidebar-collapsed { background: rgba(255,255,255,.96); backdrop-filter: blur(18px); }
+      .pm-nav-btn { color: #3d3a63; }
+      .pm-nav-btn-active { color: #fff; background: var(--pm-grad); }
+      .pm-sidebar .pm-sidebar-section-label { color: var(--pm-ink-soft) !important; }
+      .pm-local-workspace-card .text-blue-100 { color: var(--pm-ink) !important; }
+      .pm-local-workspace-card .pm-local-workspace-copy { color: var(--pm-ink-soft) !important; }
+    }
   </style>
 </head>
 <body class="bg-[#f8fafc] text-blue-950 selection:bg-blue-200">
@@ -3376,7 +3532,7 @@
               {mobileSidebarOpen && <button type="button" data-pm-sidebar-backdrop className="pm-sidebar-backdrop" aria-label="ปิดเมนู" onClick={() => setMobileSidebarOpen(false)}></button>}
               <aside id="packmaster-sidebar" data-pm-sidebar data-pm-sidebar-collapsed={sidebarCollapsed ? 'true' : 'false'} className={`pm-sidebar ${sidebarCollapsed ? 'pm-sidebar-collapsed' : ''} ${mobileSidebarOpen ? 'pm-sidebar-mobile-open' : ''}`}>
                 <div className="pm-sidebar-toggle-wrap">
-                  <button type="button" data-pm-sidebar-toggle className="pm-sidebar-toggle" aria-controls="packmaster-sidebar" aria-expanded={!sidebarCollapsed} aria-label={sidebarCollapsed ? 'ขยายเมนูด้านข้าง' : 'ย่อเมนูด้านข้าง'} title={sidebarCollapsed ? 'ขยายเมนูด้านข้าง' : 'ย่อเมนูด้านข้าง'} onClick={toggleSidebar}><span aria-hidden="true">{sidebarCollapsed ? '›' : '‹'}</span></button>
+                  <button type="button" data-pm-sidebar-toggle className="pm-sidebar-toggle" aria-controls="packmaster-sidebar" aria-expanded={!sidebarCollapsed} aria-label={sidebarCollapsed ? 'ขยายเมนูด้านข้าง' : 'ย่อเมนูด้านข้าง'} title={sidebarCollapsed ? 'ขยายเมนูด้านข้าง' : 'ย่อเมนูด้านข้าง'} onClick={toggleSidebar}><PMIcon name="box" className="w-6 h-6" /></button>
                 </div>
                 <div className="px-3 pt-2 pb-2">
                   <div className="pm-sidebar-section-label text-[9px] font-black tracking-[0.17em] uppercase text-blue-200/45 px-3 mb-2">Workspace</div>
@@ -3517,7 +3673,7 @@
                       {activeBatchId && <button onClick={handleBackToBatchList} className="pm-secondary-btn"><PMIcon name="arrow-left" /> กลับรายการ Batch</button>}
                     </div>
 
-                    <div className="pm-card p-4 mb-4 overflow-x-auto">
+                    <div className="pm-substeps mb-4 overflow-x-auto">
                       <div className="min-w-[650px] grid grid-cols-5 gap-2">
                         {[
                           [1,'เลือก Batch','box'],[2,'อัปโหลดไฟล์','upload'],[3,'อ่าน PDF','file'],[4,'จับคู่ SKU','barcode'],[5,'พร้อมรีวิว','review']
@@ -3627,7 +3783,7 @@
                               <select value={skuSort} onChange={(e)=>setSkuSort(e.target.value)} className="pm-select"><option value="keyword">เรียง Keyword</option><option value="internal">เรียงชื่อภายใน</option></select>
                             </div>
                           </div>
-                          <div className="flex flex-wrap gap-1.5 mt-3">{skuFilterOptions.map(option=><button key={option.id} onClick={()=>setSkuFilter(option.id)} className={`px-3 py-1.5 rounded-lg border text-[10px] font-black ${skuFilter===option.id?'bg-[#0b63ce] border-[#0b63ce] text-white':'bg-white border-slate-200 text-slate-500 hover:border-blue-300'}`}>{option.label}</button>)}</div>
+                          <div className="flex flex-wrap gap-1.5 mt-3">{skuFilterOptions.map(option=><button key={option.id} onClick={()=>setSkuFilter(option.id)} className={`pm-chip ${skuFilter===option.id?'pm-chip-active':''}`}>{option.label}</button>)}</div>
                         </div>
                         <div className="overflow-x-auto">
                           <table className="pm-table min-w-[720px]"><thead><tr><th>#</th><th>Keyword</th><th>ชื่อภายใน</th><th className="text-right">จัดการ</th></tr></thead><tbody>
@@ -3670,7 +3826,7 @@
                         <div className="flex p-1 bg-slate-100 rounded-lg"><button onClick={()=>setPreviewMode('labels')} className={`pm-view-toggle ${previewMode==='labels'?'pm-view-toggle-active':''}`} title="พรีวิวหลายใบ" aria-label="พรีวิวหลายใบ"><PMIcon name="file" className="w-4 h-4"/></button><button onClick={()=>setPreviewMode('table')} className={`pm-view-toggle ${previewMode==='table'?'pm-view-toggle-active':''}`} title="มุมมองรายการ" aria-label="มุมมองรายการ"><PMIcon name="list" className="w-4 h-4"/></button></div>
                         {(reviewSearch||reviewPlatform!=='ALL'||reviewStatus!=='ALL')&&<button onClick={()=>{setReviewSearch('');setReviewPlatform('ALL');setReviewStatus('ALL');}} className="pm-ghost-btn">ล้างตัวกรอง</button>}
                       </div>
-                      <div className="flex items-center justify-between gap-2 mt-2 px-1"><span className="text-[10px] font-bold text-slate-400">แสดง {FilteredOrders.length} จาก {MappedOrders.length} รายการ</span><span className="hidden md:inline text-[10px] font-bold text-blue-600">Filter / Pagination ใช้เฉพาะหน้าจอ • Print / Save PDF ใช้ Scope ที่ผู้ใช้เลือก</span></div>
+                      <div className="flex items-center justify-between gap-2 mt-2 px-1"><span className="text-[10px] font-bold text-slate-400">แสดง {FilteredOrders.length} จาก {MappedOrders.length} รายการ</span><span className="hidden md:inline text-[10px] font-bold text-slate-400">Filter / Pagination ใช้เฉพาะหน้าจอ • Print / Save PDF ใช้ Scope ที่ผู้ใช้เลือก</span></div>
                     </div>
 
                     {exceptionRows.length>0&&(
@@ -3732,7 +3888,7 @@
                       <a href="./registry-sync.html" rel="noopener noreferrer" className="pm-primary-btn inline-flex mt-3">เปิดหน้าซิงก์ทะเบียนอย่างปลอดภัย</a>
                     </div>
 
-                    <div className="pm-card p-4 mb-4"><div className="flex flex-wrap gap-2 items-center justify-between"><div className="flex flex-wrap gap-2"><button onClick={()=>setMarketplaceRegistryPlatformFilter('TIKTOK')} className={`pm-nav-btn !text-xs ${marketplaceRegistryPlatformFilter==='TIKTOK'?'pm-nav-btn-active':''}`}>TikTok</button><button onClick={()=>setMarketplaceRegistryPlatformFilter('SHOPEE')} className={`pm-nav-btn !text-xs ${marketplaceRegistryPlatformFilter==='SHOPEE'?'pm-nav-btn-active':''}`}>Shopee</button><span className="mx-1 border-l border-slate-200"/><button onClick={()=>setMarketplaceRegistryDisplayMode('products')} className={`pm-secondary-btn !py-2 ${marketplaceRegistryDisplayMode==='products'?'!border-blue-400 !bg-blue-50 !text-blue-800':''}`}>สินค้า</button><button onClick={()=>setMarketplaceRegistryDisplayMode('skuRows')} className={`pm-secondary-btn !py-2 ${marketplaceRegistryDisplayMode==='skuRows'?'!border-blue-400 !bg-blue-50 !text-blue-800':''}`}>SKU / ตัวเลือก</button></div><div className="flex items-center gap-2"><input aria-label="ค้นหาทะเบียนสินค้า" value={marketplaceRegistrySearch} onChange={event=>setMarketplaceRegistrySearch(event.target.value)} placeholder="ค้นหาชื่อ, ID, Seller SKU..." className="pm-input !py-2 min-w-[220px]"/><select aria-label="จำนวนรายการต่อหน้า" value={marketplaceRegistryPageSize} onChange={event=>{setMarketplaceRegistryPageSize(Number(event.target.value));setMarketplaceRegistryPage(1);}} className="pm-select !py-2"><option value="20">20/หน้า</option><option value="50">50/หน้า</option><option value="100">100/หน้า</option></select></div></div></div>
+                    <div className="pm-card p-4 mb-4"><div className="flex flex-wrap gap-2 items-center justify-between"><div className="flex flex-wrap gap-2"><button onClick={()=>setMarketplaceRegistryPlatformFilter('TIKTOK')} className={`pm-chip ${marketplaceRegistryPlatformFilter==='TIKTOK'?'pm-chip-active':''}`}>TikTok</button><button onClick={()=>setMarketplaceRegistryPlatformFilter('SHOPEE')} className={`pm-chip ${marketplaceRegistryPlatformFilter==='SHOPEE'?'pm-chip-active':''}`}>Shopee</button><span className="mx-1 border-l border-slate-200"/><button onClick={()=>setMarketplaceRegistryDisplayMode('products')} className={`pm-chip ${marketplaceRegistryDisplayMode==='products'?'pm-chip-active':''}`}>สินค้า</button><button onClick={()=>setMarketplaceRegistryDisplayMode('skuRows')} className={`pm-chip ${marketplaceRegistryDisplayMode==='skuRows'?'pm-chip-active':''}`}>SKU / ตัวเลือก</button></div><div className="flex items-center gap-2"><input aria-label="ค้นหาทะเบียนสินค้า" value={marketplaceRegistrySearch} onChange={event=>setMarketplaceRegistrySearch(event.target.value)} placeholder="ค้นหาชื่อ, ID, Seller SKU..." className="pm-input !py-2 min-w-[220px]"/><select aria-label="จำนวนรายการต่อหน้า" value={marketplaceRegistryPageSize} onChange={event=>{setMarketplaceRegistryPageSize(Number(event.target.value));setMarketplaceRegistryPage(1);}} className="pm-select !py-2"><option value="20">20/หน้า</option><option value="50">50/หน้า</option><option value="100">100/หน้า</option></select></div></div></div>
 
                     {!selectedMarketplaceRegistry ? <PMEmptyState icon="box" title={`ยังไม่มีทะเบียน ${marketplaceRegistryPlatformFilter === 'TIKTOK' ? 'TikTok' : 'Shopee'}`} body="นำเข้าไฟล์ Registry JSON ของแพลตฟอร์มนี้เพื่อดูแคตตาล็อกสินค้าและ SKU"/> : <div className="pm-card overflow-x-auto"><table className="pm-table min-w-[860px]"><thead><tr><th>{marketplaceRegistryDisplayMode==='products'?'Product / Item ID':'Product / Model ID'}</th><th>ชื่อสินค้า / ตัวเลือก</th><th>Seller SKU</th><th>Parent SKU</th><th>สถานะ</th></tr></thead><tbody>{visibleMarketplaceRegistryRows.map((row,index)=>{const productName=row.productName||row.title||'-';const productId=row.productId||row.itemId||'-';const skuRow=row.__recordType==='skuRow';const productHasVariantSku=Array.isArray(row.variants)&&row.variants.some(variant=>variant.sellerSku&&variant.sellerSku.trim());const sellerSku=skuRow?(row.sellerSku&&row.sellerSku.trim()?row.sellerSku:'ไม่แสดง'):marketplaceRegistryPlatformFilter==='SHOPEE'?(productHasVariantSku?'อยู่ในตัวเลือก':'ดูตัวเลือก'):(row.sellerSku&&row.sellerSku.trim()?row.sellerSku:productHasVariantSku?'อยู่ในตัวเลือก':'ไม่แสดง');const missingSku=sellerSku==='ไม่แสดง';return <tr key={`${marketplaceRegistryPlatformFilter}-${skuRow?'sku':'product'}-${row.modelId||row.variantOrdinal||productId}-${(marketplaceRegistryPage-1)*marketplaceRegistryPageSize+index}`}><td><div className="font-mono text-xs font-bold text-slate-700 break-all">{skuRow?(row.modelId||productId):productId}</div><div className="text-[11px] text-slate-400">{skuRow?`Product: ${productId}`:row.status||'-'}</div></td><td><div className="text-xs font-bold text-slate-800">{productName}</div>{skuRow&&row.variantName&&<div className="text-[11px] text-slate-500 mt-1">{row.variantName}</div>}{!skuRow&&<div className="text-[11px] text-slate-500 mt-1">{Array.isArray(row.variants)?row.variants.length:0} ตัวเลือก</div>}</td><td><span className={`text-xs font-black ${missingSku?'text-amber-700':marketplaceRegistryDisplayMode==='products'?'text-blue-700':'text-slate-800'}`}>{sellerSku}</span></td><td className="text-xs font-semibold text-slate-600">{row.parentSku||'-'}</td><td><span className={`text-[11px] font-black px-2 py-1 rounded-full ${missingSku?'bg-amber-50 text-amber-700':marketplaceRegistryDisplayMode==='products'?'bg-blue-50 text-blue-700':'bg-emerald-50 text-emerald-700'}`}>{missingSku?'ไม่มี Seller SKU':skuRow?'มี Seller SKU':'ดู SKU/ตัวเลือก'}</span></td></tr>;})}{visibleMarketplaceRegistryRows.length===0&&<tr><td colSpan="5" className="text-center text-xs font-semibold text-slate-400 py-8">ไม่พบรายการที่ตรงกับคำค้นหา</td></tr>}</tbody></table><div className="pm-pagination p-4"><div className="text-xs font-bold text-slate-500">แสดง {visibleMarketplaceRegistryRows.length} จาก {filteredMarketplaceRegistryRows.length} รายการ • หน้า {marketplaceRegistryPage}/{marketplaceRegistryPageCount}</div><div className="flex gap-2"><button disabled={marketplaceRegistryPage<=1} onClick={()=>setMarketplaceRegistryPage(page=>Math.max(1,page-1))} className="pm-page-btn">‹</button><button disabled={marketplaceRegistryPage>=marketplaceRegistryPageCount} onClick={()=>setMarketplaceRegistryPage(page=>Math.min(marketplaceRegistryPageCount,page+1))} className="pm-page-btn">›</button></div></div></div>}
 
