@@ -67,7 +67,11 @@
       const response = await fetchImpl(apiRoot + path, options);
       let payload;
       try { payload = await response.json(); }
-      catch { throw new Error('Cloud Workspace returned an invalid response'); }
+      catch {
+        const error = new Error(`Cloud Workspace returned an invalid response (HTTP ${response.status})`);
+        error.status = response.status;
+        throw error;
+      }
       if (!response.ok) {
         if (session && response.status === 401) sessionCsrf = null;
         const error = new Error(payload.error || 'Cloud Workspace request failed');

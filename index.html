@@ -3791,6 +3791,8 @@
                 <div className="flex flex-wrap gap-2 mt-5">
                   {registryAssignmentsLoaded && <button type="button" className="pm-secondary-btn" onClick={exportUnsavedCloudMapping}>สำรองชื่อภายในตามทะเบียน</button>}
                   <button type="button" className="pm-primary-btn" onClick={() => window.location.reload()}>โหลด Cloud ใหม่</button>
+                  {cloudBatchError && <button type="button" className="pm-secondary-btn text-blue-700 font-bold" onClick={() => setCloudBatchError('')}>ปิดข้อความและทำงานต่อ</button>}
+                  {cloudMode && cloud && typeof cloud.logout === 'function' && <button type="button" className="pm-ghost-btn text-slate-500" onClick={() => cloud.logout().then(() => window.location.reload()).catch(() => window.location.reload())}>สลับเป็น Local Workspace</button>}
                 </div>
               </div>
             </div>

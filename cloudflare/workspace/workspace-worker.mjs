@@ -161,15 +161,24 @@ async function handleBatch(request, env, match, headers) {
     ).bind(id, ...keys).all();
     const rows = result?.results || [];
     if (rows.length !== keys.length) return reply({ error: 'batch_parts_incomplete' }, 409, headers);
-    for (const key of keys) {
-      let partOk = false;
-      try {
-        const obj = await env.WORKSPACE_OBJECTS.get(key);
-        if (obj) partOk = true;
-      } catch (e) {
-        partOk = false;
+    if (env.D1_FREE_STORAGE) {
+      const objectRows = await env.WORKSPACE_DB.prepare(
+        'SELECT object_key FROM workspace_objects WHERE object_key IN (' + placeholders + ')'
+      ).bind(...keys).all();
+      if ((objectRows?.results || []).length !== keys.length) {
+        return reply({ error: 'batch_parts_incomplete' }, 409, headers);
       }
-      if (!partOk) return reply({ error: 'batch_parts_incomplete' }, 409, headers);
+    } else {
+      for (const key of keys) {
+        let partOk = false;
+        try {
+          const obj = await env.WORKSPACE_OBJECTS.get(key);
+          if (obj) partOk = true;
+        } catch (e) {
+          partOk = false;
+        }
+        if (!partOk) return reply({ error: 'batch_parts_incomplete' }, 409, headers);
+      }
     }
     const orderIds = new Set();
     let count = 0;
