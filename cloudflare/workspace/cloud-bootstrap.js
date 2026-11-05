@@ -2,18 +2,21 @@
 (async () => {
   'use strict';
   const status = document.getElementById('boot-status');
-  const fail = text => {
+  const fail = (text, showLogin = true) => {
     if (status) {
-      status.textContent = text;
+      status.innerHTML = `<div style="text-align:center;padding:24px;">
+        <div style="margin-bottom:12px;color:#991b1b;font-size:14px;font-weight:700;">${text}</div>
+        ${showLogin ? '<a href="./login" style="display:inline-block;padding:10px 20px;background:#5b4bd6;color:#fff;border-radius:999px;font-size:13px;font-weight:700;text-decoration:none;box-shadow:0 4px 12px rgba(91,75,214,.3);">เข้าสู่ระบบ PackMaster</a>' : ''}
+      </div>`;
       status.setAttribute('role', 'alert');
     }
   };
   try {
     const response = await fetch('./api/workspace/session', {
-      method: 'GET', credentials: 'same-origin', cache: 'no-store', redirect: 'error'
+      method: 'GET', credentials: 'same-origin', cache: 'no-store'
     });
     if (response.status === 401) {
-      window.location.replace('./login.html');
+      window.location.replace('./login');
       return;
     }
     if (!response.ok) throw new Error('Cloud Workspace session check failed');
@@ -34,7 +37,11 @@
     app.addEventListener('error', () => fail('Cloud PackMaster โหลดโปรแกรมไม่สำเร็จ กรุณาตรวจการเชื่อมต่อ'), { once: true });
     document.body.appendChild(app);
   } catch (error) {
-    fail('เชื่อม Cloud Workspace ไม่สำเร็จ — ข้อมูลเครื่องนี้จะไม่ถูกบันทึกแทนข้อมูลกลาง');
-    console.error('Cloud bootstrap blocked:', error?.name || 'error');
+    console.warn('Cloud bootstrap session check failed, redirecting to login:', error?.name || 'error');
+    if (window.location.pathname !== '/login') {
+      window.location.replace('./login');
+    } else {
+      fail('เชื่อม Cloud Workspace ไม่สำเร็จ — กรุณาลองใหม่อีกครั้ง');
+    }
   }
 })();

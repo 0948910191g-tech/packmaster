@@ -105,6 +105,7 @@ html = html.replace(/<link href="https:\/\/fonts\.googleapis\.com\/[^"]+" rel="s
 html = html.replace(/<script>\s*tailwind\.config\s*=[\s\S]*?<\/script>/, '');
 html = html.replace(style[0], '<link href="./app.css" rel="stylesheet">');
 html = html.replace(jsx[0], '');
+html = html.replace('<div id="root"></div>', '<div id="root"><div id="boot-status" style="display:flex;min-height:100vh;align-items:center;justify-content:center;font-family:system-ui,-apple-system,sans-serif;color:#5b4bd6;font-weight:700;font-size:15px;">กำลังเชื่อมต่อ PackMaster Cloud...</div></div>');
 html = html.replace('</body>', '  <script src="./cloud-bootstrap.js" defer></script>\n</body>');
 if (/<script[^>]+src="https?:\/\//i.test(html) || /<script\s*>/i.test(html) ||
     /type="text\/babel"/.test(html)) {
