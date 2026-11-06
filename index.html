@@ -3112,7 +3112,20 @@
           return true;
         } catch (err) {
           console.error('Reset completed batch failed', err);
-          showToast('ยกเลิก Completed ไม่สำเร็จ — ประวัติเดิมยังอยู่ครบ กรุณาโหลด Batch ล่าสุดแล้วลองอีกครั้ง', 'error');
+          try {
+            const current = await batchApi.loadBatch(activeBatch.id);
+            if (current?.meta && !current.meta.printedAt && current.meta.resolvedSnapshot == null) {
+              upsertBatchMeta(current.meta);
+              if (reprintSnapshotApi) {
+                try { reprintSnapshotApi.clearBatchSnapshot(activeBatch.id); }
+                catch (snapshotError) { console.warn('Clear legacy resolved snapshot after reset reconciliation failed', snapshotError); }
+              }
+              return true;
+            }
+          } catch (reconcileError) {
+            console.warn('Could not reconcile Batch reset after save error', reconcileError);
+          }
+          showToast('ยกเลิก Completed ไม่สำเร็จหรือยังยืนยันสถานะไม่ได้ — ประวัติที่แสดงยังคงเดิม กรุณาโหลด Batch ล่าสุดแล้วลองอีกครั้ง', 'error');
           return false;
         }
       };
