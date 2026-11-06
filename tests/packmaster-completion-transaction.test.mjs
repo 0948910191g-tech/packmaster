@@ -10,7 +10,7 @@ assert.ok(start >= 0 && end > start, 'completion handlers must remain extractabl
 const handlers = html.slice(start, end);
 
 function harness({ failSave = false, failSaveOnce = false, lostAcknowledgement = false, alreadyCompleted = false,
-  localOrders = null, authoritativeOrders = null, authoritativeMeta = null, saveGate = null, loadFailure = false } = {}) {
+  localOrders = null, authoritativeOrders = null, authoritativeMeta = null, saveGate = null, loadFailure = false, serverTimestamp = false } = {}) {
   const snapshot = {
     batchId: 'batch-test', completedAt: '2026-11-06T00:00:00.000Z',
     orders: [{ id: 'order-1', displayItems: ['Original Name'], originalQty: 1,
@@ -36,7 +36,7 @@ function harness({ failSave = false, failSaveOnce = false, lostAcknowledgement =
         failuresRemaining -= 1;
         throw Object.assign(new Error('injected revision conflict'), { status: 409 });
       }
-      state.persisted = { ...meta, cloudRevision: (meta.cloudRevision || 0) + 1 };
+      state.persisted = { ...meta, cloudRevision: (meta.cloudRevision || 0) + 1, ...(serverTimestamp ? { updatedAt: '2026-11-07T00:00:00.000Z' } : {}) };
       state.persistedOrders = orders;
       if (lostAcknowledgement) throw new Error('simulated lost acknowledgement');
       return state.persisted;
@@ -49,6 +49,7 @@ function harness({ failSave = false, failSaveOnce = false, lostAcknowledgement =
   };
   const c = {
     Date,
+    crypto: { randomUUID: () => 'synthetic-clear-unique' },
     console: { error() {}, warn() {} },
     activeBatch: state.visible,
     activeBatchId: 'batch-test',
@@ -195,6 +196,13 @@ test('clear reconciles a lost acknowledgement only when its exact cleared revisi
   assert.equal(state.persistedOrders.length, 0);
   assert.equal(state.visible.printedAt, null);
   assert.equal(state.visible.resolvedSnapshot, null);
+  assert.equal(state.orders.length, 0);
+  assert.match(state.events.at(-1), /เรียบร้อย/);
+});
+
+test('clear reconciles when Worker overwrites updatedAt after committing', async () => {
+  const { c, state } = harness({ lostAcknowledgement: true, alreadyCompleted: true, serverTimestamp: true });
+  await c.clear();
   assert.equal(state.orders.length, 0);
   assert.match(state.events.at(-1), /เรียบร้อย/);
 });

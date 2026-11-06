@@ -3218,8 +3218,9 @@
             return;
           }
           const emptySummary = { total: 0, ready: 0, reviewSku: 0, reviewQty: 0, unmapped: 0 };
+          const clearOperationId = crypto.randomUUID();
           const resetMeta = batchApi.buildBatchMeta(activeBatch, emptySummary, {
-            printedAt: null, resolvedSnapshot: null, now: new Date()
+            printedAt: null, resolvedSnapshot: null, clearOperationId, now: new Date()
           });
           try {
             const savedMeta = await batchApi.saveBatch(resetMeta, []);
@@ -3236,10 +3237,10 @@
               console.warn('Could not reconcile Batch clear after save error', reconcileError);
             }
             const revisionAdvanced = Number.isSafeInteger(startingRevision)
-              ? Number.isSafeInteger(current?.meta?.cloudRevision) && current.meta.cloudRevision > startingRevision
+              ? Number.isSafeInteger(current?.meta?.cloudRevision) && current.meta.cloudRevision === startingRevision + 1
               : true;
             const clearWasCommitted = Boolean(current?.meta && current.meta.id === clearingBatchId &&
-              revisionAdvanced && current.meta.updatedAt === resetMeta.updatedAt &&
+              revisionAdvanced && current.meta.clearOperationId === clearOperationId &&
               !current.meta.printedAt && current.meta.resolvedSnapshot == null &&
               Array.isArray(current.orders) && current.orders.length === 0);
             if (!clearWasCommitted) {

@@ -105,6 +105,35 @@ test('Batch and order images persist in R2 with independent revisions', async ()
   assert.equal((await request(env, '/batches/batch-02')).payload.revision, 1);
 });
 
+test('Clear operation identity survives Worker timestamp normalization', async () => {
+  const env = environment();
+  const created = await request(env, '/batches/batch-01', 'PUT', { ...batch(), expectedRevision: 0 });
+  assert.equal(created.response.status, 200);
+
+  const clientUpdatedAt = '2026-11-06T00:00:00.000Z';
+  const clearOperationId = 'clear-op-synthetic-001';
+  const cleared = await request(env, '/batches/batch-01', 'PUT', {
+    meta: {
+      ...batch().meta,
+      printedAt: null,
+      resolvedSnapshot: null,
+      clearOperationId,
+      updatedAt: clientUpdatedAt
+    },
+    orders: [],
+    expectedRevision: 1
+  });
+
+  assert.equal(cleared.response.status, 200);
+  assert.equal(cleared.payload.revision, 2);
+  assert.equal(cleared.payload.meta.clearOperationId, clearOperationId);
+  assert.notEqual(cleared.payload.meta.updatedAt, clientUpdatedAt);
+
+  const loaded = await request(env, '/batches/batch-01');
+  assert.equal(loaded.payload.meta.clearOperationId, clearOperationId);
+  assert.equal(loaded.payload.orders.length, 0);
+});
+
 test('Completed Batch metadata carries its immutable output atomically but stays out of list summaries', async () => {
   const env = environment();
   const snapshot = {
