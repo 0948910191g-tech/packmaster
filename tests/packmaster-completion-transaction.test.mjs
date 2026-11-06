@@ -10,16 +10,16 @@ assert.ok(start >= 0 && end > start, 'completion handlers must remain extractabl
 const handlers = html.slice(start, end);
 
 function harness({ failSave = false, failSaveOnce = false, lostAcknowledgement = false, alreadyCompleted = false,
-  localOrders = null, authoritativeOrders = null, authoritativeMeta = null } = {}) {
+  localOrders = null, authoritativeOrders = null, authoritativeMeta = null, saveGate = null, loadFailure = false } = {}) {
   const snapshot = {
     batchId: 'batch-test', completedAt: '2026-11-06T00:00:00.000Z',
     orders: [{ id: 'order-1', displayItems: ['Original Name'], originalQty: 1,
       qtyWarning: false, unresolvedSku: false, resolvedAudit: [] }]
   };
   const state = {
-    persisted: { id: 'batch-test', printedAt: alreadyCompleted ? snapshot.completedAt : null,
+    persisted: { id: 'batch-test', cloudRevision: 4, updatedAt: '2026-11-06T00:00:00.000Z', printedAt: alreadyCompleted ? snapshot.completedAt : null,
       resolvedSnapshot: alreadyCompleted ? snapshot : null },
-    visible: { id: 'batch-test', printedAt: alreadyCompleted ? snapshot.completedAt : null,
+    visible: { id: 'batch-test', cloudRevision: 4, updatedAt: '2026-11-06T00:00:00.000Z', printedAt: alreadyCompleted ? snapshot.completedAt : null,
       resolvedSnapshot: alreadyCompleted ? snapshot : null },
     events: [], saveCalls: [], localSnapshot: null, loadCalls: 0,
     orders: localOrders || [{ ...snapshot.orders[0] }],
@@ -31,17 +31,19 @@ function harness({ failSave = false, failSaveOnce = false, lostAcknowledgement =
     buildBatchMeta: (meta, summary, overrides) => ({ ...meta, ...overrides }),
     async saveBatch(meta, orders) {
       state.saveCalls.push({ meta, orders });
+      if (saveGate) await saveGate(meta, orders, state);
       if (failuresRemaining > 0) {
         failuresRemaining -= 1;
         throw Object.assign(new Error('injected revision conflict'), { status: 409 });
       }
-      state.persisted = meta;
+      state.persisted = { ...meta, cloudRevision: (meta.cloudRevision || 0) + 1 };
       state.persistedOrders = orders;
       if (lostAcknowledgement) throw new Error('simulated lost acknowledgement');
-      return meta;
+      return state.persisted;
     },
     async loadBatch() {
       state.loadCalls += 1;
+      if (loadFailure) throw new Error('simulated reconciliation read failure');
       return { meta: state.authoritativeMeta || state.persisted, orders: state.persistedOrders };
     }
   };
@@ -50,6 +52,8 @@ function harness({ failSave = false, failSaveOnce = false, lostAcknowledgement =
     console: { error() {}, warn() {} },
     activeBatch: state.visible,
     activeBatchId: 'batch-test',
+    activeBatchIdRef: { current: 'batch-test' },
+    activeBatchTransitionVersionRef: { current: 0 },
     batchStorageReady: true,
     batchApi,
     reviewSummary: { total: 1, ready: 1 },
@@ -179,5 +183,62 @@ test('a failed clear save preserves the completed Batch and visible Orders', asy
   assert.ok(state.persisted.resolvedSnapshot);
   assert.equal(state.orders.length, 1);
   assert.ok(state.visible.resolvedSnapshot);
-  assert.match(state.events.at(-1), /ไม่สำเร็จ/);
+  assert.match(state.events.at(-1), /ยืนยันผลการล้างไม่ได้/);
+});
+
+test('clear reconciles a lost acknowledgement only when its exact cleared revision is authoritative', async () => {
+  const { c, state } = harness({ lostAcknowledgement: true, alreadyCompleted: true });
+
+  await c.clear();
+
+  assert.equal(state.loadCalls, 1);
+  assert.equal(state.persistedOrders.length, 0);
+  assert.equal(state.visible.printedAt, null);
+  assert.equal(state.visible.resolvedSnapshot, null);
+  assert.equal(state.orders.length, 0);
+  assert.match(state.events.at(-1), /เรียบร้อย/);
+});
+
+test('clear keeps UI and sidecars when reconciliation sees an unrelated empty revision', async () => {
+  const { c, state } = harness({ failSave: true, alreadyCompleted: true,
+    authoritativeMeta: { id: 'batch-test', cloudRevision: 5, updatedAt: '2026-11-06T00:00:00.001Z', printedAt: null, resolvedSnapshot: null },
+    authoritativeOrders: [] });
+  state.localSnapshot = { id: 'old-sidecar' };
+
+  await c.clear();
+
+  assert.equal(state.orders.length, 1);
+  assert.ok(state.visible.resolvedSnapshot);
+  assert.deepEqual(state.localSnapshot, { id: 'old-sidecar' });
+  assert.match(state.events.at(-1), /ยืนยันผลการล้างไม่ได้/);
+});
+
+test('clear reports uncertainty and preserves UI when authoritative reconciliation fails', async () => {
+  const { c, state } = harness({ lostAcknowledgement: true, alreadyCompleted: true, loadFailure: true });
+
+  await c.clear();
+
+  assert.equal(state.persistedOrders.length, 0);
+  assert.equal(state.orders.length, 1);
+  assert.ok(state.visible.resolvedSnapshot);
+  assert.match(state.events.at(-1), /ยืนยันผลการล้างไม่ได้/);
+});
+
+test('a late clear response cannot clear the newly active Batch UI', async () => {
+  let releaseSave;
+  const saveGate = () => new Promise(resolve => { releaseSave = resolve; });
+  const { c, state } = harness({ saveGate });
+  const pending = c.clear();
+  await new Promise(resolve => setImmediate(resolve));
+  c.activeBatchIdRef.current = 'batch-B';
+  c.activeBatchId = 'batch-B';
+  c.activeBatch = { id: 'batch-B', cloudRevision: 8 };
+  state.orders = [{ id: 'order-B' }];
+  c.orders = state.orders;
+  releaseSave();
+
+  await pending;
+
+  assert.deepEqual(state.orders.map(order => order.id), ['order-B']);
+  assert.equal(c.activeBatch.id, 'batch-B', 'the stale Clear must not update Batch B metadata');
 });

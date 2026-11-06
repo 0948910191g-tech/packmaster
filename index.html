@@ -1638,6 +1638,7 @@
       const [batches, setBatches] = useState([]);
       const [activeBatchId, setActiveBatchId] = useState(null);
       const activeBatchIdRef = useRef(activeBatchId);
+      const activeBatchTransitionVersionRef = useRef(0);
       useEffect(() => {
         activeBatchIdRef.current = activeBatchId;
         if (typeof window !== 'undefined') window.__pmActiveBatchId = activeBatchId;
@@ -2833,6 +2834,8 @@
 
             upsertBatchMeta(nextBatch);
             setActiveBatchId(nextBatch.id);
+            activeBatchIdRef.current = nextBatch.id;
+            activeBatchTransitionVersionRef.current += 1;
             if (typeof window !== 'undefined') window.__pmActiveBatchId = nextBatch.id;
             setOrders([]);
             setReviewSearch('');
@@ -2864,6 +2867,8 @@
             if (!stored.meta) throw new Error('Batch metadata not found');
             upsertBatchMeta(stored.meta);
             setActiveBatchId(stored.meta.id);
+            activeBatchIdRef.current = stored.meta.id;
+            activeBatchTransitionVersionRef.current += 1;
             if (typeof window !== 'undefined') window.__pmActiveBatchId = stored.meta.id;
             setOrders(Array.isArray(stored.orders) ? stored.orders : []);
             setReviewSearch('');
@@ -2890,6 +2895,8 @@
 
         await runBatchTransition(async () => {
           setActiveBatchId(null);
+          activeBatchIdRef.current = null;
+          activeBatchTransitionVersionRef.current += 1;
           if (typeof window !== 'undefined') window.__pmActiveBatchId = null;
           setOrders([]);
           setReviewSearch('');
@@ -3199,6 +3206,9 @@
         if (!window.confirm('ล้าง Orders ใน Batch นี้หรือไม่? ตัว Batch จะยังอยู่')) return;
 
         if (activeBatch && batchApi) {
+          const clearingBatchId = activeBatch.id;
+          const startingRevision = activeBatch.cloudRevision;
+          const transitionVersion = activeBatchTransitionVersionRef.current;
           if (!batchStorageReady) {
             showToast('ยังล้าง Orders ไม่ได้ เพราะ Batch storage ยังไม่พร้อม', 'error');
             return;
@@ -3209,23 +3219,55 @@
           });
           try {
             const savedMeta = await batchApi.saveBatch(resetMeta, []);
-            setOrders([]);
-            upsertBatchMeta(savedMeta || resetMeta);
+            if (activeBatchIdRef.current === clearingBatchId &&
+                activeBatchTransitionVersionRef.current === transitionVersion) {
+              setOrders([]);
+              upsertBatchMeta(savedMeta || resetMeta);
+            }
           } catch (err) {
             console.error('Clear active batch save failed', err);
-            showToast('ล้าง Orders ไม่สำเร็จ — ข้อมูลเดิมยังคงอยู่', 'error');
-            return;
+            let current = null;
+            try { current = await batchApi.loadBatch(clearingBatchId); }
+            catch (reconcileError) {
+              console.warn('Could not reconcile Batch clear after save error', reconcileError);
+            }
+            const revisionAdvanced = Number.isSafeInteger(startingRevision)
+              ? Number.isSafeInteger(current?.meta?.cloudRevision) && current.meta.cloudRevision > startingRevision
+              : true;
+            const clearWasCommitted = Boolean(current?.meta && current.meta.id === clearingBatchId &&
+              revisionAdvanced && current.meta.updatedAt === resetMeta.updatedAt &&
+              !current.meta.printedAt && current.meta.resolvedSnapshot == null &&
+              Array.isArray(current.orders) && current.orders.length === 0);
+            if (!clearWasCommitted) {
+              showToast('ยืนยันผลการล้างไม่ได้ — ข้อมูลอาจเปลี่ยนจากอีกหน้าต่าง กรุณาโหลด Batch ล่าสุดก่อนทำรายการต่อ', 'error');
+              return;
+            }
+            if (activeBatchIdRef.current === clearingBatchId &&
+                activeBatchTransitionVersionRef.current === transitionVersion) {
+              setOrders([]);
+              upsertBatchMeta(current.meta);
+            }
+          }
+          if (duplicateApi) {
+            try { duplicateApi.clearBatchFingerprints(clearingBatchId); }
+            catch (fingerprintError) { console.warn('Clear duplicate fingerprint sidecar failed', fingerprintError); }
+          }
+          if (reprintSnapshotApi) {
+            try { reprintSnapshotApi.clearBatchSnapshot(clearingBatchId); }
+            catch (snapshotError) { console.warn('Clear resolved snapshot sidecar failed', snapshotError); }
           }
         } else {
           setOrders([]);
         }
-        if (duplicateApi && activeBatchId) {
-          try { duplicateApi.clearBatchFingerprints(activeBatchId); }
-          catch (fingerprintError) { console.warn('Clear duplicate fingerprint sidecar failed', fingerprintError); }
-        }
-        if (reprintSnapshotApi && activeBatchId) {
-          try { reprintSnapshotApi.clearBatchSnapshot(activeBatchId); }
-          catch (snapshotError) { console.warn('Clear resolved snapshot sidecar failed', snapshotError); }
+        if (!(activeBatch && batchApi)) {
+          if (duplicateApi && activeBatchId) {
+            try { duplicateApi.clearBatchFingerprints(activeBatchId); }
+            catch (fingerprintError) { console.warn('Clear duplicate fingerprint sidecar failed', fingerprintError); }
+          }
+          if (reprintSnapshotApi && activeBatchId) {
+            try { reprintSnapshotApi.clearBatchSnapshot(activeBatchId); }
+            catch (snapshotError) { console.warn('Clear resolved snapshot sidecar failed', snapshotError); }
+          }
         }
         showToast('ล้าง Orders ใน Batch เรียบร้อย', 'success');
       };
@@ -3514,6 +3556,9 @@
           const restoredBatches = await batchApi.listBatches();
           setBatches(restoredBatches);
           setActiveBatchId(null);
+          activeBatchIdRef.current = null;
+          activeBatchTransitionVersionRef.current += 1;
+          if (typeof window !== 'undefined') window.__pmActiveBatchId = null;
           setOrders([]);
           setReviewSearch('');
           setReviewPlatform('ALL');
