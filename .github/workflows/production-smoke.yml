@@ -34,7 +34,7 @@ jobs:
               && grep -Fq './packmaster-print-scope.js' <<< "$html" \
               && grep -Fq 'ใช้กับ Order นี้' <<< "$html" \
               && grep -Fq "handleExportPDF('FULL_BATCH')" <<< "$html" \
-              && grep -Fq 'handleEmergencyPrint' <<< "$html" \
+              && grep -Fq "handlePrint('FULL_BATCH')" <<< "$html" \
               && grep -Fq 'data-pm-view="review"' <<< "$html" \
               && grep -Fq 'data-pm-review-layout="hybrid-grid"' <<< "$html" \
               && grep -Fq 'data-pm-batch-source-files' <<< "$html" \

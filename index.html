@@ -2482,7 +2482,6 @@
       const exceptionRows = useMemo(() =>
         exceptionApi ? exceptionApi.buildExceptionRows(MappedOrders) : [],
       [MappedOrders]);
-      const printBlocked = pilotSafetyApi ? pilotSafetyApi.hasBlockingExceptions(exceptionRows) : exceptionRows.length > 0;
       const PrintScopedOrders = useMemo(() => printScopeApi
         ? printScopeApi.selectPrintOrders(MappedOrders, printScopeMode, order => getReviewFlags(order).ready)
         : (printScopeMode === 'READY_ONLY' ? MappedOrders.filter(order => getReviewFlags(order).ready) : MappedOrders),
@@ -3277,7 +3276,7 @@
         showToast('ล้าง Orders ใน Batch เรียบร้อย', 'success');
       };
 
-      const handlePrint = async (mode = 'FULL_BATCH', override = false) => {
+      const handlePrint = async (mode = 'FULL_BATCH') => {
         const scopedOrders = printScopeApi
           ? printScopeApi.selectPrintOrders(MappedOrders, mode, order => getReviewFlags(order).ready)
           : (mode === 'READY_ONLY' ? MappedOrders.filter(order => getReviewFlags(order).ready) : MappedOrders);
@@ -3303,8 +3302,6 @@
           setPrintRenderActive(false);
         }
       };
-
-      const handleEmergencyPrint = () => handlePrint('FULL_BATCH', true);
 
       useEffect(() => {
         if (!activeBatchId || !activeBatch || !batchApi || !batchStorageReady || batchLoading || (cloudMode && loadingStatus.active)) return;
@@ -3627,7 +3624,7 @@
         }
       };
 
-      const handleExportPDF = async (mode = 'FULL_BATCH', override = false) => {
+      const handleExportPDF = async (mode = 'FULL_BATCH') => {
         if (MappedOrders.length === 0) return;
         const ordersToExport = printScopeApi
           ? printScopeApi.selectPrintOrders(MappedOrders, mode, order => getReviewFlags(order).ready)
@@ -4408,8 +4405,6 @@
                       ].map(([status,label,value,tone])=><button key={status} onClick={()=>setReviewStatus(status)} className={`pm-summary-btn ${reviewStatus===status?'pm-summary-selected':''}`}><PMMetric label={label} value={value} tone={tone} compact /></button>)}
                     </div>
 
-                    {printBlocked && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3 text-amber-800"><PMIcon name="lock" className="w-5 h-5 shrink-0"/><div className="flex-1"><div className="text-sm font-black">รายการที่ยังต้องตรวจ</div><div className="text-xs font-semibold opacity-70">ยังมี {exceptionRows.length} รายการที่ต้องตรวจ สามารถพิมพ์ทั้ง Batch ได้</div></div></div>}
-
                     {exceptionMode && <div data-pm-exception-mode className="pm-exception-mode-banner mb-4"><PMIcon name="alert" className="w-5 h-5 text-amber-600 shrink-0"/><div className="flex-1"><div className="text-sm font-black text-amber-900">โหมดตรวจปัญหา • {exceptionRows.length} รายการ</div><div className="text-[11px] font-semibold text-amber-700/70">ซ่อนรายการพร้อมพิมพ์ชั่วคราว เพื่อโฟกัสเฉพาะ Order ที่ต้องตัดสินใจ</div></div><button onClick={()=>setExceptionMode(false)} className="pm-secondary-btn">ออกจากโหมดตรวจปัญหา</button></div>}
 
                     <div className="pm-card p-3 mb-4">
@@ -4458,7 +4453,7 @@
                     )}
 
                     {ReviewDisplayOrders.length>0&&<div className="pm-pagination mt-4"><div className="text-[11px] font-bold text-slate-400">หน้า {reviewPage} / {reviewDisplayPageCount} • แสดง {visibleReviewDisplayOrders.length} รายการ</div><div className="flex items-center gap-2"><select value={reviewPageSize} onChange={(e)=>{setReviewPageSize(Number(e.target.value));setReviewPage(1);}} className="pm-select !py-1.5"><option value="12">12/หน้า</option><option value="24">24/หน้า</option><option value="48">48/หน้า</option></select><button disabled={reviewPage<=1} onClick={()=>setReviewPage(p=>Math.max(1,p-1))} className="pm-page-btn">‹</button><button disabled={reviewPage>=reviewDisplayPageCount} onClick={()=>setReviewPage(p=>Math.min(reviewDisplayPageCount,p+1))} className="pm-page-btn">›</button></div></div>}
-                    {orders.length>0&&<div data-pm-review-action-dock className="pm-review-action-wrap no-print"><div data-pm-review-action-bar className="pm-review-action-bar"><div className="min-w-0"><div className={`text-sm font-black ${printBlocked?'text-amber-800':'text-emerald-700'}`}>{printBlocked?`พร้อม ${reviewSummary.ready}/${reviewSummary.total} • ต้องตรวจ ${exceptionRows.length}`:`พร้อมพิมพ์ ${reviewSummary.ready}/${reviewSummary.total}`}</div><div className="text-[10px] font-semibold text-slate-400 mt-0.5">{printBlocked?'สามารถตรวจรายการเพิ่มเติมหรือพิมพ์ทั้ง Batch ได้':'Batch นี้ไม่มีรายการที่ต้องตรวจ'} • สถานะพิมพ์แล้วหมายถึงระบบเริ่มสั่งพิมพ์หรือส่งออก ไม่ยืนยันว่ากระดาษออกจากเครื่องพิมพ์จริง</div></div><div className="flex flex-wrap gap-2">{printBlocked?<><button onClick={openExceptionMode} className="pm-warning-btn"><PMIcon name="alert"/> แก้ {exceptionRows.length} รายการ</button><button onClick={()=>handleExportPDF('FULL_BATCH')} className="pm-secondary-btn">Save PDF ทั้ง Batch</button><button onClick={handleEmergencyPrint} className="pm-primary-btn">พิมพ์ทั้ง Batch</button></>:<><button onClick={()=>handleExportPDF('FULL_BATCH')} disabled={exportStatus.active||orders.length===0} className="pm-secondary-btn"><PMIcon name="download"/> Save PDF</button><button onClick={()=>handlePrint('FULL_BATCH')} disabled={orders.length===0} className="pm-primary-btn"><PMIcon name="printer"/> พิมพ์ {reviewSummary.total} ใบ</button></>}</div></div></div>}
+                    {orders.length>0&&<div data-pm-review-action-dock className="pm-review-action-wrap no-print"><div data-pm-review-action-bar className="pm-review-action-bar"><div className="min-w-0"><div className="text-sm font-black text-slate-900">Batch ทั้งหมด {reviewSummary.total} รายการ</div><div className="text-[10px] font-semibold text-slate-400 mt-0.5">{exceptionRows.length>0?`มี ${exceptionRows.length} รายการสำหรับตรวจเพิ่มเติม • ไม่บล็อกการพิมพ์`:'ไม่มีรายการต้องตรวจ'} • สถานะพิมพ์แล้วหมายถึงระบบเริ่มสั่งพิมพ์หรือส่งออก ไม่ยืนยันว่ากระดาษออกจากเครื่องพิมพ์จริง</div></div><div className="flex flex-wrap gap-2">{exceptionRows.length>0&&<button onClick={openExceptionMode} className="pm-secondary-btn"><PMIcon name="alert"/> ตรวจ {exceptionRows.length} รายการ</button>}<button onClick={()=>handleExportPDF('FULL_BATCH')} disabled={exportStatus.active||orders.length===0} className="pm-secondary-btn"><PMIcon name="download"/> Save PDF</button><button onClick={()=>handlePrint('FULL_BATCH')} disabled={orders.length===0} className="pm-primary-btn"><PMIcon name="printer"/> พิมพ์ {reviewSummary.total} ใบ</button></div></div></div>}
                   </section>
                 )}
 

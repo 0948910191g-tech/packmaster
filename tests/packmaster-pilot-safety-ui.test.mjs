@@ -5,21 +5,20 @@ import fs from 'node:fs';
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const mustInclude = (needle, message) => assert.ok(html.includes(needle), message || `Missing UI safety marker: ${needle}`);
 
-test('review screen keeps safety detection but provides safe scoped actions', () => {
+test('review screen keeps review diagnostics without a print guard', () => {
   mustInclude('<script src="./packmaster-pilot-safety.js"></script>');
   mustInclude('const pilotSafetyApi = window.PackMasterPilotSafety;');
-  mustInclude('const printBlocked = pilotSafetyApi ? pilotSafetyApi.hasBlockingExceptions(exceptionRows) : exceptionRows.length > 0;');
-  mustInclude('รายการที่ยังต้องตรวจ');
-  assert.doesNotMatch(html, /พิมพ์ Ready|พิมพ์เฉพาะรายการพร้อม/);
-  assert.doesNotMatch(html, /Save Ready PDF/);
-  assert.match(html, /พิมพ์ทั้ง Batch/);
+  mustInclude('data-pm-review-action-dock');
+  mustInclude('ไม่บล็อกการพิมพ์');
+  assert.doesNotMatch(html, /const printBlocked|รายการที่ยังต้องตรวจ|handleEmergencyPrint/);
+  assert.doesNotMatch(html, /พิมพ์ Ready|พิมพ์เฉพาะรายการพร้อม|Save Ready PDF/);
+  assert.match(html, /handlePrint\(['"]FULL_BATCH['"]/);
 });
 
-test('normal full-batch flow remains safe while override is explicit', () => {
+test('normal full-batch flow has no guard or override path', () => {
   assert.match(html, /handlePrint\(['"]FULL_BATCH['"]/);
   assert.match(html, /handleExportPDF\(['"]FULL_BATCH['"]/);
-  assert.match(html, /window\.confirm\(/);
-  assert.doesNotMatch(html, /mode === ['"]FULL_BATCH['"] && printBlocked && !override/);
+  assert.doesNotMatch(html, /printBlocked|handleEmergencyPrint|override = false/);
 });
 
 test('SKU/unmapped Review keeps Pilot Safety source identity and never auto-selects a Keyword', () => {

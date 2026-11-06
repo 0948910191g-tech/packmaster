@@ -15,8 +15,8 @@ assert.match(html, /data-pm-review-action-bar/, 'Review completion action bar mu
 assert.match(html, /data-pm-review-action-dock/, 'Review completion action must expose a stable dock marker');
 assert.match(html, /\.pm-review-action-wrap \{ position: static;/, 'Review completion action must stay in normal flow and never cover labels');
 assert.doesNotMatch(html, /\.pm-review-action-wrap \{ position: fixed;/, 'Review action dock must not overlay content');
-assert.match(html, /แก้ .*รายการ/, 'Review action must guide unresolved work');
-assert.match(html, /พร้อมพิมพ์/, 'Review action must expose ready state');
+assert.match(html, /ตรวจ \{exceptionRows\.length\} รายการ/, 'Review action must offer optional inspection for unresolved work');
+assert.match(html, /ไม่บล็อกการพิมพ์/, 'Review action must state that exceptions do not block output');
 assert.match(html, /<option value="REVIEW_QTY">Qty<\/option>/, 'Qty Exception filter must use the real exception type emitted by packmaster-exceptions.js');
 assert.match(html, /<option value="REVIEW_SKU">SKU<\/option>/, 'SKU Exception filter must use the real exception type emitted by packmaster-exceptions.js');
 
