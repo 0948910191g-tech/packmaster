@@ -6,6 +6,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const registryApi = require('../packmaster-marketplace-registry.js');
 const matcherApi = require('../packmaster-registry-matcher.js');
+const identityApi = require('../packmaster-registry-identity.js');
 const bootstrap = require('../packmaster-local-registry-bootstrap.js');
 
 const registry = JSON.parse(fs.readFileSync(new URL('../data/packmaster-marketplace-registry.json', import.meta.url), 'utf8'));
@@ -39,7 +40,7 @@ test('local baseline fills an empty browser registry without downgrading newer l
   assert.equal(preserved.platforms.SHOPEE.source.captureDate, '2099-01-01T00:00:00.000Z');
 });
 
-test('verified Git baseline wins the same Seller SKU while preserving local-only assignments', () => {
+test('local user names win over the Git baseline while preserving baseline-only assignments', () => {
   const baseline = matcherApi.validateAssignments(assignments);
   const baselineEntry = baseline.entries[0];
   const local = matcherApi.validateAssignments({
@@ -60,8 +61,9 @@ test('verified Git baseline wins the same Seller SKU while preserving local-only
   const sameSku = merged.entries.find(entry =>
     entry.platform === baselineEntry.platform &&
     matcherApi.normalizeSku(entry.sellerSku) === matcherApi.normalizeSku(baselineEntry.sellerSku));
-  assert.equal(sameSku.shortName, baselineEntry.shortName);
+  assert.equal(sameSku.shortName, 'stale local name');
   assert.ok(merged.entries.some(entry => entry.sellerSku === 'LOCAL-ONLY-SYNTHETIC'));
+  assert.ok(merged.entries.length >= baseline.entries.length);
 });
 
 test('Git page loads the local registry baseline module before the app runs', () => {
@@ -69,5 +71,45 @@ test('Git page loads the local registry baseline module before the app runs', ()
   assert.match(html, /packmaster-local-registry-bootstrap\.js/);
   assert.match(html, /localRegistryBootstrapApi\.loadBaselines/);
   assert.match(html, /marketplaceRegistryApi\.saveStore\(window\.localStorage, mergedRegistry\)/);
-  assert.match(html, /registryMatcherApi\.saveLocalAssignments\(window\.localStorage, mergedAssignments\)/);
+  assert.match(html, /localRegistryBootstrapApi\.ensureRegistryAssignments\(/);
+  assert.match(html, /registryMatcherApi\.saveLocalAssignments\(window\.localStorage, completeAssignments\)/);
+});
+
+test('local bootstrap auto-fills every current registry row without overwriting verified names', () => {
+  const merged = bootstrap.mergeAssignmentBaseline(
+    matcherApi.newAssignments(),
+    assignments,
+    matcherApi
+  );
+  const complete = bootstrap.ensureRegistryAssignments(
+    registry,
+    merged,
+    registryApi,
+    matcherApi,
+    identityApi
+  );
+  const index = identityApi.buildIndex(registry, registryApi);
+  let covered = 0;
+
+  for (const platform of registryApi.PLATFORMS) {
+    for (const row of registry.platforms[platform].skuRows) {
+      const evidence = bootstrap.getRowEvidence(platform, row, index, matcherApi);
+      assert.ok(evidence, `row identity is required for ${platform}`);
+      const probe = matcherApi.makeAssignment(platform, evidence, 'probe');
+      const key = matcherApi.assignmentKey(probe);
+      const assignment = complete.entries.find(entry => matcherApi.assignmentKey(entry) === key);
+      assert.ok(assignment, `missing assignment for ${platform} ${row.sellerSku || row.variantName || row.modelId}`);
+      assert.ok(assignment.shortName.trim());
+      covered += 1;
+    }
+  }
+
+  assert.equal(covered, 317);
+  const comboRow = registry.platforms.TIKTOK.skuRows.find(row =>
+    row.variantName === 'คละ Peach 3กระปุก Kyoho Grape 3กระปุก');
+  assert.ok(comboRow);
+  const comboEvidence = bootstrap.getRowEvidence('TIKTOK', comboRow, index, matcherApi);
+  const comboKey = matcherApi.assignmentKey(matcherApi.makeAssignment('TIKTOK', comboEvidence, 'probe'));
+  const comboAssignment = complete.entries.find(entry => matcherApi.assignmentKey(entry) === comboKey);
+  assert.equal(comboAssignment.shortName, 'คละ Peach 3กระปุก Kyoho Grape 3กระปุก');
 });

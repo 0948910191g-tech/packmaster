@@ -1603,12 +1603,19 @@
             latestRegistry, registry, marketplaceRegistryApi);
           const mergedAssignments = localRegistryBootstrapApi.mergeAssignmentBaseline(
             latestAssignments, assignments, registryMatcherApi);
+          const completeAssignments = localRegistryBootstrapApi.ensureRegistryAssignments(
+            mergedRegistry,
+            mergedAssignments,
+            marketplaceRegistryApi,
+            registryMatcherApi,
+            registryIdentityApi
+          );
 
           marketplaceRegistryApi.saveStore(window.localStorage, mergedRegistry);
-          registryMatcherApi.saveLocalAssignments(window.localStorage, mergedAssignments);
+          registryMatcherApi.saveLocalAssignments(window.localStorage, completeAssignments);
           setMarketplaceRegistry(mergedRegistry);
           setMarketplaceRegistryLoadError('');
-          setRegistryAssignments(mergedAssignments);
+          setRegistryAssignments(completeAssignments);
           setRegistryAssignmentsError('');
           setRegistryAssignmentsLoaded(true);
         }).catch(error => {
@@ -3439,6 +3446,16 @@
             await cloud.saveRegistry(expectedPlatform, importedRegistry);
           } else {
             marketplaceRegistryApi.saveStore(window.localStorage, nextStore);
+            const completedAssignments = localRegistryBootstrapApi.ensureRegistryAssignments(
+              nextStore,
+              registryAssignments || registryMatcherApi.newAssignments(),
+              marketplaceRegistryApi,
+              registryMatcherApi,
+              registryIdentityApi
+            );
+            registryMatcherApi.saveLocalAssignments(window.localStorage, completedAssignments);
+            setRegistryAssignments(completedAssignments);
+            setRegistryAssignmentsLoaded(true);
           }
           setMarketplaceRegistry(nextStore);
           setMarketplaceRegistryLoadError('');
@@ -3975,6 +3992,18 @@
         ? marketplaceRegistryApi.getSummary(marketplaceRegistry)
         : null, [marketplaceRegistry]);
       const selectedMarketplaceRegistry = marketplaceRegistry?.platforms?.[marketplaceRegistryPlatformFilter] || null;
+      const selectedMarketplaceAssignmentCoverage = useMemo(() => {
+        if (!selectedMarketplaceRegistry || !registryAssignments || !registryMatcherApi) return 0;
+        return (selectedMarketplaceRegistry.skuRows || []).reduce((count, row) => {
+          const evidence = getRegistryRowEvidence(marketplaceRegistryPlatformFilter, row);
+          if (evidence.status !== 'found') return count;
+          const key = registryMatcherApi.assignmentKey(
+            registryMatcherApi.makeAssignment(marketplaceRegistryPlatformFilter, evidence, 'probe')
+          );
+          return count + ((registryAssignments.entries || []).some(entry =>
+            registryMatcherApi.assignmentKey(entry) === key) ? 1 : 0);
+        }, 0);
+      }, [selectedMarketplaceRegistry, marketplaceRegistryPlatformFilter, registryAssignments, marketplaceCatalogIndex]);
       const filteredMarketplaceRegistryRows = useMemo(() => {
         if (!selectedMarketplaceRegistry) return [];
         const sourceRows = marketplaceRegistryDisplayMode === 'products'
@@ -4566,7 +4595,7 @@
                             <p className="text-xs font-semibold text-slate-500 mt-1">ตั้งชื่อได้ทุกแถวจาก Seller SKU หรือ Product ID + Model ID/ตัวเลือก • ไม่มี Keyword/Fuzzy Fallback</p>
                           </div>
                           <span className="rounded-lg bg-blue-50 text-blue-700 font-black text-xs px-3 py-2">
-                            ชื่อภายใน {(registryAssignments?.entries || []).filter(entry => entry.platform === marketplaceRegistryPlatformFilter).length} รายการ • ทะเบียน {selectedMarketplaceRegistry?.skuRows?.length || 0} แถว
+                            ชื่อภายใน {selectedMarketplaceAssignmentCoverage}/{selectedMarketplaceRegistry?.skuRows?.length || 0} แถว
                           </span>
                         </div>
                         {selectedMarketplaceRegistry && (
