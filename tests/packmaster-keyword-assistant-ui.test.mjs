@@ -40,5 +40,5 @@ test('persistent Quick Mapping save rechecks safety before creating a shared rul
   assert.match(html, /handleSaveQuickMapping/);
   assert.match(html, /assessKeywordSafety\(\{/);
   assert.match(html, /saveSkuRule\(\{\s*keyword,\s*shortName\s*\}/s);
-  assert.match(html, /บันทึกเป็น Mapping และใช้/);
+  assert.match(html, /ยืนยันชื่อภายในให้ Seller SKU นี้/);
 });

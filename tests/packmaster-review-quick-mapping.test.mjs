@@ -12,11 +12,11 @@ assert.match(html, /keyword:\s*''/, 'Quick Mapping must not auto-select a sugges
 assert.match(html, /handleApplyQuickOrderName/, 'Quick Mapping must have an order-only apply action');
 assert.match(html, /upsertManualSkuOverride\(/, 'order-only apply must persist a local order override');
 assert.match(html, /ใช้กับ Order นี้/, 'Quick Mapping must expose the safe default action');
-assert.match(html, /บันทึกเป็น Mapping และใช้/, 'persistent shared mapping must be a separate explicit action');
+assert.match(html, /ยืนยันชื่อภายในให้ Seller SKU นี้/, 'persistent SKU assignment must be a separate explicit action');
 assert.match(html, /pm-internal-name-options/, 'Quick Mapping must expose searchable existing internal-name choices');
 assert.match(html, /getUniqueInternalNames\(skuRules\)/, 'internal-name choices must come from the current SKU Library');
 assert.match(html, /ยังตั้งชื่อเฉพาะ Order นี้ได้/, 'no Keyword suggestion state must not block manual completion');
-assert.match(html, /เปิดคลังคำศัพท์/, 'Quick Mapping must preserve advanced SKU Library fallback');
+assert.match(html, /เปิดทะเบียนสินค้า/, 'Quick Mapping must link to the registry');
 assert.match(html, /REVIEW_SKU.*UNMAPPED|UNMAPPED.*REVIEW_SKU/s, 'Quick Mapping action must stay limited to SKU/Unmapped exceptions');
 assert.equal(/setQuickMapState\(\{[^}]*open:\s*true[^}]*shortName:\s*['"][^'"]+['"][^}]*\}\)/s.test(html), false, 'Quick Mapping must not auto-generate an internal short name');
 

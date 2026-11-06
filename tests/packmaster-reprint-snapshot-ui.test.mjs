@@ -6,7 +6,7 @@ assert.ok(html.includes('<script src="./packmaster-reprint-snapshot.js"></script
 assert.ok(html.includes('const reprintSnapshotApi = window.PackMasterReprintSnapshot;'));
 assert.ok(html.includes('const LiveMappedOrders = useMemo(() => orders.map(o => {'));
 assert.ok(html.includes("resolution: 'manual'"), 'manual resolution must be auditable');
-assert.ok(html.includes("resolution: cloudMode ? 'registry' : 'rule'"), 'registry and local rule resolutions must be auditable separately');
+assert.ok(html.includes("resolution: 'registry'"), 'registry matches must be auditable in both modes');
 assert.ok(html.includes('reprintSnapshotApi.validateSnapshot({'), 'new completion snapshots must be validated before persisting with the Batch');
 assert.ok(html.includes('resolvedSnapshot: snapshot'), 'completion history must be part of the same Batch revision as printedAt');
 assert.ok(html.includes('reprintSnapshotApi.applyBatchSnapshot(LiveMappedOrders, historicalSnapshot)'));
