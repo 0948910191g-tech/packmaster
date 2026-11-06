@@ -13,7 +13,7 @@ test('loads the local Keyword Assistant helper before the app uses it', () => {
 });
 
 test('Quick Mapping keeps the exact safe seed as source identity and never guesses shortName', () => {
-  assert.match(html, /getSkuFixSeed\(row, getMatchResult\)/);
+  assert.match(html, /getSkuFixSeed\(row, text => getMatchResult\(text, row\.order\.platform\)\)/);
   assert.match(html, /sourceText:\s*seed/);
   assert.match(html, /shortName:\s*''/);
   assert.match(html, /Keyword แนะนำที่ผ่าน Safety Check/);
@@ -29,16 +29,21 @@ test('Quick Mapping leaves Keyword blank until the user explicitly chooses one',
 
 test('Quick Mapping generates fail-closed suggestions with the actual Smart Matcher', () => {
   assert.match(html, /generateKeywordSuggestions\(/);
-  assert.match(html, /existingRules:\s*skuRules/);
+  assert.match(html, /existingRules:\s*scopedRules/);
   assert.match(html, /batchItemTexts/);
   assert.match(html, /safeOnly:\s*true/);
   assert.match(html, /matchRule:\s*matchSkuRule/);
   assert.match(html, /matchNormalizer:\s*normalizeMatchText/);
 });
 
-test('persistent Quick Mapping save rechecks safety before creating a shared rule', () => {
+test('persistent Quick Mapping save uses verified registry identity instead of keyword rules', () => {
   assert.match(html, /handleSaveQuickMapping/);
-  assert.match(html, /assessKeywordSafety\(\{/);
-  assert.match(html, /saveSkuRule\(\{\s*keyword,\s*shortName\s*\}/s);
-  assert.match(html, /บันทึกเป็น Mapping และใช้/);
+  assert.match(html, /saveRegistryAssignment\(order\.platform, item, shortName\)/);
+  assert.match(html, /registryIdentityApi\.resolve\(marketplaceCatalogIndex, platform, item\)/);
+  assert.match(html, /registryMatcherApi\.upsertAssignment\(/);
+  const start = html.indexOf('const handleSaveQuickMapping');
+  const end = html.indexOf('const handleOpenQuickMapInLibrary', start);
+  assert.ok(start >= 0 && end > start);
+  assert.doesNotMatch(html.slice(start, end), /saveSkuRule\(/);
+  assert.match(html, /ยืนยัน Seller SKU และใช้/);
 });

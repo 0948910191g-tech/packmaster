@@ -42,6 +42,9 @@
           typeof rule.shortName !== 'string' || !rule.shortName.trim()) {
         throw new Error(`skuRules[${index}] must contain non-empty string keyword and shortName`);
       }
+      if (rule.platform != null && rule.platform !== 'TIKTOK' && rule.platform !== 'SHOPEE') {
+        throw new Error(`skuRules[${index}].platform must be TIKTOK or SHOPEE when provided`);
+      }
     });
 
     const batchIds = new Set();

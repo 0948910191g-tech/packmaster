@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>PackMaster — ตรวจรายการ</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Noto Sans Thai',system-ui,sans-serif}
+button,input{font-family:inherit}
+button{cursor:pointer}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid #f5b301;outline-offset:2px}
+a{color:#0b63ce}a:hover{color:#084a99}
+</style>
+</helmet>
+<div style="min-height: 1140px; display: flex; flex-wrap: wrap; background: #eef3f9; color: #0f2744; font-family: 'Noto Sans Thai', system-ui, sans-serif">
+
+  <aside style="flex: 0 0 248px; box-sizing: border-box; background: #071f3d; padding: 24px 16px; display: flex; flex-direction: column; gap: 6px; min-height: 480px">
+    <div style="display: flex; align-items: center; gap: 12px; padding: 0 8px 20px">
+      <div style="width: 40px; height: 40px; border-radius: 10px; background: #0b63ce; display: flex; align-items: center; justify-content: center">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>
+      </div>
+      <div>
+        <div style="font-size: 20px; font-weight: 700; color: #fff; line-height: 1.2">PackMaster</div>
+        <div style="font-size: 12px; color: #a9c4e8">พิมพ์ใบปะหน้าแพ็คของ</div>
+      </div>
+    </div>
+    <nav aria-label="เมนูหลัก" style="display: flex; flex-direction: column; gap: 4px">
+      <div style="font-size: 12px; font-weight: 600; color: #a9c4e8; padding: 4px 12px">งานหลัก</div>
+      <a href="Main.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: 10px; color: #d6e4f7; text-decoration: none; font-size: 15px; font-weight: 500">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5M3 17l9 5 9-5"/></svg>
+        ชุดงาน
+      </a>
+      <a href="Upload.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: 10px; color: #d6e4f7; text-decoration: none; font-size: 15px; font-weight: 500">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v4h16v-4"/></svg>
+        อัปโหลด PDF
+      </a>
+      <a href="Review.dc.html" aria-current="page" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: 10px; background: #0b63ce; color: #fff; text-decoration: none; font-size: 15px; font-weight: 600">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="9" rx="2"/><path d="M6 14h12v7H6z"/></svg>
+        <span style="flex-grow: 1">ตรวจและพิมพ์</span>
+        <span style="min-width: 24px; height: 24px; border-radius: 12px; background: #fbbf24; color: #3b2400; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center">7</span>
+      </a>
+    </nav>
+    <nav aria-label="เครื่องมือ" style="display: flex; flex-direction: column; gap: 4px; margin-top: 20px">
+      <div style="font-size: 12px; font-weight: 600; color: #a9c4e8; padding: 4px 12px">เครื่องมือ</div>
+      <a href="Review.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: 10px; color: #d6e4f7; text-decoration: none; font-size: 15px; font-weight: 500">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5v14M8 5v14M12 5v14M16 5v14M20 5v14"/></svg>
+        จับคู่ SKU
+      </a>
+      <a href="Review.dc.html" style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: 10px; color: #d6e4f7; text-decoration: none; font-size: 15px; font-weight: 500">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z"/></svg>
+        สำรองและความปลอดภัยข้อมูล
+      </a>
+    </nav>
+    <div style="margin-top: auto; padding: 16px 12px 0; display: flex; gap: 8px; align-items: flex-start; font-size: 12px; line-height: 1.5; color: #a9c4e8">
+      <span style="width: 8px; height: 8px; border-radius: 4px; background: #4ade80; margin-top: 6px; flex: 0 0 8px"></span>
+      <span>ข้อมูลเก็บในเบราว์เซอร์เครื่องนี้ ไม่ถูกส่งออกไปไหน</span>
+    </div>
+  </aside>
+
+  <main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 28px 36px 40px; display: flex; flex-direction: column; gap: 24px">
+
+    <header>
+      <div style="font-size: 13px; font-weight: 600; color: #0b63ce">ชุดงาน 19 ต.ค. · รอบบ่าย</div>
+      <h1 style="margin: 2px 0 0; font-size: 30px; font-weight: 700; line-height: 1.3">ตรวจรายการ</h1>
+      <p style="margin: 4px 0 0; font-size: 15px; color: #51627a">แก้ทีละรายการ ระบบจะพิมพ์ได้เมื่อตรวจครบ</p>
+    </header>
+
+    <ol aria-label="ขั้นตอนการทำงาน" style="list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 12px">
+      <li style="flex: 1 1 220px; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 12px; background: #fff; border: 2px solid #bbf7d0">
+        <span style="width: 32px; height: 32px; border-radius: 16px; background: #15803d; color: #fff; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg></span>
+        <span><span style="display: block; font-size: 15px; font-weight: 600">เลือกชุดงาน</span><span style="display: block; font-size: 13px; color: #51627a">เรียบร้อย</span></span>
+      </li>
+      <li style="flex: 1 1 220px; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 12px; background: #fff; border: 2px solid #bbf7d0">
+        <span style="width: 32px; height: 32px; border-radius: 16px; background: #15803d; color: #fff; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg></span>
+        <span><span style="display: block; font-size: 15px; font-weight: 600">อัปโหลด PDF</span><span style="display: block; font-size: 13px; color: #51627a">8 ไฟล์ · 120 ออเดอร์</span></span>
+      </li>
+      <li aria-current="step" style="flex: 1 1 220px; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 12px; background: #eaf2ff; border: 2px solid #0b63ce">
+        <span style="width: 32px; height: 32px; border-radius: 16px; background: #0b63ce; color: #fff; font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: center">3</span>
+        <span><span style="display: block; font-size: 15px; font-weight: 700">ตรวจรายการ</span><span style="display: block; font-size: 13px; color: #51627a">ขั้นนี้ · เหลือ 7 รายการ</span></span>
+      </li>
+      <li style="flex: 1 1 220px; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 12px; background: #fff; border: 2px solid #d5dfeb">
+        <span style="width: 32px; height: 32px; border-radius: 16px; background: #e2e8f0; color: #334155; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg></span>
+        <span><span style="display: block; font-size: 15px; font-weight: 600">พิมพ์</span><span style="display: block; font-size: 13px; color: #51627a">ปลดล็อกเมื่อตรวจครบ</span></span>
+      </li>
+    </ol>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+
+      <section aria-labelledby="list-title" style="flex: 1 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between">
+          <h2 id="list-title" style="margin: 0; font-size: 20px; font-weight: 700">รายการที่ต้องตรวจ 7 จาก 120</h2>
+          <div role="tablist" aria-label="กรองรายการ" style="display: flex; flex-wrap: wrap; gap: 8px">
+            <button type="button" role="tab" aria-selected="true" style="min-height: 44px; padding: 0 16px; border-radius: 999px; border: 2px solid #0b63ce; background: #eaf2ff; color: #084a99; font-size: 14px; font-weight: 700">ต้องตรวจ 7</button>
+            <button type="button" role="tab" aria-selected="false" style="min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid #b8c7da; background: #fff; color: #0f2744; font-size: 14px; font-weight: 500">พร้อมพิมพ์ 113</button>
+            <button type="button" role="tab" aria-selected="false" style="min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid #b8c7da; background: #fff; color: #0f2744; font-size: 14px; font-weight: 500">ทั้งหมด 120</button>
+          </div>
+        </div>
+
+        <div style="position: relative">
+          <label for="q" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">ค้นหาเลข Order หรือ Tracking</label>
+          <input id="q" type="search" placeholder="ค้นหาเลข Order หรือ Tracking…" autocomplete="off" style="box-sizing: border-box; width: 100%; min-height: 48px; padding: 0 16px; border-radius: 10px; border: 1px solid #b8c7da; background: #fff; font-size: 15px; color: #0f2744">
+        </div>
+
+        <ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px">
+          <li style="background: #fff; border: 2px solid #0b63ce; border-radius: 14px; padding: 14px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+            <div style="flex: 1 1 260px; min-width: 0">
+              <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px"><span style="padding: 3px 10px; border-radius: 6px; background: #ffe4d1; color: #7a2e00; font-size: 12px; font-weight: 700">Shopee</span><span style="font-size: 13px; color: #51627a; overflow-wrap: anywhere">TH-TEST-0000001</span></div>
+              <div style="margin-top: 6px; font-size: 15px; font-weight: 600; overflow-wrap: anywhere">HAKU Cooling LAVENDER 6 ห่อ</div>
+              <div style="font-size: 13px; color: #7a3e00">ยังไม่จับคู่ชื่อภายใน</div>
+            </div>
+            <span style="font-size: 14px; color: #51627a">Qty 1</span>
+            <span style="padding: 5px 12px; border-radius: 999px; background: #fef3c7; color: #7a3e00; font-size: 13px; font-weight: 600">ตรวจ SKU</span>
+            <button type="button" aria-pressed="true" style="min-height: 44px; padding: 0 18px; border-radius: 10px; border: 0; background: #0b63ce; color: #fff; font-size: 15px; font-weight: 600">กำลังแก้</button>
+          </li>
+          <li style="background: #fff; border: 1px solid #d5dfeb; border-radius: 14px; padding: 14px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+            <div style="flex: 1 1 260px; min-width: 0">
+              <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px"><span style="padding: 3px 10px; border-radius: 6px; background: #e4e4e7; color: #18181b; font-size: 12px; font-weight: 700">TikTok</span><span style="font-size: 13px; color: #51627a; overflow-wrap: anywhere">TT-TEST-0000001</span></div>
+              <div style="margin-top: 6px; font-size: 15px; font-weight: 600; overflow-wrap: anywhere">HOYA Baby Wipes ผิวบอบบาง แพ็ค 3 ห่อ</div>
+              <div style="font-size: 13px; color: #51627a">จับคู่เป็น เด้งม่วง3</div>
+            </div>
+            <span style="font-size: 14px; color: #51627a">Qty 2 จาก 3</span>
+            <span style="padding: 5px 12px; border-radius: 999px; background: #fee2e2; color: #7f1d1d; font-size: 13px; font-weight: 600">จำนวนไม่ตรง</span>
+            <button type="button" style="min-height: 44px; padding: 0 18px; border-radius: 10px; border: 1px solid #b8c7da; background: #fff; color: #0f2744; font-size: 15px; font-weight: 600">แก้</button>
+          </li>
+          <li style="background: #fff; border: 1px solid #d5dfeb; border-radius: 14px; padding: 14px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+            <div style="flex: 1 1 260px; min-width: 0">
+              <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px"><span style="padding: 3px 10px; border-radius: 6px; background: #ffe4d1; color: #7a2e00; font-size: 12px; font-weight: 700">Shopee</span><span style="font-size: 13px; color: #51627a; overflow-wrap: anywhere">TH-TEST-0000002</span></div>
+              <div style="margin-top: 6px; font-size: 15px; font-weight: 600; overflow-wrap: anywhere">Gift Set วันแม่ HAKU Cooling กลิ่นมะลิ 12 ห่อ</div>
+              <div style="font-size: 13px; color: #51627a">จับคู่เป็น เย็นเขียว 12 · ระบบขอให้ยืนยัน</div>
+            </div>
+            <span style="font-size: 14px; color: #51627a">Qty 1</span>
+            <span style="padding: 5px 12px; border-radius: 999px; background: #fef3c7; color: #7a3e00; font-size: 13px; font-weight: 600">ตรวจ SKU</span>
+            <button type="button" style="min-height: 44px; padding: 0 18px; border-radius: 10px; border: 1px solid #b8c7da; background: #fff; color: #0f2744; font-size: 15px; font-weight: 600">แก้</button>
+          </li>
+          <li style="background: #fff; border: 1px solid #d5dfeb; border-radius: 14px; padding: 14px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+            <div style="flex: 1 1 260px; min-width: 0">
+              <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px"><span style="padding: 3px 10px; border-radius: 6px; background: #e4e4e7; color: #18181b; font-size: 12px; font-weight: 700">TikTok</span><span style="font-size: 13px; color: #51627a; overflow-wrap: anywhere">TT-TEST-0000002</span></div>
+              <div style="margin-top: 6px; font-size: 15px; font-weight: 600; overflow-wrap: anywhere">NEWCO Wet Wipes Baby 12 ห่อ</div>
+              <div style="font-size: 13px; color: #7a3e00">ยังไม่จับคู่ชื่อภายใน</div>
+            </div>
+            <span style="font-size: 14px; color: #51627a">Qty 1</span>
+            <span style="padding: 5px 12px; border-radius: 999px; background: #fef3c7; color: #7a3e00; font-size: 13px; font-weight: 600">ตรวจ SKU</span>
+            <button type="button" style="min-height: 44px; padding: 0 18px; border-radius: 10px; border: 1px solid #b8c7da; background: #fff; color: #0f2744; font-size: 15px; font-weight: 600">แก้</button>
+          </li>
+        </ul>
+        <div style="font-size: 14px; color: #51627a">แสดง 4 จาก 7 รายการที่ต้องตรวจ · <a href="Review.dc.html">ดูที่เหลืออีก 3 รายการ</a></div>
+      </section>
+
+      <aside aria-labelledby="edit-title" style="flex: 0 1 380px; min-width: 280px; background: #fff; border: 1px solid #d5dfeb; border-radius: 16px; padding: 22px; display: flex; flex-direction: column; gap: 16px">
+        <div>
+          <div style="font-size: 13px; font-weight: 600; color: #0b63ce">กำลังแก้รายการที่ 1</div>
+          <h2 id="edit-title" style="margin: 2px 0 0; font-size: 18px; font-weight: 700">HAKU Cooling LAVENDER 6 ห่อ</h2>
+        </div>
+        <div style="background: #f4f7fb; border-radius: 12px; padding: 12px 14px; font-size: 14px; line-height: 1.6">
+          <div style="font-weight: 600">ข้อความต้นฉบับจากใบปะหน้า</div>
+          <div style="color: #51627a; overflow-wrap: anywhere">HAKU Cooling LAVENDER 6 ห่อ</div>
+        </div>
+        <div>
+          <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px">คำที่ระบบแนะนำให้ใช้จับคู่</div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px">
+            <button type="button" style="min-height: 44px; padding: 0 16px; border-radius: 10px; border: 2px solid #15803d; background: #ecfdf3; color: #14532d; font-size: 15px; font-weight: 600">HAKU Cooling LAVENDER</button>
+            <button type="button" style="min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid #b8c7da; background: #fff; color: #0f2744; font-size: 15px; font-weight: 500">LAVENDER 6</button>
+          </div>
+          <div style="font-size: 13px; color: #51627a; margin-top: 8px">ตัวแรกปลอดภัยกว่า เพราะมีทั้งยี่ห้อและกลิ่น</div>
+        </div>
+        <div>
+          <label for="shortname" style="display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px">ชื่อที่จะพิมพ์ในใบแพ็ค</label>
+          <input id="shortname" type="text" value="เย็นลาเวนเดอร์ 6" autocomplete="off" style="box-sizing: border-box; width: 100%; min-height: 48px; padding: 0 14px; border-radius: 10px; border: 2px solid #0b63ce; background: #fff; font-size: 16px; color: #0f2744">
+        </div>
+        <label style="display: flex; gap: 12px; align-items: flex-start; font-size: 14px; line-height: 1.5; padding: 12px 14px; border-radius: 12px; background: #ecfdf3; border: 1px solid #a7e3c0">
+          <input type="checkbox" style="width: 22px; height: 22px; margin: 1px 0 0; flex: 0 0 22px">
+          <span>ฉันตรวจแล้วว่า SKU นี้ถูกต้องสำหรับออเดอร์นี้</span>
+        </label>
+        <div style="display: flex; flex-wrap: wrap; gap: 10px">
+          <button type="button" style="flex: 1 1 160px; min-height: 48px; border-radius: 10px; border: 0; background: #0b63ce; color: #fff; font-size: 16px; font-weight: 700">บันทึกและไปรายการถัดไป</button>
+          <button type="button" style="min-height: 48px; padding: 0 18px; border-radius: 10px; border: 1px solid #b8c7da; background: #fff; color: #0f2744; font-size: 15px; font-weight: 600">ข้าม</button>
+        </div>
+      </aside>
+    </div>
+
+    <div role="region" aria-label="การพิมพ์" style="position: sticky; bottom: 16px; background: #fff; border: 1px solid #b8c7da; border-radius: 16px; box-shadow: 0 8px 24px rgba(7,31,61,0.14); padding: 16px 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; justify-content: space-between">
+      <div style="flex: 1 1 280px; min-width: 0">
+        <div style="font-size: 16px; font-weight: 700">เหลือ 7 รายการที่ต้องตรวจ</div>
+        <div style="font-size: 14px; color: #51627a">พิมพ์ทั้งชุดได้เมื่อตรวจครบ หรือพิมพ์เฉพาะที่พร้อมไปก่อน</div>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 10px">
+        <button type="button" style="min-height: 48px; padding: 0 20px; border-radius: 10px; border: 2px solid #0b63ce; background: #fff; color: #084a99; font-size: 15px; font-weight: 700">พิมพ์เฉพาะที่พร้อม (113)</button>
+        <button type="button" aria-disabled="true" style="min-height: 48px; padding: 0 20px; border-radius: 10px; border: 0; background: #cbd5e1; color: #334155; font-size: 15px; font-weight: 700; cursor: not-allowed">พิมพ์ทั้งชุด (120)</button>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1140}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

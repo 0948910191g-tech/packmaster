@@ -26,7 +26,7 @@ test('SKU/unmapped Review keeps Pilot Safety source identity and never auto-sele
   mustInclude('const getReviewSourceText = (row) => {');
   mustInclude('const handleFixSkuException = (row) => {');
   mustInclude("types.some(type => type === 'REVIEW_SKU' || type === 'UNMAPPED')");
-  mustInclude('pilotSafetyApi.getSkuFixSeed(row, getMatchResult)');
+  mustInclude('pilotSafetyApi.getSkuFixSeed(row, text => getMatchResult(text, row.order.platform))');
   mustInclude('const seed = getReviewSourceText(row);');
   mustInclude('sourceText: seed');
   assert.match(html, /setQuickMapState\(\{\s*open:\s*true,\s*row,\s*sourceText:\s*seed,\s*keyword:\s*'',\s*shortName:\s*'',\s*suggestions\s*\}\);/s);

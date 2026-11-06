@@ -7,10 +7,14 @@ PackMaster รุ่น Local-first ไม่มี Account, Cloud Database ห�
 - Marketplace PDF ต้นฉบับ
 - `pdfImage` ที่สร้างไว้เพื่อ Preview/Reprint
 - Parsed Order/Tracking reference
-- Workspace Backup JSON
+- Workspace Backup JSON (อาจรวมทะเบียนสินค้าและ SKU ของ TikTok/Shopee)
 - Save PDF ที่ใช้แพ็กสินค้า
 
 ข้อมูลเหล่านี้ไม่ควรถูก Commit เข้า Public GitHub Repository หรือแนบใน Public issue
+
+## Marketplace Product Registry
+
+Marketplace product names and SKU/model rows are stored in this Browser's local storage, separated by TikTok and Shopee. They remain separate from the SKU Mapping library; importing a catalog does not create internal names or matching rules. Workspace Backups include the registry when it can be read successfully. Keep source catalogs and backups private and out of Git.
 
 ## ข้อมูล Diagnostics
 

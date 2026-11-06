@@ -43,16 +43,19 @@
 
     const groups = new Map();
     rows.forEach((rule, index) => {
-      const key = normalize(rule.keyword);
-      if (!key) return;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push({ index, rule, outputKey: normalize(rule.shortName) });
+      const keywordKey = normalize(rule.keyword);
+      if (!keywordKey) return;
+      const platformScope = String(rule.platform || '').trim().toUpperCase() || 'GLOBAL';
+      const groupKey = `${platformScope}\u0000${keywordKey}`;
+      if (!groups.has(groupKey)) groups.set(groupKey, []);
+      groups.get(groupKey).push({ index, rule, platformScope, keywordKey, outputKey: normalize(rule.shortName) });
     });
-    groups.forEach((entries, normalizedKeyword) => {
+    groups.forEach((entries) => {
       if (entries.length < 2) return;
       const outputs = new Set(entries.map(entry => entry.outputKey));
       const detail = {
-        normalizedKeyword,
+        platform: entries[0].platformScope,
+        normalizedKeyword: entries[0].keywordKey,
         indexes: entries.map(entry => entry.index),
         rules: entries.map(entry => ({ ...entry.rule }))
       };

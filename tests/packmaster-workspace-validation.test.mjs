@@ -33,4 +33,19 @@ assert.throws(
   'non-string keyword must be rejected before restore writes'
 );
 
+const scopedBackup = workspace.validateBackup({
+  ...base,
+  skuRules: [{ id: 'tt-safe', platform: 'TIKTOK', keyword: 'SAFE TIKTOK PRODUCT', shortName: 'ชื่อภายใน TikTok' }]
+});
+assert.equal(scopedBackup.skuRules[0].platform, 'TIKTOK', 'platform-scoped SKU rules must survive backup validation');
+
+assert.throws(
+  () => workspace.validateBackup({
+    ...base,
+    skuRules: [{ id: 'bad-platform', platform: 'UNKNOWN', keyword: 'x', shortName: 'y' }]
+  }),
+  /platform/i,
+  'unknown SKU rule platforms must be rejected before restore writes'
+);
+
 console.log('PackMaster workspace strict validation tests passed');

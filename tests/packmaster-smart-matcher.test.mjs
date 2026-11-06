@@ -28,9 +28,11 @@ globalThis.__packmasterSmart = {
   scoreSkuRule,
   matchSkuRule,
   parseExplicitTotalQty,
+  joinPositionedText,
   parseTikTokPositionedItems,
   parseShopeePositionedItems: typeof parseShopeePositionedItems === 'function' ? parseShopeePositionedItems : null,
   findContinuationTargetOrder: typeof findContinuationTargetOrder === 'function' ? findContinuationTargetOrder : null,
+  migrateSkuRulesToPlatformScopes: typeof migrateSkuRulesToPlatformScopes === 'function' ? migrateSkuRulesToPlatformScopes : null,
   hasQtyWarning,
   getAggregatedShortName
 };`;
@@ -41,8 +43,10 @@ const {
   normalizeMatchText,
   matchSkuRule,
   parseExplicitTotalQty,
+  joinPositionedText,
   parseTikTokPositionedItems,
   parseShopeePositionedItems,
+  migrateSkuRulesToPlatformScopes,
   hasQtyWarning,
   getAggregatedShortName
 } = context.__packmasterSmart;
@@ -54,6 +58,33 @@ assert.equal(matchSkuRule('Hoya Baby Wipes Plus 5 ห่อ', rules).rule?.id, 3
 assert.equal(matchSkuRule('Haku Cooling 1 ห่อ', rules).rule?.id, 4, 'Cooling 1 must not become Cooling 3');
 assert.equal(matchSkuRule('Haku Cooling 3 ห่อ', rules).rule?.id, 5, 'Cooling 3 must match its own pack size');
 assert.equal(matchSkuRule('Haku Extra Cooling 3 ห่อ', rules).rule?.id, 6, 'Extra Cooling must beat Cooling');
+
+const platformScopedRules = [
+  { id: 'tt-menthol', platform: 'TIKTOK', keyword: 'HAKU Cooling Menthol 1 ห่อ', shortName: 'TikTok Menthol 1' },
+  { id: 'sp-menthol', platform: 'SHOPEE', keyword: 'HAKU Cooling Menthol 1 ห่อ', shortName: 'Shopee Menthol 1' }
+];
+const tiktokScopedMatch = matchSkuRule('HAKU Cooling Menthol 1 ห่อ', platformScopedRules, 'TIKTOK');
+assert.equal(tiktokScopedMatch.status, 'matched', 'TikTok must match only TikTok-scoped SKU rules');
+assert.equal(tiktokScopedMatch.rule?.shortName, 'TikTok Menthol 1');
+const shopeeScopedMatch = matchSkuRule('HAKU Cooling Menthol 1 ห่อ', platformScopedRules, 'SHOPEE');
+assert.equal(shopeeScopedMatch.status, 'matched', 'Shopee must match only Shopee-scoped SKU rules');
+assert.equal(shopeeScopedMatch.rule?.shortName, 'Shopee Menthol 1');
+assert.equal(
+  matchSkuRule('HAKU Cooling Menthol 1 ห่อ', [platformScopedRules[0]], 'SHOPEE').status,
+  'unmatched',
+  'TikTok-only rules must never auto-match a Shopee order'
+);
+
+assert.equal(typeof migrateSkuRulesToPlatformScopes, 'function');
+const migratedLegacyRules = migrateSkuRulesToPlatformScopes([
+  { id: 'legacy-1', keyword: 'HAKU Cooling Menthol 1 ห่อ', shortName: 'Menthol 1' }
+], 'legacy-test');
+assert.deepEqual(
+  Array.from(migratedLegacyRules, rule => rule.platform).sort(),
+  ['SHOPEE', 'TIKTOK'],
+  'legacy shared rules must be copied into independent platform scopes during migration'
+);
+assert.equal(new Set(Array.from(migratedLegacyRules, rule => String(rule.id))).size, 2, 'migrated platform copies need distinct IDs');
 
 const ambiguousRules = [
   { id: 'a', keyword: 'HOYA baby wipes 5', shortName: 'A5' },
@@ -100,6 +131,67 @@ const groupedTikTok = parseTikTokPositionedItems(tikTokGroupedHeader, 1);
 assert.equal(groupedTikTok.parserWarning, false, 'Grouped Product Name / Seller SKU headers must be accepted');
 assert.equal(groupedTikTok.items.length, 1, 'Grouped TikTok header must still produce one row');
 assert.equal(groupedTikTok.items[0].qty, 1);
+
+// 2026-10-19 real PDF regression: PDF.js can emit TikTok table labels and product text one character at a time.
+// Structural labels still need to be detected, real word spaces need to survive, and footer rows must stay outside the SKU.
+let splitIndex = 1000;
+const splitPdfText = (text, startX, y, step = 5) => {
+  let x = startX;
+  let pendingSpace = false;
+  const items = [];
+  for (const character of text) {
+    if (/\s/.test(character)) {
+      pendingSpace = true;
+      x += step;
+      continue;
+    }
+    items.push({ text: character, x, y, index: splitIndex++, spaceBefore: pendingSpace });
+    pendingSpace = false;
+    x += step;
+  }
+  return items;
+};
+
+const tikTokCharacterSplit = [
+  ...splitPdfText('Product Name', 6, 220, 5),
+  ...splitPdfText('SKU', 128, 220, 7),
+  ...splitPdfText('Seller SKU', 170, 220, 7),
+  ...splitPdfText('Qty', 261, 220, 7),
+  ...splitPdfText('Huga Kids Hygiene Wipes 30', 6, 190, 4),
+  ...splitPdfText('ค่าเริ่มต้น', 128, 190, 3),
+  ...splitPdfText('HUGA KIDS 30', 170, 190, 5),
+  { text: '1', x: 265, y: 190, index: splitIndex++, spaceBefore: true },
+  ...splitPdfText('Qty Total: 1', 210, 135, 5),
+  ...splitPdfText('Order ID: TEST-TIKTOK-ORDER-CHAR-SPLIT', 6, 104, 4)
+];
+const characterSplitTikTok = parseTikTokPositionedItems(tikTokCharacterSplit, 1);
+assert.equal(characterSplitTikTok.parserWarning, false, 'character-split TikTok table must parse without warning');
+assert.equal(characterSplitTikTok.items.length, 1, 'character-split TikTok table must produce exactly one SKU row');
+assert.equal(characterSplitTikTok.items[0].qty, 1);
+assert.match(characterSplitTikTok.items[0].text, /Huga Kids Hygiene Wipes 30/i, 'real word spaces must survive PDF.js character splitting');
+assert.doesNotMatch(characterSplitTikTok.items[0].text, /Qty\s*Total|Order\s*ID/i, 'character-split footer must not leak into the SKU row');
+
+const characterSplitSignalText = joinPositionedText(tikTokCharacterSplit);
+assert.match(characterSplitSignalText, /Product Name/i, 'reconstructed PDF signal text must restore split Product Name');
+assert.match(characterSplitSignalText, /Seller SKU/i, 'reconstructed PDF signal text must restore split Seller SKU');
+assert.match(characterSplitSignalText, /Qty Total:\s*1/i, 'reconstructed PDF signal text must restore split Qty Total');
+assert.match(characterSplitSignalText, /Order ID:\s*TEST-TIKTOK-ORDER-CHAR-SPLIT/i, 'reconstructed PDF signal text must restore split Order ID');
+assert.ok(
+  html.includes('const pdfSignalText = `${fullText} ${joinPositionedText(positionedItems)}`;'),
+  'upload flow must combine raw PDF text with reconstructed positioned text for platform/metadata detection'
+);
+assert.ok(
+  html.includes('const declaredTotalQty = parseExplicitTotalQty(pdfSignalText, platform);'),
+  'TikTok Qty Total detection must use reconstructed PDF signal text'
+);
+assert.ok(
+  html.includes('let orderMatch = pdfSignalText.match(/(?:Shopee\\s*Order\\s*No\\.?|Order\\s*ID)'),
+  'Order ID detection must use reconstructed PDF signal text'
+);
+assert.ok(
+  html.includes('TH[A-Z0-9]{10,}'),
+  'TikTok TH-prefixed tracking codes must accept the alphanumeric format emitted by real labels'
+);
 
 // 2026-08-14 real failure case: a purple HOYA Baby 24-carton label was printed as the pink internal SKU.
 // The TikTok parser preserves Product / SKU / Seller SKU separated by " | ". A stale shared mapping can be a
@@ -225,13 +317,13 @@ const tikTokPage2WithFooter = [
   ...tikTokContinuationPage2,
   { text: 'Qty Total:', x: 210, y: 92.0, index: 100 },
   { text: '3', x: 265, y: 92.0, index: 101 },
-  { text: 'Order ID: 580999888777', x: 6, y: 92.0, index: 102 }
+  { text: 'Order ID: TEST-TIKTOK-ORDER-001', x: 6, y: 92.0, index: 102 }
 ];
 const t2WithFooter = parseTikTokPositionedItems(tikTokPage2WithFooter, 3);
 assert.equal(t2WithFooter.parserWarning, false, 'TikTok footer total must not trigger parserWarning');
 assert.equal(t2WithFooter.items.length, 2, 'TikTok footer total in Qty column must not create a 3rd fake SKU row');
 assert.equal(
-  t2WithFooter.items.some(item => /Qty\s*Total|Order\s*ID|580999888777/i.test(item.text)),
+  t2WithFooter.items.some(item => /Qty\s*Total|Order\s*ID|TEST-TIKTOK-ORDER-001/i.test(item.text)),
   false,
   'TikTok footer text must not leak into the last parsed SKU row'
 );
@@ -254,11 +346,37 @@ const simulatedOrders = [
 const targetOrder = context.__packmasterSmart.findContinuationTargetOrder(simulatedOrders, {
   fileName: 'tiktok-multi.pdf',
   platform: 'TIKTOK',
-  currentOrderId: '580999888777',
+  currentOrderId: 'TEST-TIKTOK-ORDER-001',
   hasTracking: false,
   hasTableContent: true
 });
 assert.equal(targetOrder?.id, 'page-1', 'TikTok continuation page without tracking must link to preceding unfinished TikTok main order in the same file');
+
+const crossFileOrder = context.__packmasterSmart.findContinuationTargetOrder([
+  {
+    id: 'other-file-order',
+    tracking: 'TH1111111111',
+    parsedItems: [...t1.items],
+    sourceFileName: 'file-a.pdf',
+    sourcePage: 1,
+    platform: 'TIKTOK',
+    orderId: 'TEST-TIKTOK-ORDER-001',
+    declaredTotalQty: null,
+    parserWarning: false
+  }
+], {
+  fileName: 'file-b.pdf',
+  platform: 'TIKTOK',
+  currentOrderId: 'TEST-TIKTOK-ORDER-001',
+  hasTracking: false,
+  hasTableContent: true
+});
+assert.equal(crossFileOrder, null, 'findContinuationTargetOrder must not merge pages across different PDF files');
+
+assert.ok(
+  html.includes('const hasShopeeOrderSignal = /Shopee\\s*Order\\s*No/i.test(pdfSignalText);'),
+  'Shopee Order No signal must prevent false TikTok classification when Seller SKU / Qty Total text appears'
+);
 
 // Real PDF shadow corpus: wrong auto-match count must be strictly 0 across all real failure cases.
 const shadowCorpus = [
