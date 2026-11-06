@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const clientApi = require('../packmaster-cloud-client.js');
+const workspaceApi = require('../packmaster-workspace.js');
 const token = 'cloud-client-test-token-abcdefghijklmnopqrstuvwxyz';
 
 function simulatedServer() {
@@ -92,6 +93,55 @@ test('Shared Batch data cannot be silently overwritten between two clients', asy
   assert.equal((await alice.loadBatch('batch-01')).orders[0].reviewed, true);
   assert.equal(server.seen.every(call => call.options.credentials === 'omit'), true);
   assert.equal(server.seen.every(call => !call.url.includes(token)), true);
+});
+
+test('Two clients cannot overwrite the completed output snapshot on a stale Batch revision', async () => {
+  const server = simulatedServer();
+  const alice = newClient(server);
+  const bob = newClient(server);
+  const meta = { id: 'batch-01', name: 'Completion CAS' };
+  const orders = [{ id: 'order-01', parsedItems: [{ text: 'SKU1', qty: 1 }] }];
+  await alice.saveBatch(meta, orders);
+  await bob.loadBatch(meta.id);
+
+  const completedAt = '2026-11-06T00:00:00.000Z';
+  const winningSnapshot = { batchId: meta.id, completedAt,
+    orders: [{ id: 'order-01', displayItems: ['Winner'], originalQty: 1,
+      qtyWarning: false, unresolvedSku: false, resolvedAudit: [] }] };
+  await alice.saveBatch({ ...meta, printedAt: completedAt, resolvedSnapshot: winningSnapshot }, orders);
+
+  const staleAt = '2026-11-06T00:01:00.000Z';
+  const staleSnapshot = { ...winningSnapshot, completedAt: staleAt,
+    orders: [{ ...winningSnapshot.orders[0], displayItems: ['Stale output'] }] };
+  await assert.rejects(bob.saveBatch({ ...meta, printedAt: staleAt, resolvedSnapshot: staleSnapshot }, orders),
+    error => error.status === 409 && error.currentRevision === 2);
+  const latest = await bob.loadBatch(meta.id);
+  assert.deepEqual(latest.meta.resolvedSnapshot, winningSnapshot);
+  assert.equal(latest.meta.printedAt, completedAt);
+});
+
+test('Cloud Batch backup and fresh-client restore preserve the resolved print snapshot', async () => {
+  const sourceServer = simulatedServer();
+  const source = newClient(sourceServer);
+  const meta = { id: 'batch-01', name: 'Backup with print history' };
+  const orders = [{ id: 'order-01', parsedItems: [{ text: 'SKU1', qty: 2 }] }];
+  const completedAt = '2026-11-06T00:00:00.000Z';
+  const resolvedSnapshot = { batchId: meta.id, completedAt,
+    orders: [{ id: 'order-01', displayItems: ['Resolved Product'], originalQty: 2,
+      qtyWarning: false, unresolvedSku: false, resolvedAudit: [] }] };
+  await source.saveBatch({ ...meta, printedAt: completedAt, resolvedSnapshot }, orders);
+
+  const payload = await workspaceApi.collectBackupPayload({ batchApi: source.cloudBatchApi,
+    skuRules: [], settings: { reprintSnapshots: {} }, appVersion: 'synthetic-cloud-backup-test' });
+  const backup = workspaceApi.createBackup(payload, new Date('2026-11-06T01:00:00.000Z'));
+  assert.deepEqual(backup.batches[0].resolvedSnapshot, resolvedSnapshot);
+
+  const freshServer = simulatedServer();
+  const freshClient = newClient(freshServer);
+  await workspaceApi.replaceWorkspaceBatches(backup, freshClient.cloudBatchApi);
+  const restored = await freshClient.loadBatch(meta.id);
+  assert.deepEqual(restored.meta.resolvedSnapshot, resolvedSnapshot);
+  assert.deepEqual(restored.orders, orders);
 });
 test('Mapping document CAS protects changes across clients', async () => {
   const server = simulatedServer();
