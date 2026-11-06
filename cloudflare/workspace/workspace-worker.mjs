@@ -71,7 +71,8 @@ function expectedRevision(body) {
 
 function validateBatch(body, batchId) {
   if (!isRecord(body) || !isRecord(body.meta) || body.meta.id !== batchId ||
-      !Array.isArray(body.orders) || body.orders.length > 5000) return false;
+      !Array.isArray(body.orders) || body.orders.length > 5000 ||
+      !validateCompletionMeta(body.meta, batchId)) return false;
   const ids = new Set();
   for (const order of body.orders) {
     if (!isRecord(order) || typeof order.id !== 'string' || !order.id.trim() ||
@@ -84,9 +85,33 @@ function validateBatch(body, batchId) {
   }
   return body.meta.id === batchId;
 }
-function batchInfo(row) {
+function validateCompletionMeta(meta, batchId) {
+  if (!Object.prototype.hasOwnProperty.call(meta, 'resolvedSnapshot')) return true; // Legacy completed Batch.
+  const snapshot = meta.resolvedSnapshot;
+  if (snapshot === null) return meta.printedAt === null || meta.printedAt === undefined;
+  if (typeof meta.printedAt !== 'string' || Number.isNaN(Date.parse(meta.printedAt)) ||
+      !isRecord(snapshot) || snapshot.batchId !== batchId ||
+      snapshot.completedAt !== meta.printedAt || !Array.isArray(snapshot.orders)) return false;
+  const seen = new Set();
+  for (const order of snapshot.orders) {
+    if (!isRecord(order) || typeof order.id !== 'string' || !order.id.trim() || seen.has(order.id) ||
+        !Array.isArray(order.displayItems) || !order.displayItems.every(item => typeof item === 'string') ||
+        !Number.isFinite(order.originalQty) || order.originalQty < 0 || !Array.isArray(order.resolvedAudit)) return false;
+    seen.add(order.id);
+    for (const entry of order.resolvedAudit) {
+      if (!isRecord(entry) || typeof entry.sourceText !== 'string' || !entry.sourceText.trim() ||
+          !['rule', 'manual', 'registry'].includes(entry.resolution) ||
+          typeof entry.shortName !== 'string' || !entry.shortName.trim() ||
+          !Number.isFinite(entry.effectiveQty) || entry.effectiveQty < 1) return false;
+    }
+  }
+  return true;
+}
+function batchInfo(row, includeResolvedSnapshot = false) {
+  const meta = JSON.parse(row.meta_json);
+  if (!includeResolvedSnapshot) delete meta.resolvedSnapshot;
   return {
-    meta: JSON.parse(row.meta_json),
+    meta,
     revision: row.revision,
     updatedAt: row.updated_at
   };
@@ -109,11 +134,11 @@ async function handleBatch(request, env, match, headers) {
     const object = await env.WORKSPACE_OBJECTS.get(current.orders_key);
     if (!object) return reply({ error: 'orders_object_missing' }, 503, headers);
     const orders = JSON.parse(await object.text());
-    if (Array.isArray(orders)) return reply({ ...batchInfo(current), orders }, 200, headers);
+    if (Array.isArray(orders)) return reply({ ...batchInfo(current, true), orders }, 200, headers);
     if (isRecord(orders) && orders.format === PART_FORMAT &&
         orders.batchId === id && checkManifestParts(orders.partHashes, orders.orderCount)) {
       return reply({
-        ...batchInfo(current), ordersParts: orders.partHashes,
+        ...batchInfo(current, true), ordersParts: orders.partHashes,
         totalOrders: orders.orderCount, ordersFormat: PART_FORMAT
       }, 200, headers);
     }
@@ -142,14 +167,15 @@ async function handleBatch(request, env, match, headers) {
   const usesParts = isRecord(body) && Object.prototype.hasOwnProperty.call(body, 'partHashes');
   if (usesParts) {
     if (!isRecord(body.meta) || body.meta.id !== id ||
-        body.orders !== undefined || !checkManifestParts(body.partHashes, body.orderCount)) {
+        !validateCompletionMeta(body.meta, id) || body.orders !== undefined ||
+        !checkManifestParts(body.partHashes, body.orderCount)) {
       return reply({ error: 'invalid_batch_parts' }, 400, headers);
     }
   } else if (!validateBatch(body, id)) {
     return reply({ error: 'invalid_batch_or_orders' }, 400, headers);
   }
   const metaJson = JSON.stringify({ ...body.meta, updatedAt: now });
-  if (new TextEncoder().encode(metaJson).byteLength > 100000) {
+  if (new TextEncoder().encode(metaJson).byteLength > 1500000) {
     return reply({ error: 'batch_metadata_too_large' }, 413, headers);
   }
   if (usesParts) {

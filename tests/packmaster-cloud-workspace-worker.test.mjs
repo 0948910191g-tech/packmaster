@@ -105,6 +105,47 @@ test('Batch and order images persist in R2 with independent revisions', async ()
   assert.equal((await request(env, '/batches/batch-02')).payload.revision, 1);
 });
 
+test('Completed Batch metadata carries its immutable output atomically but stays out of list summaries', async () => {
+  const env = environment();
+  const snapshot = {
+    batchId: 'batch-01', completedAt: '2026-11-06T00:00:00.000Z',
+    orders: [{ id: 'order-01', displayItems: ['Historical Product'], originalQty: 2,
+      qtyWarning: false, unresolvedSku: false, resolvedAudit: [] }]
+  };
+  const completed = { ...batch(), expectedRevision: 0,
+    meta: { ...batch().meta, printedAt: snapshot.completedAt, resolvedSnapshot: snapshot } };
+  const saved = await request(env, '/batches/batch-01', 'PUT', completed);
+  assert.equal(saved.response.status, 200);
+  assert.deepEqual(saved.payload.meta.resolvedSnapshot, snapshot);
+
+  const listed = await request(env, '/batches');
+  assert.equal(Object.hasOwn(listed.payload.batches[0].meta, 'resolvedSnapshot'), false);
+  const loaded = await request(env, '/batches/batch-01');
+  assert.deepEqual(loaded.payload.meta.resolvedSnapshot, snapshot);
+  assert.equal(loaded.payload.meta.printedAt, snapshot.completedAt);
+
+  const reset = await request(env, '/batches/batch-01', 'PUT', {
+    ...batch(), expectedRevision: 1,
+    meta: { ...batch().meta, printedAt: null, resolvedSnapshot: null }
+  });
+  assert.equal(reset.response.status, 200);
+  const reopened = await request(env, '/batches/batch-01');
+  assert.equal(reopened.payload.meta.printedAt, null);
+  assert.equal(reopened.payload.meta.resolvedSnapshot, null);
+});
+
+test('Cloud refuses a completion snapshot that does not match printedAt before creating a Batch', async () => {
+  const env = environment();
+  const invalid = { ...batch(), expectedRevision: 0, meta: { ...batch().meta,
+    printedAt: '2026-11-06T00:00:00.000Z',
+    resolvedSnapshot: { batchId: 'batch-01', completedAt: '2026-11-05T00:00:00.000Z', orders: [] }
+  } };
+  const result = await request(env, '/batches/batch-01', 'PUT', invalid);
+  assert.equal(result.response.status, 400);
+  assert.equal((await request(env, '/batches')).payload.batches.length, 0);
+  assert.equal(env.objects.size, 0);
+});
+
 test('Stale writes and deletes cannot overwrite a newer batch', async () => {
   const env = environment();
   await request(env, '/batches/batch-01', 'PUT', { ...batch(), expectedRevision: 0 });

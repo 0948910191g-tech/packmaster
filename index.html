@@ -1457,6 +1457,54 @@
       const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
       const [exceptionMode, setExceptionMode] = useState(false);
       const [quickMapState, setQuickMapState] = useState({ open: false, row: null, keyword: '', shortName: '' });
+      const quickMapDialogRef = useRef(null);
+      const quickMapOpenerRef = useRef(null);
+      useEffect(() => {
+        if (!quickMapState.open) return;
+        const dialog = quickMapDialogRef.current;
+        if (!dialog) return;
+        const siblings = Array.from(dialog.parentElement?.children || []).filter(child => child !== dialog);
+        const previousInert = siblings.map(child => [child, child.inert]);
+        siblings.forEach(child => { child.inert = true; });
+        const focusable = () => Array.from(dialog.querySelectorAll(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )).filter(element => element.getClientRects().length > 0);
+        const focusInside = () => {
+          const target = dialog.querySelector('[autofocus]') || focusable()[0] || dialog;
+          target.focus();
+        };
+        const onKeyDown = event => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            setQuickMapState({ open: false, row: null, keyword: '', shortName: '' });
+            return;
+          }
+          if (event.key !== 'Tab') return;
+          const items = focusable();
+          if (!items.length) {
+            event.preventDefault();
+            dialog.focus();
+            return;
+          }
+          const first = items[0];
+          const last = items[items.length - 1];
+          if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+            event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+            event.preventDefault();
+            first.focus();
+          }
+        };
+        document.addEventListener('keydown', onKeyDown, true);
+        requestAnimationFrame(focusInside);
+        return () => {
+          document.removeEventListener('keydown', onKeyDown, true);
+          previousInert.forEach(([element, wasInert]) => { element.inert = wasInert; });
+          const opener = quickMapOpenerRef.current;
+          if (opener?.isConnected) requestAnimationFrame(() => opener.focus());
+        };
+      }, [quickMapState.open]);
       const [printScopeMode, setPrintScopeMode] = useState('FULL_BATCH');
       const [reviewPage, setReviewPage] = useState(1);
       const [reviewPageSize, setReviewPageSize] = useState(12);
@@ -1496,8 +1544,9 @@
         if (!cloudMode || !reprintSnapshotApi || typeof cloud.getDocument !== 'function') return;
         let active = true;
         cloud.getDocument('reprintSnapshots').then(doc => {
-          if (!active || !doc || !doc.value) return;
-          reprintSnapshotApi.replaceStore(doc.value);
+          if (!active) return;
+          if (doc?.value) reprintSnapshotApi.replaceStore(doc.value);
+          setReprintSnapshotVersion(version => version + 1);
         }).catch(err => {
           console.warn('โหลด Snapshot จาก Cloud ไม่สำเร็จ', err);
         });
@@ -1602,6 +1651,7 @@
       // Phase 3A — Workspace Backup / Restore Safety
       const [restorePreview, setRestorePreview] = useState(null);
       const [restoreFileName, setRestoreFileName] = useState('');
+      const [reprintSnapshotVersion, setReprintSnapshotVersion] = useState(0);
       const [workspaceBusy, setWorkspaceBusy] = useState(false);
 
       // Phase 3E-H — local-only hardening / pilot readiness
@@ -1787,6 +1837,17 @@
         }
         let files = Array.from(e.target.files);
         if (files.length === 0) return;
+        if (loadingStatus.active) {
+          setUploadError('กำลังประมวลผลไฟล์อยู่ กรุณารอให้เสร็จก่อน');
+          e.target.value = '';
+          return;
+        }
+        const unsupportedFiles = files.filter(file => !String(file.name || '').toLowerCase().endsWith('.pdf'));
+        if (unsupportedFiles.length > 0) {
+          setUploadError('รองรับเฉพาะไฟล์ PDF กรุณาเลือกไฟล์ใหม่อีกครั้ง');
+          e.target.value = '';
+          return;
+        }
 
         if (!activeBatchId) {
           showToast('กรุณาสร้างหรือเปิด Batch ก่อนอัปโหลดไฟล์', 'error');
@@ -2190,7 +2251,7 @@
               // Otherwise a 4 MiB Free-plan limit or network error can produce a phantom import.
               try {
                 const meta = batchApi.buildBatchMeta(uploadBatch, reviewSummary, {
-                  printedAt: null, now: new Date()
+                  printedAt: null, resolvedSnapshot: null, now: new Date()
                 });
                 const storedMeta = await batchApi.saveBatch(meta, nextOrders);
                 upsertBatchMeta(storedMeta);
@@ -2202,15 +2263,18 @@
               if (batchStorageReady && batchApi && uploadBatch) {
                 try {
                   const meta = batchApi.buildBatchMeta(uploadBatch, reviewSummary, {
-                    printedAt: null, now: new Date()
+                    printedAt: null, resolvedSnapshot: null, now: new Date()
                   });
                   const storedMeta = await batchApi.saveBatch(meta, nextOrders);
                   upsertBatchMeta(storedMeta);
+                  if (reprintSnapshotApi && uploadBatch.printedAt) {
+                    try { reprintSnapshotApi.clearBatchSnapshot(uploadBatch.id); }
+                    catch (snapshotError) { console.warn('Clear legacy resolved snapshot after upload failed', snapshotError); }
+                  }
                 } catch (saveErr) {
                   console.error('Save upload batch failed', saveErr);
                 }
               }
-              resetActiveBatchCompletion();
             }
 
             if (duplicateApi && acceptedSourceFiles.length > 0) {
@@ -2327,9 +2391,11 @@
 
       const historicalSnapshot = useMemo(() => {
         if (!activeBatchId || !activeBatch?.printedAt || !reprintSnapshotApi) return null;
+        if (activeBatch.resolvedSnapshot) return activeBatch.resolvedSnapshot;
         try { return reprintSnapshotApi.getBatchSnapshot(activeBatchId); }
         catch (error) { console.error('Resolved reprint snapshot is unreadable', error); return null; }
-      }, [activeBatchId, activeBatch && activeBatch.printedAt, reprintSnapshotApi]);
+      }, [activeBatchId, activeBatch && activeBatch.printedAt,
+        activeBatch && activeBatch.resolvedSnapshot, reprintSnapshotApi, reprintSnapshotVersion]);
 
       const MappedOrders = useMemo(() => {
         if (!activeBatch?.printedAt) return LiveMappedOrders;
@@ -2514,6 +2580,7 @@
           return;
         }
         const suggestions = cloudMode ? [] : getReviewKeywordSuggestions(seed);
+        quickMapOpenerRef.current = document.activeElement;
         setQuickMapState({ open: true, row, sourceText: seed, keyword: '', shortName: '', suggestions });
       };
 
@@ -2525,13 +2592,14 @@
           return;
         }
         const seed = getReviewSourceText(row);
+        quickMapOpenerRef.current = document.activeElement;
         setQuickMapState({ open: true, row, sourceText: seed, keyword: '', shortName: '', suggestions: [] });
       };
 
-      const handleSetReviewConfirmation = (type, confirmed) => {
+      const handleSetReviewConfirmation = async (type, confirmed) => {
         const targetOrderId = quickMapState.row?.order?.id;
         if (!targetOrderId || !reviewOverridesApi) return;
-        resetActiveBatchCompletion();
+        if (!await resetActiveBatchCompletion()) return;
         setOrders(prev => prev.map(order => {
           if (order.id !== targetOrderId) return order;
           return confirmed
@@ -2549,7 +2617,7 @@
         showToast((confirmed ? 'ยืนยันว่า ' : 'ยกเลิกการยืนยัน ') + label + (confirmed ? ' ถูกต้องแล้ว' : ' แล้ว'), 'success');
       };
 
-      const handleSaveQtyReviewCorrections = () => {
+      const handleSaveQtyReviewCorrections = async () => {
         const targetOrderId = quickMapState.row?.order?.id;
         const items = Array.isArray(quickMapState.row?.order?.parsedItems) ? quickMapState.row.order.parsedItems : [];
         if (!targetOrderId || !reviewOverridesApi || items.length === 0) return;
@@ -2564,7 +2632,7 @@
           showToast('Qty ที่แก้ต้องเป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป', 'error');
           return;
         }
-        resetActiveBatchCompletion();
+        if (!await resetActiveBatchCompletion()) return;
         const applyQtyCorrections = (order) => {
           let next = corrections.reduce((current, entry) => reviewOverridesApi.upsertQtyOverride(current, entry.item, entry.itemIndex, entry.qty), order);
           next = reviewOverridesApi.confirmReview(next, 'qty');
@@ -2578,7 +2646,7 @@
         showToast('บันทึก Qty ที่แก้และยืนยันแล้ว', 'success');
       };
 
-      const handleApplyQuickOrderName = () => {
+      const handleApplyQuickOrderName = async () => {
         const shortName = String(quickMapState.shortName || '').trim();
         const sourceText = String(quickMapState.sourceText || '').trim();
         const targetOrderId = quickMapState.row?.order?.id;
@@ -2586,7 +2654,7 @@
           showToast('กรุณาเลือกหรือกรอกชื่อภายในก่อนใช้กับ Order นี้', 'error');
           return;
         }
-        resetActiveBatchCompletion();
+        if (!await resetActiveBatchCompletion()) return;
         setOrders(prev => prev.map(order => {
           if (order.id !== targetOrderId) return order;
           let next = reviewOverridesApi.upsertManualSkuOverride(order, sourceText, shortName);
@@ -3025,21 +3093,27 @@
         }
       };
 
-      const resetActiveBatchCompletion = () => {
-        if (!activeBatch || !activeBatch.printedAt || !batchApi) return;
-        if (reprintSnapshotApi) {
-          try {
-            reprintSnapshotApi.clearBatchSnapshot(activeBatch.id);
-            if (typeof cloudMode !== 'undefined' && cloudMode && typeof cloud !== 'undefined' && typeof cloud.saveDocument === 'function') {
-              cloud.saveDocument('reprintSnapshots', reprintSnapshotApi.exportStore()).catch(err => console.warn('Sync reprintSnapshots to Cloud failed', err));
-            }
-          }
-          catch (snapshotError) { console.warn('Clear resolved snapshot failed', snapshotError); }
+      const resetActiveBatchCompletion = async () => {
+        if (!activeBatch || !activeBatch.printedAt || !batchApi) return true;
+        if (!batchStorageReady) {
+          showToast('ไม่สามารถยกเลิกสถานะ Completed ได้ เพราะ Batch storage ยังไม่พร้อม', 'error');
+          return false;
         }
-        const resetMeta = batchApi.buildBatchMeta(activeBatch, reviewSummary, { printedAt: null, now: new Date() });
-        upsertBatchMeta(resetMeta);
-        if (batchStorageReady) {
-          batchApi.saveBatch(resetMeta, orders).catch(err => console.error('Reset completed batch failed', err));
+        const resetMeta = batchApi.buildBatchMeta(activeBatch, reviewSummary, {
+          printedAt: null, resolvedSnapshot: null, now: new Date()
+        });
+        try {
+          const savedMeta = await batchApi.saveBatch(resetMeta, orders);
+          upsertBatchMeta(savedMeta || resetMeta);
+          if (reprintSnapshotApi) {
+            try { reprintSnapshotApi.clearBatchSnapshot(activeBatch.id); }
+            catch (snapshotError) { console.warn('Clear legacy resolved snapshot failed', snapshotError); }
+          }
+          return true;
+        } catch (err) {
+          console.error('Reset completed batch failed', err);
+          showToast('ยกเลิก Completed ไม่สำเร็จ — ประวัติเดิมยังอยู่ครบ กรุณาโหลด Batch ล่าสุดแล้วลองอีกครั้ง', 'error');
+          return false;
         }
       };
 
@@ -3048,35 +3122,52 @@
           showToast('ยังบันทึก Snapshot สำหรับ Reprint ไม่ได้ จึงยังไม่พิมพ์แบบ Completed', 'error');
           return false;
         }
-        const previousSnapshot = reprintSnapshotApi.getBatchSnapshot(activeBatch.id);
-        const printedAt = new Date().toISOString();
-        const completedMeta = batchApi.buildBatchMeta(activeBatch, reviewSummary, { printedAt, now: new Date() });
-        let snapshotCreated = false;
-        try {
-          if (!activeBatch.printedAt) {
-            reprintSnapshotApi.saveBatchSnapshot(activeBatch.id, MappedOrders.map(order => ({ ...order, resolvedAudit: order.resolvedAudit || [] })), printedAt, () => true);
-            snapshotCreated = true;
+        let snapshot = activeBatch.resolvedSnapshot || null;
+        if (activeBatch.printedAt) {
+          if (!snapshot) {
+            try { snapshot = reprintSnapshotApi.getBatchSnapshot(activeBatch.id); }
+            catch (snapshotError) { console.error('Read legacy resolved snapshot failed', snapshotError); }
           }
+          if (!snapshot) {
+            showToast('ไม่พบประวัติผลพิมพ์เดิม — ตรวจสอบก่อน Reprint', 'error');
+            return false;
+          }
+        } else {
+          const printedAt = new Date().toISOString();
+          try {
+            snapshot = reprintSnapshotApi.validateSnapshot({
+              batchId: activeBatch.id,
+              completedAt: printedAt,
+              orders: MappedOrders.map(order => ({ ...order, resolvedAudit: order.resolvedAudit || [] }))
+            });
+          } catch (snapshotError) {
+            console.error('Build resolved print snapshot failed', snapshotError);
+            showToast('สร้าง Snapshot สำหรับ Reprint ไม่สำเร็จ — Batch ยังไม่ Completed', 'error');
+            return false;
+          }
+        }
+        const completedMeta = batchApi.buildBatchMeta(activeBatch, reviewSummary, {
+          printedAt: snapshot.completedAt, resolvedSnapshot: snapshot, now: new Date()
+        });
+        try {
           const savedMeta = await batchApi.saveBatch(completedMeta, orders);
           upsertBatchMeta(savedMeta || completedMeta);
-          if (typeof cloudMode !== 'undefined' && cloudMode && typeof cloud !== 'undefined' && typeof cloud.saveDocument === 'function') {
-            await cloud.saveDocument('reprintSnapshots', reprintSnapshotApi.exportStore());
-          }
           return true;
         } catch (err) {
-          if (snapshotCreated) {
-            try {
-              if (previousSnapshot) {
-                reprintSnapshotApi.saveBatchSnapshot(activeBatch.id, previousSnapshot.orders, previousSnapshot.completedAt, () => true);
-              } else {
-                reprintSnapshotApi.clearBatchSnapshot(activeBatch.id);
-              }
-            } catch (cleanupError) {
-              console.warn('Rollback resolved snapshot failed', cleanupError);
+          // A response can be lost after the Cloud revision commits. Read the
+          // authoritative Batch and reconcile only when both fields match.
+          try {
+            const current = await batchApi.loadBatch(activeBatch.id);
+            if (current?.meta?.printedAt === completedMeta.printedAt &&
+                JSON.stringify(current.meta.resolvedSnapshot) === JSON.stringify(snapshot)) {
+              upsertBatchMeta(current.meta);
+              return true;
             }
+          } catch (reconcileError) {
+            console.warn('Could not reconcile Batch completion after save error', reconcileError);
           }
           console.error('Mark batch completed with snapshot failed', err);
-          showToast('บันทึกผลสำหรับ Reprint ไม่สำเร็จ — ยังไม่เปลี่ยน Batch เป็น Completed', 'error');
+          showToast('บันทึกผลสำหรับ Reprint ไม่สำเร็จ — Batch ยังไม่ยืนยันเป็น Completed', 'error');
           return false;
         }
       };
@@ -3824,8 +3915,8 @@
           )}
 
           {quickMapState.open && (
-            <div data-pm-quick-mapping className="pm-quick-map-backdrop no-print" role="dialog" aria-modal="true" aria-label="ตรวจและแก้ Exception">
-              <div className="pm-quick-map-panel !max-w-6xl !w-[min(1180px,96vw)]">
+            <div ref={quickMapDialogRef} data-pm-quick-mapping className="pm-quick-map-backdrop no-print" role="dialog" aria-modal="true" aria-label="ตรวจและแก้ Exception">
+              <div tabIndex={-1} className="pm-quick-map-panel !max-w-6xl !w-[min(1180px,96vw)]">
                 <div className="flex items-start justify-between gap-3">
                   <div><div className="pm-section-kicker">Exception Review</div><h3 className="text-lg font-black text-slate-900 mt-1">ตรวจใบจริง แล้วตัดสินใจเฉพาะ Order นี้</h3><p className="text-xs font-semibold text-slate-400 mt-1">การยืนยัน/แก้เฉพาะ Order จะไม่สร้าง Shared Mapping อัตโนมัติ</p></div>
                   <button onClick={()=>setQuickMapState({ open:false, row:null, keyword:'', shortName:'' })} className="pm-icon-btn" title="ปิด" aria-label="ปิด">×</button>
@@ -3864,7 +3955,7 @@
                         <div className="flex items-center justify-between gap-2"><label className="pm-label mb-0">Keyword แนะนำที่ผ่าน Safety Check</label><span className="text-[10px] font-semibold text-slate-400">ไม่ Auto-fill • ไม่ Auto-save</span></div>
                         {(quickMapState.suggestions || []).length > 0 ? <div className="mt-2 grid gap-2">{(quickMapState.suggestions || []).map((suggestion,index)=>{const selected=quickMapState.keyword===suggestion.value;return <button key={`${suggestion.value}-${index}`} type="button" data-pm-keyword-suggestion onClick={()=>setQuickMapState(prev => ({ ...prev, keyword: suggestion.value }))} className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${selected ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-100' : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-blue-50/40'}`}><div className="flex items-start justify-between gap-3"><span className="text-xs font-black text-slate-800 break-words">{suggestion.displayValue || suggestion.value}</span><span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-black ${suggestion.confidence === 'recommended' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>{suggestion.confidence === 'recommended' ? 'ปลอดภัย' : 'ตรวจอีกครั้ง'}</span></div><div className="mt-1 text-[10px] font-semibold text-slate-500">{suggestion.confidence === 'recommended' ? 'ผ่าน Smart Matcher กับคลังและ Batch ปัจจุบัน' : 'เฉพาะที่สุดจากใบจริง • ระบบจะเช็ก Safety อีกครั้งก่อนบันทึก'}</div></button>})}</div> : <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-500">ยังตั้งชื่อเฉพาะ Order นี้ได้ — กรุณาอ้างอิงใบจริงด้านซ้ายและใช้ Keyword ที่เฉพาะเจาะจง</div>}
                       </div>}
-                      <div className="mt-3"><label className="pm-label">ชื่อภายใน / ผลลัพธ์ที่จะพิมพ์</label><input autoFocus list="pm-internal-name-options" value={quickMapState.shortName} onChange={(e)=>setQuickMapState(prev=>({ ...prev, shortName:e.target.value }))} placeholder={cloudMode ? 'ระบุชื่อในคลัง PPG ที่ตรวจสอบแล้ว' : 'ค้นหาจากคลัง หรือกรอกชื่อใหม่'} className="pm-input text-base font-black" /><datalist id="pm-internal-name-options">{(cloudMode ? [...new Set((registryAssignments?.entries || []).map(entry => entry.shortName))] : internalNameChoices).map(name=><option key={name} value={name} />)}</datalist></div>
+                      <div className="mt-3"><label htmlFor="pm-quick-map-internal-name" className="pm-label">ชื่อภายใน / ผลลัพธ์ที่จะพิมพ์</label><input id="pm-quick-map-internal-name" autoFocus list="pm-internal-name-options" value={quickMapState.shortName} onChange={(e)=>setQuickMapState(prev=>({ ...prev, shortName:e.target.value }))} placeholder={cloudMode ? 'ระบุชื่อในคลัง PPG ที่ตรวจสอบแล้ว' : 'ค้นหาจากคลัง หรือกรอกชื่อใหม่'} className="pm-input text-base font-black" /><datalist id="pm-internal-name-options">{(cloudMode ? [...new Set((registryAssignments?.entries || []).map(entry => entry.shortName))] : internalNameChoices).map(name=><option key={name} value={name} />)}</datalist></div>
                       <div className="mt-3 grid sm:grid-cols-2 gap-2"><button onClick={handleSaveQuickMapping} disabled={registryAssignmentsBusy || !quickMapState.shortName.trim() || (!cloudMode && !quickMapState.keyword.trim())} className="pm-secondary-btn justify-center">{cloudMode ? 'ยืนยันชื่อภายในให้ Seller SKU นี้' : 'บันทึกเป็น Mapping และใช้'}</button><button onClick={handleApplyQuickOrderName} disabled={!quickMapState.shortName.trim()} className="pm-primary-btn justify-center">ใช้กับ Order นี้</button></div>
                     </>}
 
@@ -4091,7 +4182,7 @@
                               {orders.length > 0 && <button onClick={() => navigateView('review')} className="pm-primary-btn">รีวิว & พิมพ์ <PMIcon name="arrow-right" /></button>}
                             </div>
 
-                            <div className={`pm-upload-zone ${loadingStatus.active ? 'pm-upload-zone-active' : ''}`}>
+                            <div className={`pm-upload-zone ${loadingStatus.active ? 'pm-upload-zone-active' : ''}`} onDragOver={event => { event.preventDefault(); if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'; }} onDrop={event => { event.preventDefault(); if (loadingStatus.active) { setUploadError('กำลังประมวลผลไฟล์อยู่ กรุณารอให้เสร็จก่อน'); return; } const files = Array.from(event.dataTransfer?.files || []); if (files.length) handleFileUpload({ target: { files, value: '' } }); }}>
                               {loadingStatus.active ? (
                                 <div className="text-center py-8"><div className="pm-spinner mx-auto mb-4"></div><h3 className="text-lg font-black text-slate-900">กำลังประมวลผล PDF</h3><p className="text-xs font-bold text-slate-500 mt-2">อ่านหน้าที่ {loadingStatus.current} จาก {loadingStatus.total || '...'}</p>{loadingStatus.total > 0 && <div className="max-w-sm mx-auto mt-4 h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-blue-600 rounded-full transition-all" style={{width:`${Math.min(100,(loadingStatus.current/loadingStatus.total)*100)}%`}}></div></div>}</div>
                               ) : (
@@ -4380,12 +4471,12 @@
 
                 {activeView === 'safety' && (
                   <section data-pm-view="safety" data-pm-layout-v4 className="pm-page">
-                    <div className="pm-page-head"><div><div className="pm-eyebrow">Local Safety</div><h2 className="pm-page-title">สำรองข้อมูล & ความปลอดภัย</h2><p className="pm-page-subtitle">สำรอง Workspace, ตรวจพื้นที่ และสร้าง Diagnostics โดยข้อมูลไม่ถูกส่งขึ้น Server</p></div><div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-black"><PMIcon name="shield"/> Local-only</div></div>
+                    <div className="pm-page-head"><div><div className="pm-eyebrow">{cloudMode ? 'Cloud Safety' : 'Local Safety'}</div><h2 className="pm-page-title">สำรองข้อมูล & ความปลอดภัย</h2><p className="pm-page-subtitle">{cloudMode ? 'Batch, Orders และ Archive เก็บใน Cloud; Duplicate history และ Source filenames อยู่ใน Browser นี้' : 'สำรอง Workspace, ตรวจพื้นที่ และสร้าง Diagnostics ใน Browser นี้'}</p></div><div className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-black ${cloudMode ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}><PMIcon name="shield"/> {cloudMode ? 'Cloud + Browser sidecars' : 'Local-only'}</div></div>
 
                     <div className="grid xl:grid-cols-2 gap-4">
                       <div className="pm-card p-5">
-                        <div className="flex items-start gap-3"><div className="pm-feature-icon"><PMIcon name="database"/></div><div className="flex-1"><div className="pm-section-kicker">Workspace Backup</div><h3 className="text-base font-black text-slate-900">ความปลอดภัย Workspace</h3><p className="text-xs font-semibold text-slate-400 mt-1 leading-5">สำรองคลังคำศัพท์, Settings และ Batch เป็น JSON ในเครื่อง ก่อนย้ายเครื่องหรือล้าง Browser</p></div></div>
-                        <div className="flex flex-wrap gap-2 mt-5"><button data-pm-action="workspace-backup" onClick={handleWorkspaceBackup} disabled={workspaceBusy||!batchStorageReady} className="pm-primary-btn"><PMIcon name="download"/> สำรอง Workspace</button><label className={`pm-secondary-btn cursor-pointer ${workspaceBusy||!batchStorageReady?'opacity-50 pointer-events-none':''}`}><PMIcon name="upload"/> กู้คืน Workspace<input type="file" accept=".json,application/json" disabled={workspaceBusy||!batchStorageReady} className="hidden" onChange={handleWorkspaceRestoreFile}/></label></div>
+                        <div className="flex items-start gap-3"><div className="pm-feature-icon"><PMIcon name="database"/></div><div className="flex-1"><div className="pm-section-kicker">Workspace Backup</div><h3 className="text-base font-black text-slate-900">ความปลอดภัย Workspace</h3><p className="text-xs font-semibold text-slate-400 mt-1 leading-5">{cloudMode ? 'ส่งออก Batch/Orders จาก Cloud พร้อมข้อมูล sidecar ที่อยู่ใน Browser นี้เป็น JSON' : 'สำรองคลังคำศัพท์, Settings และ Batch เป็น JSON ในเครื่อง ก่อนย้ายเครื่องหรือล้าง Browser'}</p></div></div>
+                        <div className="flex flex-wrap gap-2 mt-5"><button data-pm-action="workspace-backup" onClick={handleWorkspaceBackup} disabled={workspaceBusy||!batchStorageReady} className="pm-primary-btn"><PMIcon name="download"/> สำรอง Workspace</button>{!cloudMode ? <label className={`pm-secondary-btn cursor-pointer ${workspaceBusy||!batchStorageReady?'opacity-50 pointer-events-none':''}`}><PMIcon name="upload"/> กู้คืน Workspace<input type="file" accept=".json,application/json" disabled={workspaceBusy||!batchStorageReady} className="hidden" onChange={handleWorkspaceRestoreFile}/></label> : <div data-pm-cloud-restore-unavailable className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">Cloud Replace Workspace ยังไม่รองรับ — ไฟล์ส่งออกจากหน้านี้กู้คืน Cloud ไม่ได้</div>}</div>
                         <div className="mt-4 rounded-xl bg-amber-50 border border-amber-200 px-3 py-3 text-[11px] font-semibold leading-5 text-amber-800">Backup อาจมีข้อมูลที่อ่านจากใบออเดอร์ ควรเก็บเป็นข้อมูลภายในร้านและไม่อัปโหลดไฟล์จริงขึ้น Public GitHub</div>
 
                         {restorePreview&&<div className="mt-4 rounded-xl border-2 border-blue-200 bg-blue-50/50 p-4"><div className="text-[10px] font-black text-blue-600">ตรวจไฟล์ผ่านแล้ว • {restoreFileName||'Backup JSON'}</div>{restorePreview.marketplaceSummary&&<div className="mt-2 text-xs font-bold text-blue-800">Marketplace Registry: TikTok {restorePreview.marketplaceSummary.TIKTOK.productCount} สินค้า • Shopee {restorePreview.marketplaceSummary.SHOPEE.productCount} สินค้า</div>}<div className="grid grid-cols-3 gap-2 mt-3"><div className="pm-mini-stat"><span>SKU Rules</span><strong>{restorePreview.summary.skuRules}</strong></div><div className="pm-mini-stat"><span>Batches</span><strong>{restorePreview.summary.batches}</strong></div><div className="pm-mini-stat"><span>Orders</span><strong>{restorePreview.summary.orders}</strong></div></div><div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-blue-200"><span className="text-[10px] font-bold text-red-600">Replace Workspace จะแทนข้อมูล Local ปัจจุบัน</span><div className="flex gap-2"><button onClick={resetRestorePreview} className="pm-ghost-btn">ยกเลิก</button><button onClick={handleConfirmWorkspaceRestore} disabled={workspaceBusy} className="pm-danger-btn">Replace Workspace</button></div></div></div>}

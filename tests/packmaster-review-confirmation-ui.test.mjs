@@ -50,8 +50,8 @@ test('SKU and Qty warnings can be confirmed or corrected per Order', () => {
 });
 
 test('saving a valid Qty correction resolves the Qty review in the same action', () => {
-  const start = html.indexOf('const handleSaveQtyReviewCorrections = () => {');
-  const end = html.indexOf('const handleApplyQuickOrderName = () => {', start);
+  const start = html.indexOf('const handleSaveQtyReviewCorrections = async () => {');
+  const end = html.indexOf('const handleApplyQuickOrderName = async () => {', start);
   assert.ok(start >= 0 && end > start, 'Qty correction handler must exist');
   const handler = html.slice(start, end);
   assert.ok(handler.includes("reviewOverridesApi.confirmReview(next, 'qty')"), 'valid Qty correction must confirm the corrected Qty without a second manual click');

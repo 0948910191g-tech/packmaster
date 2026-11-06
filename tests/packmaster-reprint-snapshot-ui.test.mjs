@@ -7,7 +7,8 @@ assert.ok(html.includes('const reprintSnapshotApi = window.PackMasterReprintSnap
 assert.ok(html.includes('const LiveMappedOrders = useMemo(() => orders.map(o => {'));
 assert.ok(html.includes("resolution: 'manual'"), 'manual resolution must be auditable');
 assert.ok(html.includes("resolution: cloudMode ? 'registry' : 'rule'"), 'registry and local rule resolutions must be auditable separately');
-assert.ok(html.includes('reprintSnapshotApi.saveBatchSnapshot(activeBatch.id, MappedOrders.map'));
+assert.ok(html.includes('reprintSnapshotApi.validateSnapshot({'), 'new completion snapshots must be validated before persisting with the Batch');
+assert.ok(html.includes('resolvedSnapshot: snapshot'), 'completion history must be part of the same Batch revision as printedAt');
 assert.ok(html.includes('reprintSnapshotApi.applyBatchSnapshot(LiveMappedOrders, historicalSnapshot)'));
 assert.ok(html.includes('ประวัติผลพิมพ์เดิมไม่ครบ — ตรวจสอบก่อน Reprint'), 'legacy completed batches without a valid snapshot must fail visible');
 assert.ok(html.includes('reprintSnapshotApi.clearBatchSnapshot(activeBatch.id)'), 'editing a completed Batch must unfreeze its old snapshot');

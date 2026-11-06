@@ -13,7 +13,7 @@ test('unresolved full Batch prints and remains marked printed',async()=>{
  const events=[];let saved;
  const store=new Map();const storage={getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v)};
  const order={id:'o1',displayItems:['ยังไม่ตั้งชื่อ'],originalQty:1,qtyWarning:true,unresolvedSku:true,resolvedAudit:[]};
- const s={Date,console,activeBatch:{id:'b1'},activeBatchId:'b1',batchApi:{...batch,saveBatch:async m=>(saved=m)},batchStorageReady:true,reprintSnapshotApi:{...snapshots,saveBatchSnapshot:(...args)=>snapshots.saveBatchSnapshot(...args.slice(0,4),storage),getBatchSnapshot:id=>snapshots.getBatchSnapshot(id,storage),clearBatchSnapshot:id=>snapshots.clearBatchSnapshot(id,storage)},reviewSummary:{total:1,ready:0,reviewSku:1},LiveMappedOrders:[order],MappedOrders:[order],orders:[order],getReviewFlags:()=>({ready:false}),upsertBatchMeta:()=>{},showToast:m=>events.push(m),printBlocked:true,printScopeApi:null,exceptionRows:[{types:['UNMAPPED']}],setPrintScopeMode(){},setPrintRenderActive(){},requestAnimationFrame:f=>f(),waitForPrintRender:async()=>{},document:{querySelector:()=>({})},thermalMode:false,window:{print:()=>events.push('print'),confirm:()=>false}};
+ const s={Date,console,activeBatch:{id:'b1'},activeBatchId:'b1',batchApi:{...batch,saveBatch:async m=>(saved=m),loadBatch:async()=>({meta:saved,orders:[order]})},batchStorageReady:true,reprintSnapshotApi:{...snapshots,validateSnapshot:value=>snapshots.validateSnapshot(value),getBatchSnapshot:id=>snapshots.getBatchSnapshot(id,storage),clearBatchSnapshot:id=>snapshots.clearBatchSnapshot(id,storage)},reviewSummary:{total:1,ready:0,reviewSku:1},LiveMappedOrders:[order],MappedOrders:[order],orders:[order],getReviewFlags:()=>({ready:false}),upsertBatchMeta:()=>{},showToast:m=>events.push(m),printBlocked:true,printScopeApi:null,exceptionRows:[{types:['UNMAPPED']}],setPrintScopeMode(){},setPrintRenderActive(){},requestAnimationFrame:f=>f(),waitForPrintRender:async()=>{},document:{querySelector:()=>({})},thermalMode:false,window:{print:()=>events.push('print'),confirm:()=>false}};
  vm.createContext(s);
  const mark=html.slice(html.indexOf('const markActiveBatchPrinted ='),html.indexOf('const handleClearActiveBatch'));
  const print=html.slice(html.indexOf('const handlePrint ='),html.indexOf('const handleEmergencyPrint'));
@@ -22,7 +22,7 @@ test('unresolved full Batch prints and remains marked printed',async()=>{
  assert.ok(events.includes('print'),'full Batch must print without blocking or confirmation');
  assert.ok(saved?.printedAt,'printed status must be persisted');
  assert.equal(safety.getEffectiveBatchStatus({...saved,totalOrders:1,unmappedCount:1}),'COMPLETED');
- assert.equal(s.reprintSnapshotApi.getBatchSnapshot('b1').orders[0].displayItems[0],'ยังไม่ตั้งชื่อ');
+ assert.equal(saved.resolvedSnapshot.orders[0].displayItems[0],'ยังไม่ตั้งชื่อ');
 });
 
 test('registry results and warnings can be saved as printed history',()=>{
