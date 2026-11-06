@@ -20,7 +20,8 @@ assert.ok(workflow.includes("grep -Fq './packmaster-review-keyword-suggestions.j
 assert.ok(workflow.includes("grep -Fq './packmaster-batch-source-files.js' <<< \"$html\""), 'production smoke must verify Batch source filename helper is deployed');
 assert.ok(workflow.includes("grep -Fq './packmaster-print-scope.js' <<< \"$html\""), 'production smoke must verify the print scope helper is deployed');
 assert.ok(workflow.includes("grep -Fq 'ใช้กับ Order นี้' <<< \"$html\""), 'production smoke must verify order-only Quick Mapping UI is deployed');
-assert.ok(workflow.includes("grep -Fq 'พิมพ์เฉพาะรายการพร้อม' <<< \"$html\""), 'production smoke must verify Ready-only print UI is deployed');
+assert.ok(workflow.includes("grep -Fq \"handleExportPDF('FULL_BATCH')\" <<< \"$html\""), 'production smoke must verify unrestricted full-Batch PDF export is deployed');
+assert.ok(workflow.includes("grep -Fq 'handleEmergencyPrint' <<< \"$html\""), 'production smoke must verify unrestricted full-Batch print is deployed');
 assert.ok(workflow.includes("grep -Fq 'data-pm-view=\"review\"' <<< \"$html\""), 'production smoke must verify the stable Frontend V3 Review workspace marker');
 assert.ok(workflow.includes("grep -Fq 'data-pm-review-layout=\"hybrid-grid\"' <<< \"$html\""), 'production smoke must verify the Hybrid Review Grid build is deployed');
 assert.ok(workflow.includes("grep -Fq 'data-pm-batch-source-files' <<< \"$html\""), 'production smoke must verify source filenames are shown in Batch cards');
