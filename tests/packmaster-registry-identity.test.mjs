@@ -70,15 +70,15 @@ test('source identity extraction fails closed on missing or malformed fields', (
   assert.throws(() => identity.buildIndex({}, registryApi), /schema/);
 });
 
-test('Cloud printing uses registry-only matcher while Local legacy mapping remains isolated', async () => {
+test('Cloud and Local packing use registry-only matcher', async () => {
   const { readFile } = await import('node:fs/promises');
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   assert.match(html, /<script src="\.\/packmaster-registry-identity\.js"><\/script>/);
   assert.match(html, /data-pm-registry-evidence/);
   assert.match(html, /registryIdentityApi\.resolve\(marketplaceCatalogIndex, quickMapState\.row\.order\.platform, item\)/);
-  assert.match(html, /ข้อมูลอ้างอิงเท่านั้น/);
+  assert.match(html, /ไม่มี Keyword fallback/);
   assert.match(html, /registryMatcherApi\.match\(marketplaceCatalogIndex, platform, item/);
-  assert.match(html, /if \(!cloudMode\) return matchSkuRule\(/);
+  assert.doesNotMatch(html, /if \(!cloudMode\) return matchSkuRule\(/);
   assert.match(html, /data-pm-registry-assignments/);
   assert.match(html, /data-pm-registry-matcher-page/);
 });

@@ -10,6 +10,7 @@
   if (!skuNormalization) throw new Error('Seller SKU normalization module is required');
   const PLATFORMS = new Set(['TIKTOK', 'SHOPEE']);
   const SCHEMA = 'packmaster-registry-sku-assignments';
+  const LOCAL_ASSIGNMENTS_KEY = 'packmasterRegistrySkuAssignmentsV1';
   const normalizeSku = skuNormalization.normalizeSellerSku;
   const newAssignments = () => ({ schema: SCHEMA, version: 1, entries: [] });
   const entryKey = entry => JSON.stringify([entry.platform, normalizeSku(entry.sellerSku)]);
@@ -105,5 +106,14 @@
       rule: { keyword: normalizeSku(evidence.sellerSku), shortName: assignment.shortName }
     };
   }
-  return { SCHEMA, newAssignments, validateAssignments, makeAssignment, upsertAssignment, match, normalizeSku };
+  function loadLocalAssignments(storage) {
+    const raw = storage.getItem(LOCAL_ASSIGNMENTS_KEY);
+    return raw === null ? newAssignments() : validateAssignments(JSON.parse(raw));
+  }
+  function saveLocalAssignments(storage, candidate) {
+    const clean = validateAssignments(candidate);
+    storage.setItem(LOCAL_ASSIGNMENTS_KEY, JSON.stringify(clean));
+    return clean;
+  }
+  return { SCHEMA, LOCAL_ASSIGNMENTS_KEY, newAssignments, validateAssignments, makeAssignment, upsertAssignment, match, normalizeSku, loadLocalAssignments, saveLocalAssignments };
 });
