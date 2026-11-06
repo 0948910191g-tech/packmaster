@@ -3120,6 +3120,15 @@
                 try { reprintSnapshotApi.clearBatchSnapshot(activeBatch.id); }
                 catch (snapshotError) { console.warn('Clear legacy resolved snapshot after reset reconciliation failed', snapshotError); }
               }
+              const ordersMatch = Array.isArray(current.orders) &&
+                JSON.stringify(current.orders) === JSON.stringify(orders);
+              if (!ordersMatch) {
+                // A 409 may reveal another client's newer Orders. Hydrate them
+                // and stop the pending edit so it cannot autosave stale data.
+                if (Array.isArray(current.orders)) setOrders(current.orders);
+                showToast('Batch มีข้อมูลใหม่จากอีกหน้าต่าง โหลดข้อมูลล่าสุดแล้ว กรุณาตรวจและทำรายการอีกครั้ง', 'error');
+                return false;
+              }
               return true;
             }
           } catch (reconcileError) {
@@ -3189,20 +3198,26 @@
         if (orders.length === 0) return;
         if (!window.confirm('ล้าง Orders ใน Batch นี้หรือไม่? ตัว Batch จะยังอยู่')) return;
 
-        setOrders([]);
         if (activeBatch && batchApi) {
-          const emptySummary = { total: 0, ready: 0, reviewSku: 0, reviewQty: 0, unmapped: 0 };
-          const resetMeta = batchApi.buildBatchMeta(activeBatch, emptySummary, { printedAt: null, now: new Date() });
-          upsertBatchMeta(resetMeta);
-          if (batchStorageReady) {
-            try {
-              await batchApi.saveBatch(resetMeta, []);
-            } catch (err) {
-              console.error('Clear active batch save failed', err);
-              showToast('ล้างในหน้าจอแล้ว แต่บันทึกลง Browser storage ไม่สำเร็จ', 'error');
-              return;
-            }
+          if (!batchStorageReady) {
+            showToast('ยังล้าง Orders ไม่ได้ เพราะ Batch storage ยังไม่พร้อม', 'error');
+            return;
           }
+          const emptySummary = { total: 0, ready: 0, reviewSku: 0, reviewQty: 0, unmapped: 0 };
+          const resetMeta = batchApi.buildBatchMeta(activeBatch, emptySummary, {
+            printedAt: null, resolvedSnapshot: null, now: new Date()
+          });
+          try {
+            const savedMeta = await batchApi.saveBatch(resetMeta, []);
+            setOrders([]);
+            upsertBatchMeta(savedMeta || resetMeta);
+          } catch (err) {
+            console.error('Clear active batch save failed', err);
+            showToast('ล้าง Orders ไม่สำเร็จ — ข้อมูลเดิมยังคงอยู่', 'error');
+            return;
+          }
+        } else {
+          setOrders([]);
         }
         if (duplicateApi && activeBatchId) {
           try { duplicateApi.clearBatchFingerprints(activeBatchId); }

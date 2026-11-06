@@ -5,11 +5,12 @@ import vm from 'node:vm';
 
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const start = html.indexOf('const resetActiveBatchCompletion =');
-const end = html.indexOf('const handleClearActiveBatch =', start);
+const end = html.indexOf('const handlePrint =', start);
 assert.ok(start >= 0 && end > start, 'completion handlers must remain extractable at the UI seam');
 const handlers = html.slice(start, end);
 
-function harness({ failSave = false, failSaveOnce = false, lostAcknowledgement = false, alreadyCompleted = false } = {}) {
+function harness({ failSave = false, failSaveOnce = false, lostAcknowledgement = false, alreadyCompleted = false,
+  localOrders = null, authoritativeOrders = null, authoritativeMeta = null } = {}) {
   const snapshot = {
     batchId: 'batch-test', completedAt: '2026-11-06T00:00:00.000Z',
     orders: [{ id: 'order-1', displayItems: ['Original Name'], originalQty: 1,
@@ -20,7 +21,10 @@ function harness({ failSave = false, failSaveOnce = false, lostAcknowledgement =
       resolvedSnapshot: alreadyCompleted ? snapshot : null },
     visible: { id: 'batch-test', printedAt: alreadyCompleted ? snapshot.completedAt : null,
       resolvedSnapshot: alreadyCompleted ? snapshot : null },
-    events: [], saveCalls: [], localSnapshot: null, loadCalls: 0
+    events: [], saveCalls: [], localSnapshot: null, loadCalls: 0,
+    orders: localOrders || [{ ...snapshot.orders[0] }],
+    persistedOrders: authoritativeOrders || localOrders || [{ ...snapshot.orders[0] }],
+    authoritativeMeta
   };
   let failuresRemaining = failSave ? Infinity : failSaveOnce ? 1 : 0;
   const batchApi = {
@@ -32,10 +36,14 @@ function harness({ failSave = false, failSaveOnce = false, lostAcknowledgement =
         throw Object.assign(new Error('injected revision conflict'), { status: 409 });
       }
       state.persisted = meta;
+      state.persistedOrders = orders;
       if (lostAcknowledgement) throw new Error('simulated lost acknowledgement');
       return meta;
     },
-    async loadBatch() { state.loadCalls += 1; return { meta: state.persisted, orders: [] }; }
+    async loadBatch() {
+      state.loadCalls += 1;
+      return { meta: state.authoritativeMeta || state.persisted, orders: state.persistedOrders };
+    }
   };
   const c = {
     Date,
@@ -45,7 +53,7 @@ function harness({ failSave = false, failSaveOnce = false, lostAcknowledgement =
     batchStorageReady: true,
     batchApi,
     reviewSummary: { total: 1, ready: 1 },
-    orders: [],
+    orders: state.orders,
     MappedOrders: [{ ...snapshot.orders[0] }],
     reprintSnapshotApi: {
       getBatchSnapshot: () => state.localSnapshot,
@@ -53,13 +61,15 @@ function harness({ failSave = false, failSaveOnce = false, lostAcknowledgement =
       clearBatchSnapshot: () => { state.localSnapshot = null; }
     },
     upsertBatchMeta: meta => { state.visible = meta; c.activeBatch = meta; },
-    setOrders: orders => { state.orders = orders; },
+    setOrders: orders => { state.orders = orders; c.orders = orders; },
+    window: { confirm: () => true },
+    duplicateApi: { clearBatchFingerprints() {} },
     cloudMode: true,
     cloud: { async saveDocument() { throw new Error('completion must not write a separate document'); } },
     showToast: message => state.events.push(message)
   };
   vm.createContext(c);
-  vm.runInContext(`${handlers}\nglobalThis.mark = markActiveBatchPrinted; globalThis.reset = resetActiveBatchCompletion;`, c);
+  vm.runInContext(`${handlers}\nglobalThis.mark = markActiveBatchPrinted; globalThis.reset = resetActiveBatchCompletion; globalThis.clear = handleClearActiveBatch;`, c);
   return { c, state };
 }
 
@@ -131,4 +141,43 @@ test('reset reloads after a 409 and succeeds on retry without losing the old sna
   assert.equal(state.persisted.resolvedSnapshot, null);
   assert.equal(state.visible.printedAt, null);
   assert.equal(state.visible.resolvedSnapshot, null);
+});
+
+test('reset refuses to continue when a 409 reveals newer Orders and adopts that authoritative revision', async () => {
+  const local = [{ id: 'order-A', sku: 'A' }];
+  const remote = [{ id: 'order-A', sku: 'A' }, { id: 'order-B', sku: 'B' }];
+  const { c, state } = harness({ failSave: true, alreadyCompleted: true, localOrders: local, authoritativeOrders: remote,
+    authoritativeMeta: { id: 'batch-test', printedAt: null, resolvedSnapshot: null } });
+
+  assert.equal(await c.reset(), false, 'callers must stop their edit after discovering newer Batch contents');
+  assert.deepEqual(state.orders.map(order => order.id), ['order-A', 'order-B']);
+  assert.deepEqual(state.persistedOrders.map(order => order.id), ['order-A', 'order-B']);
+  assert.equal(state.saveCalls.length, 1, 'do not retry a reset against the refreshed revision');
+  assert.match(state.events.at(-1), /โหลดข้อมูลล่าสุด/);
+});
+
+test('clearing a completed Batch saves cleared completion metadata before changing the visible Orders', async () => {
+  const { c, state } = harness({ alreadyCompleted: true });
+
+  await c.clear();
+
+  assert.equal(state.saveCalls.length, 1);
+  assert.equal(state.saveCalls[0].meta.printedAt, null);
+  assert.equal(state.saveCalls[0].meta.resolvedSnapshot, null);
+  assert.equal(state.saveCalls[0].orders.length, 0);
+  assert.equal(state.persisted.resolvedSnapshot, null);
+  assert.equal(state.orders.length, 0);
+  assert.equal(state.visible.resolvedSnapshot, null);
+});
+
+test('a failed clear save preserves the completed Batch and visible Orders', async () => {
+  const { c, state } = harness({ failSave: true, alreadyCompleted: true });
+
+  await c.clear();
+
+  assert.equal(state.persisted.printedAt !== null, true);
+  assert.ok(state.persisted.resolvedSnapshot);
+  assert.equal(state.orders.length, 1);
+  assert.ok(state.visible.resolvedSnapshot);
+  assert.match(state.events.at(-1), /ไม่สำเร็จ/);
 });
