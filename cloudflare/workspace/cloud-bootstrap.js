@@ -17,20 +17,30 @@
     const response = await fetch('./api/workspace/session', {
       method: 'GET', credentials: 'same-origin', cache: 'no-store'
     });
-    if (response.ok) {
-      const session = await response.json();
-      if (session?.authenticated && window.PackMasterBatch && window.PackMasterCloudClient) {
-        window.PackMasterCloud = window.PackMasterCloudClient.createClient({
-          baseUrl: window.location.origin + '/',
-          session: true,
-          fetchImpl: window.fetch.bind(window),
-          batchHelpers: window.PackMasterBatch
-        });
-      }
+    if (response.status === 401) {
+      window.location.replace('./login.html');
+      return;
     }
+    if (!response.ok) {
+      throw new Error('Cloud Workspace session check failed');
+    }
+    const session = await response.json();
+    if (!session?.authenticated) {
+      window.location.replace('./login.html');
+      return;
+    }
+    if (!window.PackMasterBatch || !window.PackMasterCloudClient) {
+      throw new Error('Cloud Workspace client is unavailable');
+    }
+    window.PackMasterCloud = window.PackMasterCloudClient.createClient({
+      baseUrl: window.location.origin + '/',
+      session: true,
+      fetchImpl: window.fetch.bind(window),
+      batchHelpers: window.PackMasterBatch
+    });
+    loadApp();
   } catch (error) {
     console.warn('Cloud Workspace session check:', error?.name || 'offline');
-  } finally {
-    loadApp();
+    if (status) status.textContent = 'เชื่อมต่อ Cloud Workspace ไม่สำเร็จ กรุณารีเฟรชหรือลองใหม่ภายหลัง';
   }
 })();

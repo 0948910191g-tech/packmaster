@@ -25,6 +25,10 @@ test('Cloud build self-hosts all frontend runtime dependencies', async () => {
   assert.match(config, /binding = "WORKSPACE_DB"/);
   assert.doesNotMatch(config, /\[\[r2_buckets\]\]/);
   assert.match(bootstrap, /credentials: 'same-origin'/);
+  assert.match(bootstrap, /window\.location\.replace\('\.\/login\.html'\)/,
+    'Cloud build must redirect unauthenticated browsers instead of silently falling back to Local mode');
+  assert.doesNotMatch(bootstrap, /finally\s*\{\s*loadApp\(\)/,
+    'Cloud build must not load the local app after a failed session check');
   assert.match(bootstrap, /window\.PackMasterCloud = /);
   assert.match(bootstrap, /session: true/);
   assert.match(login, /credentials: 'same-origin'/);
