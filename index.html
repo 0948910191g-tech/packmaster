@@ -21,6 +21,7 @@
   <script src="./packmaster-sku-normalization.js"></script>
   <script src="./packmaster-registry-identity.js"></script>
   <script src="./packmaster-registry-matcher.js"></script>
+  <script src="./packmaster-local-registry-bootstrap.js"></script>
   <script src="./packmaster-cloud-client.js"></script>
   <script src="./packmaster-cloud-mapping-controller.js"></script>
   <script src="./packmaster-duplicate.js"></script>
@@ -1431,6 +1432,7 @@
       const marketplaceRegistryApi = window.PackMasterMarketplaceRegistry;
       const registryIdentityApi = window.PackMasterRegistryIdentity;
       const registryMatcherApi = window.PackMasterRegistryMatcher;
+      const localRegistryBootstrapApi = window.PackMasterLocalRegistryBootstrap;
       const duplicateApi = window.PackMasterDuplicate;
       const exceptionApi = window.PackMasterExceptions;
       const pilotSafetyApi = window.PackMasterPilotSafety;
@@ -1587,6 +1589,34 @@
       const [marketplaceRegistryPage, setMarketplaceRegistryPage] = useState(1);
       const [marketplaceRegistryPageSize, setMarketplaceRegistryPageSize] = useState(20);
       const [marketplaceRegistryBusy, setMarketplaceRegistryBusy] = useState(false);
+      useEffect(() => {
+        if (cloudMode || !localRegistryBootstrapApi || !marketplaceRegistryApi || !registryMatcherApi) return;
+        let active = true;
+        localRegistryBootstrapApi.loadBaselines(window.fetch.bind(window)).then(({ registry, assignments }) => {
+          if (!active) return;
+          const latestRegistry = marketplaceRegistryApi.loadStore(window.localStorage).store;
+          let latestAssignments;
+          try { latestAssignments = registryMatcherApi.loadLocalAssignments(window.localStorage); }
+          catch (error) { latestAssignments = registryMatcherApi.newAssignments(); }
+
+          const mergedRegistry = localRegistryBootstrapApi.mergeRegistryBaseline(
+            latestRegistry, registry, marketplaceRegistryApi);
+          const mergedAssignments = localRegistryBootstrapApi.mergeAssignmentBaseline(
+            latestAssignments, assignments, registryMatcherApi);
+
+          marketplaceRegistryApi.saveStore(window.localStorage, mergedRegistry);
+          registryMatcherApi.saveLocalAssignments(window.localStorage, mergedAssignments);
+          setMarketplaceRegistry(mergedRegistry);
+          setMarketplaceRegistryLoadError('');
+          setRegistryAssignments(mergedAssignments);
+          setRegistryAssignmentsError('');
+          setRegistryAssignmentsLoaded(true);
+        }).catch(error => {
+          console.warn('Local registry baseline loading failed', error);
+        });
+        return () => { active = false; };
+      }, [cloudMode]);
+
       useEffect(() => {
         if (!cloudMode) return;
         if (!marketplaceRegistryApi || typeof cloud.getRegistry !== 'function') {

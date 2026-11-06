@@ -52,7 +52,7 @@ test('exact Seller SKU is advisory, platform-scoped, and cannot invent an intern
   const duplicate = identity.resolve(index, 'TIKTOK', { text: 'PRODUCT | Variant | sharedsku' });
   assert.equal(duplicate.status, 'ambiguous');
   assert.equal(duplicate.candidateCount, 2);
-  assert.equal(identity.resolve(index, 'SHOPEE', { text: 'Unknown | Item | SharedSKU' }).status, 'no_identity');
+  assert.equal(identity.resolve(index, 'SHOPEE', { text: 'Unknown | Item | SharedSKU' }).status, 'not_found');
   assert.equal(identity.resolve(index, 'TIKTOK', { text: 'Product | Variant | NOT-FOUND' }).status, 'not_found');
   assert.equal(identity.resolve(index, 'TIKTOK', { text: 'Product TT-001 Value Pack' }).status, 'no_identity');
 });
@@ -81,4 +81,35 @@ test('Cloud and Local packing use registry-only matcher', async () => {
   assert.doesNotMatch(html, /if \(!cloudMode\) return matchSkuRule\(/);
   assert.match(html, /data-pm-registry-assignments/);
   assert.match(html, /data-pm-registry-matcher-page/);
+});
+
+test('Shopee falls back to one exact catalog row only when Seller SKU is absent', () => {
+  const source = catalog('SHOPEE', [null, null]);
+  source.products[0].title = 'HAKU Cooling 12 ชิ้น';
+  source.skuRows[0].title = 'HAKU Cooling 12 ชิ้น';
+  source.products[1].title = 'Another product';
+  source.skuRows[1].title = 'Another product';
+
+  const store = registryApi.replacePlatformRegistry(registryApi.createEmptyStore(), source);
+  const index = identity.buildIndex(store, registryApi);
+
+  const found = identity.resolve(index, 'SHOPEE', { text: ' HAKU   Cooling  12 ชิ้น ' });
+  assert.equal(found.status, 'found');
+  assert.equal(found.identityType, 'catalog_row');
+  assert.equal(found.candidate.productId, 'product-1');
+
+  assert.equal(identity.resolve(index, 'SHOPEE', {
+    sellerSku: 'NOT-IN-REGISTRY',
+    text: 'HAKU Cooling 12 ชิ้น'
+  }).status, 'not_found', 'explicit Seller SKU must never fall back to a title');
+
+  source.products[1].title = 'HAKU Cooling 12 ชิ้น';
+  source.skuRows[1].title = 'HAKU Cooling 12 ชิ้น';
+  const duplicateIndex = identity.buildIndex(
+    registryApi.replacePlatformRegistry(registryApi.createEmptyStore(), source),
+    registryApi
+  );
+  assert.equal(identity.resolve(duplicateIndex, 'SHOPEE', {
+    text: 'HAKU Cooling 12 ชิ้น'
+  }).status, 'ambiguous');
 });

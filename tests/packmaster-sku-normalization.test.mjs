@@ -111,3 +111,13 @@ test('Thai PDF font mapping is narrow and leaves distinct Seller SKUs distinct',
     sellerSku: 'Qty Total: Order ID: REDACTED'
   }), null);
 });
+
+test('Shopee catalog canonicalization repairs Thai mark order and ignores PDF-only spacing', () => {
+  const pdfText = '[12ชิ้น] ผ้าเปียก Haku Cooling เหมือนอาบนํ้าใหม่! 30แผ่น/ ห่อ';
+  const registryText = '[12ชิ้น] ผ้าเปียก Haku Cooling เหมือนอาบน้ําใหม่! 30แผ่น/ห่อ';
+  assert.equal(sku.normalizeCatalogText(pdfText), sku.normalizeCatalogText(registryText));
+  assert.notEqual(
+    sku.normalizeCatalogText('[12ชิ้น] Haku Cooling'),
+    sku.normalizeCatalogText('[6ชิ้น] Haku Cooling')
+  );
+});

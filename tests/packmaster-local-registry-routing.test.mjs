@@ -11,7 +11,7 @@ test('Local registry assignments persist across reload and reject corrupt data',
   const storage = {getItem: k => data.get(k) ?? null, setItem: (k,v) => data.set(k,v)};
   const assignments = {schema:matcher.SCHEMA,version:1,entries:[{platform:'TIKTOK',sellerSku:'SKU-1',productId:'p1',modelId:null,shortName:'สินค้า'}]};
   matcher.saveLocalAssignments(storage,assignments);
-  assert.deepEqual(matcher.loadLocalAssignments(storage),assignments);
+  assert.deepEqual(matcher.loadLocalAssignments(storage), matcher.validateAssignments(assignments));
   storage.setItem(matcher.LOCAL_ASSIGNMENTS_KEY,'invalid');
   assert.throws(() => matcher.loadLocalAssignments(storage));
 });

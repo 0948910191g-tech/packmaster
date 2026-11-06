@@ -91,3 +91,30 @@ test('Reject malformed, duplicate, empty or cross-platform assignments', () => {
   assert.throws(() => matcher.validateAssignments({...first,entries:[{...first.entries[0],shortName:''}]}),/Invalid/);
   assert.throws(() => matcher.makeAssignment('SHOPEE',evidence,'test-invalid-no-id'),/./);
 });
+
+test('Exact unique Shopee catalog row can use a catalog-row internal-name assignment', () => {
+  const sourceData = source('SHOPEE', [null, null]);
+  sourceData.products[0].title = 'HOYA Baby 3 ห่อ';
+  sourceData.skuRows[0].title = 'HOYA Baby 3 ห่อ';
+  sourceData.products[1].title = 'Other listing';
+  sourceData.skuRows[1].title = 'Other listing';
+
+  const store = registryApi.replacePlatformRegistry(registryApi.createEmptyStore(), sourceData);
+  const catalogIndex = identity.buildIndex(store, registryApi);
+  const evidence = identity.resolve(catalogIndex, 'SHOPEE', { text: 'HOYA  Baby 3 ห่อ' });
+  assert.equal(evidence.status, 'found');
+  assert.equal(evidence.identityType, 'catalog_row');
+
+  const assigned = matcher.upsertAssignment(
+    matcher.newAssignments(), 'SHOPEE', evidence, 'เด้งม่วง3'
+  );
+  assert.equal(assigned.entries[0].sellerSku, null);
+  assert.equal(assigned.entries[0].identityType, 'catalog_row');
+
+  const actual = matcher.match(
+    catalogIndex, 'SHOPEE', { text: 'HOYA Baby 3 ห่อ' }, assigned, identity
+  );
+  assert.equal(actual.status, 'matched');
+  assert.equal(actual.reason, 'registry_catalog_exact_verified');
+  assert.equal(actual.rule.shortName, 'เด้งม่วง3');
+});

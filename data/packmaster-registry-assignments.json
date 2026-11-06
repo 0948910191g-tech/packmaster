@@ -1,0 +1,606 @@
+{
+  "schema": "packmaster-registry-sku-assignments",
+  "version": 1,
+  "entries": [
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "HOYA VALUE PACK 10",
+      "productId": "1736341107368298310",
+      "modelId": null,
+      "shortName": "HOYA Value 10"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "HAKU BB 1FREE1",
+      "productId": "1735265319193446214",
+      "modelId": null,
+      "shortName": "ฮากุ 2ห่อ"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "HOYA VALUE PACK 1ห่อ",
+      "productId": "1736126653852649286",
+      "modelId": null,
+      "shortName": "HOYA Value 1"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "MIX X 6",
+      "productId": "1730331609743723334",
+      "modelId": null,
+      "shortName": "เย็นคละ ฟ2 ข2 ม2"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "MIX X 3",
+      "productId": "1730331669103676230",
+      "modelId": null,
+      "shortName": "เย็นคละ ฟ1 ข1 ม1"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "seller_sku",
+      "sellerSku": "NNกลิ่นFRESHY6ห่อ",
+      "productId": "40117071470",
+      "modelId": "206244922913",
+      "shortName": "NN สีเขียว 6ห่อ"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "seller_sku",
+      "sellerSku": "NNกลิ่นBABYPOWDER 6",
+      "productId": "40117071470",
+      "modelId": "206244922914",
+      "shortName": "NN สีชมพู 6ห่อ"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "seller_sku",
+      "sellerSku": "EXCARE BABY WIPES 20แผ่น",
+      "productId": "27954223960",
+      "modelId": "215211504544",
+      "shortName": "EX BABY  20แผ่น =1ห่อ"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "seller_sku",
+      "sellerSku": "EXCARE BABY WIPES 80แผ่น",
+      "productId": "27954223960",
+      "modelId": "215211504545",
+      "shortName": "EX BABY 80แผ่น =1ห่อ"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "โนโน่คละสี 4ห่อ",
+      "productId": "1732737697196902214",
+      "modelId": null,
+      "shortName": "NONO คละ 4ห่อ"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "ม่วง 5ห่อ แถม ชมพู 5ห่อ",
+      "productId": "1732009935077476166",
+      "modelId": null,
+      "shortName": "5แถม5"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "HOYA สูตรไม่มีน้ําหอม X 5ห่อ",
+      "productId": "1731567939424716614",
+      "modelId": null,
+      "shortName": "ม่วง5"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "HOYA PLUS หอม X5ห่อ",
+      "productId": "1731567939424716614",
+      "modelId": null,
+      "shortName": "ชม5"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "HOYA ชมพู *5ห่อ",
+      "productId": "1731492634369099590",
+      "modelId": null,
+      "shortName": "ชม5"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "HOYA BB สีม่วง *10ห่อ",
+      "productId": "1731447382566013766",
+      "modelId": null,
+      "shortName": "ม่วง10"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "HOYA สีชมพู *ยกลัง24ห่อ",
+      "productId": "1731528817136273222",
+      "modelId": null,
+      "shortName": "ชม1ลัง"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "HOYA BB สีม่วง *24ห่อ",
+      "productId": "1731479642089360198",
+      "modelId": null,
+      "shortName": "ม่วง1ลัง"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "HOYA PLUS หอม 5ห่อ",
+      "productId": "1731594625310230342",
+      "modelId": null,
+      "shortName": "ชม5"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "HOYA ไม่หอม5ห่อ",
+      "productId": "1731594625310230342",
+      "modelId": null,
+      "shortName": "ม่วง5"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "HOYA BB 3ห่อ",
+      "productId": "1733913308071102278",
+      "modelId": null,
+      "shortName": "ม่วง3"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "HOYA สีชมพู *10",
+      "productId": "1731511619384936262",
+      "modelId": null,
+      "shortName": "ชม10"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "ใหญ่1แถมเล็ก2",
+      "productId": "1731065404393622342",
+      "modelId": null,
+      "shortName": "Exสัวตว์ใหญ่1เล็ก2"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "ฮากุเบบี้ -ยกลัง36ห่อ",
+      "productId": "1729554057529297734",
+      "modelId": null,
+      "shortName": "ฮากุ 1 ลัง"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "HOYA VALUE PACK 24ห่อ",
+      "productId": "1736341375049762630",
+      "modelId": null,
+      "shortName": "แวลู่ 1 ลัง"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "ฮากุเบบี้ 1ห่อ",
+      "productId": "1729432500457278278",
+      "modelId": null,
+      "shortName": "ฮากุ1ห่อ"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "ฮากุเบบี้ 3ห่อ",
+      "productId": "1729432500457278278",
+      "modelId": null,
+      "shortName": "ฮากุ3ห่อ"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "ฮากุเบบี้ 6ห่อ",
+      "productId": "1729432500457278278",
+      "modelId": null,
+      "shortName": "ฮากุ 6 ห่อ"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "HOYA MIX 5ห่อ",
+      "productId": "1737362143166105414",
+      "modelId": null,
+      "shortName": "Mix 1"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "HOYA ม่วง 1ห่อ",
+      "productId": "1731509476130065222",
+      "modelId": null,
+      "shortName": "ม่วง1ห่อ"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "HOYA ชมพู 1ห่อ",
+      "productId": "1731696540421424966",
+      "modelId": null,
+      "shortName": "ชม1ห่อ"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "EX AD 50แผ่น 3ห่อ",
+      "productId": "1730962961378085702",
+      "modelId": null,
+      "shortName": "ผู้ใหญ่3ห่อ"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "EXCARE ADULT - 50แผ่น - 12ห่อ",
+      "productId": "1730963044098214726",
+      "modelId": null,
+      "shortName": "ผู้ใหญ่12ห่อ"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "EXCARE ADULT 50แผ่น 1ห่อ",
+      "productId": "1730962875115932486",
+      "modelId": null,
+      "shortName": "ผู้ใหญ่1ห่อ"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "EX AD 50แผ่น -6ห่อ",
+      "productId": "1730963006999202630",
+      "modelId": null,
+      "shortName": "ผู้ใหญ่6ห่อ"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "EXCARE BABY 80แผ่น X 3ห่อ",
+      "productId": "1730962702258178886",
+      "modelId": null,
+      "shortName": "Ex เบบี้ 80 3ห่อ"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "EXCARE BABY 80แผ่น X 6ห่อ",
+      "productId": "1730962716688681798",
+      "modelId": null,
+      "shortName": "Ex เบบี้ 80 6ห่อ"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "EXCARE BABY 20แผ่น X 6ห่อ",
+      "productId": "1730962633367063366",
+      "modelId": null,
+      "shortName": "Ex เบบี้ 20 6ห่อ"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "SOULSI -PEACH 1กระปุก",
+      "productId": "1736297116292187974",
+      "modelId": null,
+      "shortName": "พีช1"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "SOULSI-PEACH 3กระปุก",
+      "productId": "1736297116292187974",
+      "modelId": null,
+      "shortName": "พีช3"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "SOULSI -PEACH 6กระปุก",
+      "productId": "1736297116292187974",
+      "modelId": null,
+      "shortName": "พีช6"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "KYOHO GRAPE 1กป.",
+      "productId": "1736297116292187974",
+      "modelId": null,
+      "shortName": "องุ่น1"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "KYOHO GRAPE 3กป.",
+      "productId": "1736297116292187974",
+      "modelId": null,
+      "shortName": "องุ่น3"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "KYOHO GRAPE 6กป",
+      "productId": "1736297116292187974",
+      "modelId": null,
+      "shortName": "องุ่น6"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "กลิ่นJASMINE 12ห่อ",
+      "productId": "1729786997409024838",
+      "modelId": null,
+      "shortName": "เย็น เขียว 12 ห่อ"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "EXCARE MAKE UP 2ห่อ",
+      "productId": "1731058761348123462",
+      "modelId": null,
+      "shortName": "Ex เมคอัพ 2 ห่อ"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "seller_sku",
+      "sellerSku": "กลิ่นJASMINE 36ห่อ/ลัง",
+      "productId": "1729725593444453190",
+      "modelId": null,
+      "shortName": "เย็น เขียว 1 ลัง"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "16536158706",
+      "modelId": "153438697183",
+      "shortName": "เย็นฟ้า 12"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "2622347424",
+      "modelId": "72160205618",
+      "shortName": "ฮากุเบบี้ 2 ห่อ"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "25504643447",
+      "modelId": "158476231028",
+      "shortName": "เย็นฟ้า 1"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "47154384366",
+      "modelId": "360410561692",
+      "shortName": "เด้งม่วง3"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "29220155133",
+      "modelId": "242214492704",
+      "shortName": "เด้งม่วง1ลัง"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "25504643447",
+      "modelId": "158476231030",
+      "shortName": "เย็น ม 1"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "26775403426",
+      "modelId": "185769673410",
+      "shortName": "12 แผ่น 6 ห่อ"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "29093740868",
+      "modelId": "390241614157",
+      "shortName": "ผู้ใหญ่6"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "50301286439",
+      "modelId": "262149777207",
+      "shortName": "เด้งม่วง5 ชม5"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "55463664354",
+      "modelId": "396182812574",
+      "shortName": "HOYA Value 5"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "21429397652",
+      "modelId": "345897941933",
+      "shortName": "ALC 95% 1L =1"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "44202200493",
+      "modelId": "280180355423",
+      "shortName": "เด้งชม5"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "27656184211",
+      "modelId": "49795882274",
+      "shortName": "ผู้ใหญ่3"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "17062655851",
+      "modelId": "97636168678",
+      "shortName": "ฮากุเบบี้ 12"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "41969360715",
+      "modelId": "243904335732",
+      "shortName": "เด้งม่วง5 ชม5"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "46013696719",
+      "modelId": "401182796469",
+      "shortName": "HOYA Value 10"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "27120139459",
+      "modelId": "195625978235",
+      "shortName": "เด้งม่วง5"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "28270147572",
+      "modelId": "148925032368",
+      "shortName": "เด้งม่วง10"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "3189535811",
+      "modelId": "74970036200",
+      "shortName": "เย็นฟ้า6"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "42202194584",
+      "modelId": "253455680213",
+      "shortName": "เด้งชม10"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "26456187726",
+      "modelId": "256258792798",
+      "shortName": "ผู้ใหญ่12"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "25933927963",
+      "modelId": "139012858343",
+      "shortName": "ผู้ใหญ่6"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "19854081885",
+      "modelId": "297637543631",
+      "shortName": "75% 1L =1"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "29093740868",
+      "modelId": "390241614156",
+      "shortName": "ผู้ใหญ่3"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "57002458226",
+      "modelId": "405242416306",
+      "shortName": "ถุงมือ1 ห่อ"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "57002458226",
+      "modelId": "405242416308",
+      "shortName": "ถุงมือ3 ห่อ"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "43632361251",
+      "modelId": "321171057929",
+      "shortName": "EX BABY 80แผ่น =16ห่อ"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "43303995699",
+      "modelId": "265337957169",
+      "shortName": "เด้งชม1ลัง"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "16353617335",
+      "modelId": "125356839273",
+      "shortName": "เย็นฟ้า 3"
+    }
+  ]
+}

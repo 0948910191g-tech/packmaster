@@ -41,6 +41,9 @@
     if (typeof value !== 'string') return '';
     return repairThaiPdfGlyphs(value)
       .normalize('NFKC')
+      // Thai PDFs may emit nikhahit before a tone mark while marketplace text
+      // stores the same visible syllable as tone mark + nikhahit.
+      .replace(/\u0E4D([\u0E48-\u0E4B])/g, '$1\u0E4D')
       .replace(/[\u200B-\u200D\uFEFF]/g, '')
       .replace(/\s+/g, ' ')
       .trim()
@@ -49,5 +52,9 @@
       .toUpperCase();
   }
 
-  return { cleanPdfSellerSku, normalizeSellerSku, repairThaiPdfGlyphs };
+  function normalizeCatalogText(value) {
+    return normalizeSellerSku(value).replace(/\s+/g, '');
+  }
+
+  return { cleanPdfSellerSku, normalizeSellerSku, normalizeCatalogText, repairThaiPdfGlyphs };
 });

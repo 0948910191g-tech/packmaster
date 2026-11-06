@@ -10,6 +10,18 @@
   if (!skuNormalization) throw new Error('Seller SKU normalization module is required');
   const PLATFORMS = ['TIKTOK', 'SHOPEE'];
   const normalizeSellerSku = skuNormalization.normalizeSellerSku;
+  const normalizeCatalogText = skuNormalization.normalizeCatalogText ||
+    (value => normalizeSellerSku(value).replace(/\s+/g, ''));
+
+  const candidateKey = candidate =>
+    JSON.stringify([candidate.platform, candidate.productId, candidate.modelId || null]);
+
+  const addCandidate = (map, key, candidate) => {
+    if (!key) return;
+    if (!map.has(key)) map.set(key, []);
+    const entries = map.get(key);
+    if (!entries.some(entry => candidateKey(entry) === candidateKey(candidate))) entries.push(candidate);
+  };
 
   const buildIndex = (storeCandidate, registryApi) => {
     if (!registryApi || typeof registryApi.validateStore !== 'function') {
@@ -20,20 +32,33 @@
     for (const platform of PLATFORMS) {
       const data = store.platforms[platform] || null;
       const sellerSkus = new Map();
+      const catalogTexts = new Map();
       for (const row of data?.skuRows || []) {
-        const key = normalizeSellerSku(row.sellerSku);
-        if (!key) continue;
-        if (!sellerSkus.has(key)) sellerSkus.set(key, []);
-        sellerSkus.get(key).push({
+        const candidate = {
           platform,
-          sellerSku: row.sellerSku,
+          sellerSku: row.sellerSku || null,
           productId: platform === 'TIKTOK' ? row.productId : row.itemId,
           productName: platform === 'TIKTOK' ? row.productName : row.title,
           modelId: row.modelId || null,
           variantName: row.variantName || null
-        });
+        };
+        const skuKey = normalizeSellerSku(row.sellerSku);
+        addCandidate(sellerSkus, skuKey, candidate);
+
+        if (platform === 'SHOPEE') {
+          addCandidate(catalogTexts, normalizeCatalogText(row.title), candidate);
+          addCandidate(
+            catalogTexts,
+            normalizeCatalogText([row.title, row.variantName].filter(Boolean).join(' ')),
+            candidate
+          );
+        }
       }
-      index[platform] = { sellerSkus, captureDate: data?.source?.captureDate || null };
+      index[platform] = {
+        sellerSkus,
+        catalogTexts,
+        captureDate: data?.source?.captureDate || null
+      };
     }
     return index;
   };
@@ -62,23 +87,74 @@
     if (!PLATFORMS.includes(platform) || !index?.[platform]) {
       return { status: 'unavailable', reason: 'platform_or_registry_unavailable' };
     }
+
     const skuText = extractSellerSku(platform, item);
     const skuKey = normalizeSellerSku(skuText);
-    if (!skuKey) return { status: 'no_identity', reason: 'seller_sku_not_explicit' };
-    const candidates = index[platform].sellerSkus.get(skuKey) || [];
-    if (candidates.length === 0) {
-      return { status: 'not_found', sellerSku: skuText };
+    if (skuKey) {
+      const candidates = index[platform].sellerSkus.get(skuKey) || [];
+      if (candidates.length === 0) return { status: 'not_found', sellerSku: skuText };
+      if (candidates.length > 1) {
+        return {
+          status: 'ambiguous',
+          reason: 'duplicate_seller_sku',
+          identityType: 'seller_sku',
+          sellerSku: skuText,
+          candidateCount: candidates.length
+        };
+      }
+      return {
+        status: 'found',
+        identityType: 'seller_sku',
+        sellerSku: skuText,
+        candidate: { ...candidates[0] },
+        captureDate: index[platform].captureDate
+      };
     }
-    if (candidates.length > 1) {
-      return { status: 'ambiguous', sellerSku: skuText, candidateCount: candidates.length };
+
+    // Shopee often omits Seller SKU from both Seller Center and the label.
+    // In that case only, accept an exact whitespace-insensitive catalog title
+    // (title or title + variant) when it resolves to one registry row.
+    if (platform === 'SHOPEE') {
+      const rawText = typeof item === 'string' ? item : item?.text;
+      const catalogKey = normalizeCatalogText(rawText);
+      if (catalogKey) {
+        const candidates = index[platform].catalogTexts.get(catalogKey) || [];
+        if (candidates.length > 1) {
+          return {
+            status: 'ambiguous',
+            reason: 'duplicate_catalog_text',
+            identityType: 'catalog_row',
+            catalogKey,
+            candidateCount: candidates.length
+          };
+        }
+        if (candidates.length === 1) {
+          return {
+            status: 'found',
+            identityType: 'catalog_row',
+            sellerSku: null,
+            catalogKey,
+            candidate: { ...candidates[0] },
+            captureDate: index[platform].captureDate
+          };
+        }
+        return {
+          status: 'not_found',
+          reason: 'catalog_text_not_found',
+          identityType: 'catalog_row',
+          catalogKey
+        };
+      }
     }
-    return {
-      status: 'found',
-      sellerSku: skuText,
-      candidate: { ...candidates[0] },
-      captureDate: index[platform].captureDate
-    };
+
+    return { status: 'no_identity', reason: 'seller_sku_not_explicit' };
   };
 
-  return { buildIndex, normalizeSellerSku, extractSellerSku, resolve };
+  return {
+    buildIndex,
+    normalizeSellerSku,
+    normalizeCatalogText,
+    extractSellerSku,
+    resolve
+  };
 });
