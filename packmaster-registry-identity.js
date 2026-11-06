@@ -14,7 +14,12 @@
     (value => normalizeSellerSku(value).replace(/\s+/g, ''));
 
   const candidateKey = candidate =>
-    JSON.stringify([candidate.platform, candidate.productId, candidate.modelId || null]);
+    JSON.stringify([
+      candidate.platform,
+      candidate.productId,
+      candidate.modelId || null,
+      candidate.modelId ? null : (String(candidate.variantName || '').trim() || null)
+    ]);
 
   const addCandidate = (map, key, candidate) => {
     if (!key) return;
@@ -34,25 +39,22 @@
       const sellerSkus = new Map();
       const catalogTexts = new Map();
       for (const row of data?.skuRows || []) {
+        const productName = platform === 'TIKTOK' ? row.productName : row.title;
         const candidate = {
           platform,
           sellerSku: row.sellerSku || null,
           productId: platform === 'TIKTOK' ? row.productId : row.itemId,
-          productName: platform === 'TIKTOK' ? row.productName : row.title,
+          productName,
           modelId: row.modelId || null,
           variantName: row.variantName || null
         };
-        const skuKey = normalizeSellerSku(row.sellerSku);
-        addCandidate(sellerSkus, skuKey, candidate);
-
-        if (platform === 'SHOPEE') {
-          addCandidate(catalogTexts, normalizeCatalogText(row.title), candidate);
-          addCandidate(
-            catalogTexts,
-            normalizeCatalogText([row.title, row.variantName].filter(Boolean).join(' ')),
-            candidate
-          );
-        }
+        addCandidate(sellerSkus, normalizeSellerSku(row.sellerSku), candidate);
+        addCandidate(catalogTexts, normalizeCatalogText(productName), candidate);
+        addCandidate(
+          catalogTexts,
+          normalizeCatalogText([productName, row.variantName].filter(Boolean).join(' ')),
+          candidate
+        );
       }
       index[platform] = {
         sellerSkus,
@@ -70,8 +72,6 @@
     }
     const text = typeof item === 'string' ? item : item.text;
     if (typeof text !== 'string') return null;
-    // Only accept an explicit Seller SKU field or TikTok's known
-    // "Product | Variant | Seller SKU" parser format, never fuzzy product names.
     const explicit = text.match(/(?:^|[|\n])\s*Seller\s*SKU\s*[:：]\s*([^|\n]+)/i);
     if (explicit?.[1]?.trim()) return skuNormalization.cleanPdfSellerSku(explicit[1]) || null;
     if (platform === 'TIKTOK') {
@@ -83,6 +83,51 @@
     return null;
   };
 
+  const extractCatalogText = (platform, item) => {
+    if (!PLATFORMS.includes(platform) || !item) return null;
+    if (typeof item.catalogText === 'string' && item.catalogText.trim()) return item.catalogText.trim();
+    const text = typeof item === 'string' ? item : item.text;
+    if (typeof text !== 'string' || !text.trim()) return null;
+    if (platform === 'TIKTOK') {
+      const pieces = text.split('|').map(piece => piece.trim()).filter(Boolean);
+      if (pieces.length >= 2) return [pieces[0], pieces[1]].join(' ');
+      return null;
+    }
+    return text.trim();
+  };
+
+  const resolveCatalog = (index, platform, item) => {
+    const rawText = extractCatalogText(platform, item);
+    const catalogKey = normalizeCatalogText(rawText);
+    if (!catalogKey) return { status: 'no_identity', reason: 'catalog_text_not_explicit' };
+    const candidates = index[platform].catalogTexts.get(catalogKey) || [];
+    if (candidates.length > 1) {
+      return {
+        status: 'ambiguous',
+        reason: 'duplicate_catalog_text',
+        identityType: 'catalog_row',
+        catalogKey,
+        candidateCount: candidates.length
+      };
+    }
+    if (candidates.length === 1) {
+      return {
+        status: 'found',
+        identityType: 'catalog_row',
+        sellerSku: null,
+        catalogKey,
+        candidate: { ...candidates[0] },
+        captureDate: index[platform].captureDate
+      };
+    }
+    return {
+      status: 'not_found',
+      reason: 'catalog_text_not_found',
+      identityType: 'catalog_row',
+      catalogKey
+    };
+  };
+
   const resolve = (index, platform, item) => {
     if (!PLATFORMS.includes(platform) || !index?.[platform]) {
       return { status: 'unavailable', reason: 'platform_or_registry_unavailable' };
@@ -92,60 +137,41 @@
     const skuKey = normalizeSellerSku(skuText);
     if (skuKey) {
       const candidates = index[platform].sellerSkus.get(skuKey) || [];
-      if (candidates.length === 0) return { status: 'not_found', sellerSku: skuText };
-      if (candidates.length > 1) {
+      if (candidates.length === 0) {
+        return { status: 'not_found', reason: 'seller_sku_not_found', identityType: 'seller_sku', sellerSku: skuText };
+      }
+      if (candidates.length === 1) {
         return {
-          status: 'ambiguous',
-          reason: 'duplicate_seller_sku',
+          status: 'found',
           identityType: 'seller_sku',
           sellerSku: skuText,
-          candidateCount: candidates.length
+          candidate: { ...candidates[0] },
+          captureDate: index[platform].captureDate
+        };
+      }
+
+      const catalogEvidence = resolveCatalog(index, platform, item);
+      if (catalogEvidence.status === 'found' &&
+          candidates.some(candidate => candidateKey(candidate) === candidateKey(catalogEvidence.candidate))) {
+        return {
+          ...catalogEvidence,
+          sellerSku: skuText,
+          reason: 'duplicate_seller_sku_disambiguated_by_catalog'
         };
       }
       return {
-        status: 'found',
+        status: 'ambiguous',
+        reason: 'duplicate_seller_sku',
         identityType: 'seller_sku',
         sellerSku: skuText,
-        candidate: { ...candidates[0] },
-        captureDate: index[platform].captureDate
+        candidateCount: candidates.length
       };
     }
 
-    // Shopee often omits Seller SKU from both Seller Center and the label.
-    // In that case only, accept an exact whitespace-insensitive catalog title
-    // (title or title + variant) when it resolves to one registry row.
-    if (platform === 'SHOPEE') {
-      const rawText = typeof item === 'string' ? item : item?.text;
-      const catalogKey = normalizeCatalogText(rawText);
-      if (catalogKey) {
-        const candidates = index[platform].catalogTexts.get(catalogKey) || [];
-        if (candidates.length > 1) {
-          return {
-            status: 'ambiguous',
-            reason: 'duplicate_catalog_text',
-            identityType: 'catalog_row',
-            catalogKey,
-            candidateCount: candidates.length
-          };
-        }
-        if (candidates.length === 1) {
-          return {
-            status: 'found',
-            identityType: 'catalog_row',
-            sellerSku: null,
-            catalogKey,
-            candidate: { ...candidates[0] },
-            captureDate: index[platform].captureDate
-          };
-        }
-        return {
-          status: 'not_found',
-          reason: 'catalog_text_not_found',
-          identityType: 'catalog_row',
-          catalogKey
-        };
-      }
-    }
+    const canUseCatalog = platform === 'SHOPEE' ||
+      (platform === 'TIKTOK' && typeof (typeof item === 'string' ? item : item?.text) === 'string' &&
+        String(typeof item === 'string' ? item : item?.text).includes('|'));
+    if (canUseCatalog) return resolveCatalog(index, platform, item);
 
     return { status: 'no_identity', reason: 'seller_sku_not_explicit' };
   };
@@ -155,6 +181,7 @@
     normalizeSellerSku,
     normalizeCatalogText,
     extractSellerSku,
+    extractCatalogText,
     resolve
   };
 });

@@ -118,3 +118,35 @@ test('Exact unique Shopee catalog row can use a catalog-row internal-name assign
   assert.equal(actual.reason, 'registry_catalog_exact_verified');
   assert.equal(actual.rule.shortName, 'เด้งม่วง3');
 });
+
+test('Catalog-row assignments keep TikTok variants separate when modelId is unavailable', () => {
+  const assignments = matcher.validateAssignments({
+    schema: matcher.SCHEMA,
+    version: 1,
+    entries: [
+      {
+        platform: 'TIKTOK',
+        identityType: 'catalog_row',
+        sellerSku: null,
+        productId: 'product-shirt',
+        modelId: null,
+        variantName: 'S',
+        shortName: 'เสื้อ S'
+      },
+      {
+        platform: 'TIKTOK',
+        identityType: 'catalog_row',
+        sellerSku: null,
+        productId: 'product-shirt',
+        modelId: null,
+        variantName: 'M',
+        shortName: 'เสื้อ M'
+      }
+    ]
+  });
+  assert.equal(assignments.entries.length, 2);
+  assert.notEqual(
+    matcher.assignmentKey(assignments.entries[0]),
+    matcher.assignmentKey(assignments.entries[1])
+  );
+});

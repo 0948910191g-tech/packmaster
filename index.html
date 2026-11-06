@@ -2698,17 +2698,16 @@
         setQuickMapState({ open: false, row: null, keyword: '', shortName: '' });
       };
 
-      const saveRegistryAssignment = async (platform, item, internalName) => {
+      const persistRegistryAssignmentEvidence = async (platform, evidence, internalName) => {
         if (!registryMatcherApi || !registryIdentityApi ||
             !marketplaceCatalogIndex || !registryAssignmentsLoaded ||
             registryAssignmentsError || registryAssignmentsBusy) {
-          throw new Error('Cloud Registry SKU mapping is not ready');
+          throw new Error('Registry SKU mapping is not ready');
         }
-        const evidence = registryIdentityApi.resolve(marketplaceCatalogIndex, platform, item);
-        if (evidence.status !== 'found') {
-          throw new Error(evidence.status === 'ambiguous'
-            ? 'Seller SKU นี้ซ้ำในทะเบียน ต้องแก้ทะเบียนก่อนผูกชื่อภายใน'
-            : 'ไม่พบ Seller SKU ที่ระบุชัดเจนในทะเบียนของแพลตฟอร์มนี้');
+        if (evidence?.status !== 'found') {
+          throw new Error(evidence?.status === 'ambiguous'
+            ? 'รายการนี้ยังระบุตัวเลือกในทะเบียนได้ไม่ชัดเจน'
+            : 'ไม่พบแถวทะเบียนที่ระบุตัวได้แบบแน่นอน');
         }
         const next = registryMatcherApi.upsertAssignment(
           registryAssignments, platform, evidence, internalName);
@@ -2726,6 +2725,54 @@
           setRegistryAssignmentsBusy(false);
         }
       };
+
+      const saveRegistryAssignment = async (platform, item, internalName) => {
+        const evidence = registryIdentityApi.resolve(marketplaceCatalogIndex, platform, item);
+        return persistRegistryAssignmentEvidence(platform, evidence, internalName);
+      };
+
+      const getRegistryRowEvidence = (platform, row) => {
+        const productId = String(row?.productId || row?.itemId || '').trim();
+        if (!productId) return { status: 'unavailable', reason: 'missing_product_id' };
+        const sellerSku = String(row?.sellerSku || '').trim();
+        const candidate = {
+          platform,
+          sellerSku: sellerSku || null,
+          productId,
+          productName: row?.productName || row?.title || '',
+          modelId: row?.modelId || null,
+          variantName: row?.variantName || null
+        };
+        const normalizedSku = registryMatcherApi?.normalizeSku(sellerSku) || '';
+        const sellerCandidates = normalizedSku
+          ? (marketplaceCatalogIndex?.[platform]?.sellerSkus?.get(normalizedSku) || [])
+          : [];
+        const sameRegistryRow = sellerCandidates.length === 1 &&
+          sellerCandidates[0].productId === candidate.productId &&
+          (sellerCandidates[0].modelId || null) === (candidate.modelId || null) &&
+          (candidate.modelId
+            ? true
+            : (sellerCandidates[0].variantName || null) === (candidate.variantName || null));
+        if (sameRegistryRow) {
+          return {
+            status: 'found',
+            identityType: 'seller_sku',
+            sellerSku,
+            candidate,
+            captureDate: marketplaceCatalogIndex?.[platform]?.captureDate || null
+          };
+        }
+        return {
+          status: 'found',
+          identityType: 'catalog_row',
+          sellerSku: null,
+          candidate,
+          captureDate: marketplaceCatalogIndex?.[platform]?.captureDate || null
+        };
+      };
+
+      const saveRegistryRowAssignment = async (platform, row, internalName) =>
+        persistRegistryAssignmentEvidence(platform, getRegistryRowEvidence(platform, row), internalName);
 
       const handleSaveQuickMapping = async () => {
         {
@@ -4515,11 +4562,11 @@
                       <div data-pm-registry-assignments className="pm-card p-4 mb-4">
                         <div className="flex flex-wrap gap-3 items-center justify-between">
                           <div>
-                            <h3 className="text-base font-black text-slate-900">ผูก Seller SKU กับชื่อภายใน PPG</h3>
-                            <p className="text-xs font-semibold text-slate-500 mt-1">จับคู่ตรงตัวตามแพลตฟอร์ม • Seller SKU ที่ซ้ำ/หายจะเข้า Review เท่านั้น ไม่มี Keyword Fallback</p>
+                            <h3 className="text-base font-black text-slate-900">ผูกทะเบียนสินค้ากับชื่อภายใน PPG</h3>
+                            <p className="text-xs font-semibold text-slate-500 mt-1">ตั้งชื่อได้ทุกแถวจาก Seller SKU หรือ Product ID + Model ID/ตัวเลือก • ไม่มี Keyword/Fuzzy Fallback</p>
                           </div>
                           <span className="rounded-lg bg-blue-50 text-blue-700 font-black text-xs px-3 py-2">
-                            ยืนยันแล้ว {(registryAssignments?.entries || []).filter(entry => entry.platform === marketplaceRegistryPlatformFilter).length} SKU
+                            ชื่อภายใน {(registryAssignments?.entries || []).filter(entry => entry.platform === marketplaceRegistryPlatformFilter).length} รายการ • ทะเบียน {selectedMarketplaceRegistry?.skuRows?.length || 0} แถว
                           </span>
                         </div>
                         {selectedMarketplaceRegistry && (
@@ -4537,34 +4584,61 @@
                                   .slice(0, 50).map((row, index) => {
                                     const platform = marketplaceRegistryPlatformFilter;
                                     const sku = String(row.sellerSku || '').trim();
-                                    const key = platform + ':' + (registryMatcherApi?.normalizeSku(sku) || 'missing-' + index);
-                                    const evidence = sku && registryIdentityApi && marketplaceCatalogIndex
-                                      ? registryIdentityApi.resolve(marketplaceCatalogIndex, platform, { sellerSku: sku })
-                                      : { status: 'no_identity' };
+                                    const productId = String(row.productId || row.itemId || '').trim();
+                                    const rowEvidence = getRegistryRowEvidence(platform, row);
+                                    const catalogEvidence = {
+                                      ...rowEvidence,
+                                      identityType: 'catalog_row',
+                                      sellerSku: null
+                                    };
+                                    const assignmentKeys = [
+                                      rowEvidence.identityType === 'seller_sku'
+                                        ? registryMatcherApi.assignmentKey({
+                                            platform,
+                                            sellerSku: sku,
+                                            productId,
+                                            modelId: row.modelId || null,
+                                            variantName: row.variantName || null,
+                                            shortName: 'row-key'
+                                          })
+                                        : null,
+                                      registryMatcherApi.assignmentKey({
+                                        platform,
+                                        identityType: 'catalog_row',
+                                        sellerSku: null,
+                                        productId,
+                                        modelId: row.modelId || null,
+                                        variantName: row.variantName || null,
+                                        shortName: 'row-key'
+                                      })
+                                    ].filter(Boolean);
                                     const assignment = (registryAssignments?.entries || []).find(entry =>
-                                      entry.platform === platform && registryMatcherApi?.normalizeSku(entry.sellerSku) ===
-                                      registryMatcherApi?.normalizeSku(sku) && entry.productId ===
-                                      String(row.productId || row.itemId || '') &&
-                                      (entry.modelId || null) === (row.modelId || null));
+                                      assignmentKeys.includes(registryMatcherApi.assignmentKey(entry)));
+                                    const saveEvidence = assignment?.identityType === 'catalog_row'
+                                      ? catalogEvidence
+                                      : rowEvidence;
+                                    const key = [platform, productId, row.modelId || '', row.variantName || ''].join(':');
                                     const draft = Object.prototype.hasOwnProperty.call(registryNameDrafts, key)
                                       ? registryNameDrafts[key] : assignment?.shortName || '';
-                                    const canSave = evidence.status === 'found' && draft.trim() && !registryAssignmentsBusy;
+                                    const sellerSkuNeedsCatalog = Boolean(sku && rowEvidence.identityType === 'catalog_row');
+                                    const canSave = Boolean(productId && draft.trim() && !registryAssignmentsBusy);
                                     return <tr key={platform + '-' + (row.modelId || row.productId || row.itemId) + '-' + index}>
                                       <td>
                                         <div className="font-mono text-xs font-black text-blue-900">{sku || 'ไม่มี Seller SKU'}</div>
                                         <div className="text-[11px] text-slate-600">{row.productName || row.title || '-'}{row.variantName ? ' • ' + row.variantName : ''}</div>
                                       </td>
-                                      <td><span className={`text-xs font-black ${evidence.status === 'found' ? 'text-emerald-700' : 'text-amber-700'}`}>
-                                        {evidence.status === 'ambiguous' ? 'Seller SKU ซ้ำ' :
-                                          evidence.status === 'no_identity' ? 'ไม่มี SKU' :
-                                          evidence.status === 'found' ? (assignment ? 'ผูกชื่อแล้ว' : 'รอชื่อภายใน') : 'ตรวจทะเบียน'}
+                                      <td><span className={`text-xs font-black ${assignment ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                        {assignment ? 'ผูกชื่อแล้ว' :
+                                          !sku ? 'ไม่มี SKU • ใช้ Product/Model' :
+                                          sellerSkuNeedsCatalog ? 'SKU ซ้ำ • ใช้ Product/Model' :
+                                          'รอชื่อภายใน'}
                                       </span></td>
-                                      <td><input aria-label={`ชื่อภายใน Seller SKU ${sku}`} className="pm-input !py-2 min-w-[220px]"
-                                        value={draft} maxLength={150} disabled={evidence.status !== 'found' || registryAssignmentsBusy}
+                                      <td><input aria-label={`ชื่อภายใน ${productId} ${row.modelId || row.variantName || ''}`} className="pm-input !py-2 min-w-[220px]"
+                                        value={draft} maxLength={150} disabled={!productId || registryAssignmentsBusy}
                                         placeholder="ชื่อสินค้าในคลัง PPG" onChange={event => setRegistryNameDrafts(prev =>
                                           ({ ...prev, [key]: event.target.value }))} /></td>
                                       <td><button type="button" className="pm-secondary-btn !py-2" disabled={!canSave}
-                                        onClick={() => saveRegistryAssignment(platform, { sellerSku: sku }, draft)
+                                        onClick={() => persistRegistryAssignmentEvidence(platform, saveEvidence, draft)
                                           .then(() => showToast(cloudMode ? 'บันทึกชื่อภายในจากทะเบียนกลางแล้ว' : 'บันทึกชื่อภายในในเครื่องแล้ว', 'success'))
                                           .catch(error => showToast('บันทึกไม่ได้: ' + error.message, 'error'))}>
                                         ยืนยัน
@@ -4573,7 +4647,7 @@
                                   })}
                               </tbody>
                             </table>
-                            <p className="text-[11px] font-semibold text-slate-500 mt-3">แสดงสูงสุด 50 แถว ใช้ช่องค้นหาด้านบนเพื่อหา Seller SKU อื่น ๆ • รายการที่มี SKU ซ้ำต้องแก้ทะเบียนก่อน</p>
+                            <p className="text-[11px] font-semibold text-slate-500 mt-3">แสดงสูงสุด 50 แถว • Seller SKU ปกติจะผูกด้วย SKU • ถ้า SKU ว่างหรือซ้ำ ระบบจะผูกชื่อด้วย Product ID + Model ID/ตัวเลือกแทน</p>
                           </div>
                         )}
                       </div>
@@ -4583,7 +4657,7 @@
 
                     {selectedMarketplaceRegistry?.productsWithoutAnySellerSku?.length>0&&<details className="pm-card mt-4 p-4"><summary className="cursor-pointer text-sm font-black text-amber-800">สินค้าที่ไม่มี Seller SKU ในทุกตัวเลือก ({selectedMarketplaceRegistry.productsWithoutAnySellerSku.length})</summary><div className="mt-3 grid md:grid-cols-2 gap-2">{selectedMarketplaceRegistry.productsWithoutAnySellerSku.map(product=><div key={product.productId||product.itemId} className="rounded-lg border border-amber-100 bg-amber-50/60 p-2.5"><div className="text-xs font-bold text-slate-800">{product.productName||product.title||'-'}</div><div className="font-mono text-[11px] text-slate-500 mt-1">{product.productId||product.itemId}</div></div>)}</div></details>}
 
-                    <div className="mt-4 text-xs font-semibold text-slate-500">{cloudMode ? 'ทะเบียน TikTok/Shopee และชื่อภายในที่ยืนยันแล้วเป็นข้อมูลกลางบน Cloud • Seller SKU ซ้ำหรือไม่มีรหัสต้องตรวจด้วยคน • ไม่ใช้ Keyword Matcher เดิม' : 'ทะเบียนและชื่อภายในที่ยืนยันแล้วเก็บใน Browser เครื่องนี้และรวมใน Workspace Backup • Seller SKU ซ้ำหรือไม่มีรหัสต้องตรวจด้วยคน'}</div>
+                    <div className="mt-4 text-xs font-semibold text-slate-500">{cloudMode ? 'ทะเบียน TikTok/Shopee และชื่อภายในที่ยืนยันแล้วเป็นข้อมูลกลางบน Cloud • ถ้า Seller SKU ว่างหรือซ้ำ ระบบใช้ Product ID + Model ID/ตัวเลือกเป็นตัวตนของแถวแทน • ไม่ใช้ Keyword Matcher เดิม' : 'ทะเบียนและชื่อภายในที่ยืนยันแล้วเก็บใน Browser เครื่องนี้และรวมใน Workspace Backup • ถ้า Seller SKU ว่างหรือซ้ำ ระบบใช้ Product ID + Model ID/ตัวเลือกเป็นตัวตนของแถวแทน'}</div>
                   </section>
                 )}
 

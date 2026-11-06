@@ -35,7 +35,7 @@ test('Local packing uses the registry matcher and never falls back to keyword ru
 
 test('Local assignment handler persists verified SKU before updating state', async () => {
   const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  const start = html.indexOf('const saveRegistryAssignment =');
+  const start = html.indexOf('const persistRegistryAssignmentEvidence =');
   const end = html.indexOf('const handleSaveQuickMapping =', start);
   const data = new Map();
   const storage = {getItem:k=>data.get(k) ?? null,setItem:(k,v)=>data.set(k,v)};

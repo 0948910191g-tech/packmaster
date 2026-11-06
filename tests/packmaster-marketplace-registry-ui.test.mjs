@@ -32,3 +32,14 @@ test('marketplace registry stays local, platform-scoped, and separate from SKU m
   assert.match(privacy, /does not create internal names or matching rules/i);
   assert.match(privacy, /out of Git/i);
 });
+
+test('registry naming UI allows every concrete row to be named even when Seller SKU is missing or duplicated', async () => {
+  const html = await readFile(path.join(projectRoot, 'index.html'), 'utf8');
+  assert.match(html, /const getRegistryRowEvidence = \(platform, row\) =>/);
+  assert.match(html, /identityType: 'catalog_row'/);
+  assert.match(html, /disabled=\{!productId \|\| registryAssignmentsBusy\}/);
+  assert.match(html, /persistRegistryAssignmentEvidence\(platform, saveEvidence, draft\)/);
+  assert.match(html, /ไม่มี SKU • ใช้ Product\/Model/);
+  assert.match(html, /SKU ซ้ำ • ใช้ Product\/Model/);
+  assert.doesNotMatch(html, /disabled=\{evidence\.status !== 'found' \|\| registryAssignmentsBusy\}/);
+});

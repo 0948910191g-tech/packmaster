@@ -14,6 +14,9 @@
   const normalizeSku = skuNormalization.normalizeSellerSku;
   const newAssignments = () => ({ schema: SCHEMA, version: 1, entries: [] });
 
+  const catalogVariantKey = entry =>
+    entry?.modelId ? null : (String(entry?.variantName || '').trim() || null);
+
   const assignmentKey = entry => {
     const sellerSku = normalizeSku(entry?.sellerSku);
     if (sellerSku) return JSON.stringify(['seller_sku', entry.platform, sellerSku]);
@@ -21,7 +24,8 @@
       'catalog_row',
       entry?.platform,
       String(entry?.productId || '').trim(),
-      entry?.modelId || null
+      entry?.modelId || null,
+      catalogVariantKey(entry)
     ]);
   };
 
@@ -36,6 +40,9 @@
       const sellerSku = normalizeSku(entry?.sellerSku);
       const productId = typeof entry?.productId === 'string' ? entry.productId.trim() : '';
       const modelId = entry?.modelId || null;
+      const variantName = typeof entry?.variantName === 'string' && entry.variantName.trim()
+        ? entry.variantName.trim()
+        : null;
       const identityType = sellerSku ? 'seller_sku' : entry?.identityType;
       if (!entry || typeof entry !== 'object' || Array.isArray(entry) ||
           !PLATFORMS.has(entry.platform) ||
@@ -52,6 +59,7 @@
         sellerSku: sellerSku || null,
         productId,
         modelId,
+        variantName,
         shortName: entry.shortName.trim()
       };
       const key = assignmentKey(clean);
@@ -67,12 +75,15 @@
       return JSON.stringify(['seller_sku', platform, normalizeSku(evidence.sellerSku)]);
     }
     if (evidence?.identityType === 'catalog_row' && evidence?.candidate) {
-      return JSON.stringify([
-        'catalog_row',
+      return assignmentKey({
         platform,
-        String(evidence.candidate.productId || '').trim(),
-        evidence.candidate.modelId || null
-      ]);
+        identityType: 'catalog_row',
+        sellerSku: null,
+        productId: evidence.candidate.productId,
+        modelId: evidence.candidate.modelId || null,
+        variantName: evidence.candidate.variantName || null,
+        shortName: 'catalog-row-key'
+      });
     }
     return '';
   };
@@ -90,9 +101,10 @@
       entries: [{
         platform,
         identityType: evidence.identityType || (normalizeSku(evidence.sellerSku) ? 'seller_sku' : 'catalog_row'),
-        sellerSku: evidence.sellerSku || null,
+        sellerSku: evidence.identityType === 'catalog_row' ? null : (evidence.sellerSku || null),
         productId: candidate.productId,
         modelId: candidate.modelId || null,
+        variantName: candidate.variantName || null,
         shortName
       }]
     }).entries[0];
@@ -135,8 +147,12 @@
     }
 
     const candidate = evidence.candidate;
+    const catalogVariantChanged = assignment.identityType === 'catalog_row' &&
+      !assignment.modelId &&
+      (assignment.variantName || null) !== (candidate.variantName || null);
     if (assignment.productId !== candidate.productId ||
-        (assignment.modelId || null) !== (candidate.modelId || null)) {
+        (assignment.modelId || null) !== (candidate.modelId || null) ||
+        catalogVariantChanged) {
       return { status: 'ambiguous', reason: 'registry_identity_changed', evidence };
     }
 

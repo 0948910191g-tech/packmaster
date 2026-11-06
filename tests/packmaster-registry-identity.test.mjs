@@ -113,3 +113,34 @@ test('Shopee falls back to one exact catalog row only when Seller SKU is absent'
     text: 'HAKU Cooling 12 ชิ้น'
   }).status, 'ambiguous');
 });
+
+test('TikTok can use exact Product + Variant catalog identity when Seller SKU is absent or duplicated', () => {
+  const source = catalog('TIKTOK', ['DUP-SKU', 'DUP-SKU', null]);
+  source.skuRows[0].productName = 'HOYA Jersey';
+  source.skuRows[0].variantName = 'S';
+  source.skuRows[1].productName = 'HOYA Jersey';
+  source.skuRows[1].variantName = 'M';
+  source.skuRows[2].productName = 'HAKU Baby';
+  source.skuRows[2].variantName = '40 sheets';
+  source.products[0].productName = 'HOYA Jersey';
+  source.products[1].productName = 'HOYA Jersey';
+  source.products[2].productName = 'HAKU Baby';
+
+  const store = registryApi.replacePlatformRegistry(registryApi.createEmptyStore(), source);
+  const index = identity.buildIndex(store, registryApi);
+
+  const duplicateResolved = identity.resolve(index, 'TIKTOK', {
+    text: 'HOYA Jersey | M | DUP-SKU',
+    sellerSku: 'DUP-SKU'
+  });
+  assert.equal(duplicateResolved.status, 'found');
+  assert.equal(duplicateResolved.identityType, 'catalog_row');
+  assert.equal(duplicateResolved.candidate.productId, 'product-2');
+
+  const missingSkuResolved = identity.resolve(index, 'TIKTOK', {
+    text: 'HAKU Baby | 40 sheets'
+  });
+  assert.equal(missingSkuResolved.status, 'found');
+  assert.equal(missingSkuResolved.identityType, 'catalog_row');
+  assert.equal(missingSkuResolved.candidate.productId, 'product-3');
+});
