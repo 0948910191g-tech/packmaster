@@ -38,7 +38,10 @@
       const data = store.platforms[platform] || null;
       const sellerSkus = new Map();
       const catalogTexts = new Map();
-      for (const row of data?.skuRows || []) {
+      const catalogRows = typeof registryApi.getNameableRows === 'function'
+        ? registryApi.getNameableRows(data, platform)
+        : (data?.skuRows || []);
+      for (const row of catalogRows) {
         const productName = platform === 'TIKTOK' ? row.productName : row.title;
         const candidate = {
           platform,
@@ -168,7 +171,9 @@
       };
     }
 
-    const canUseCatalog = platform === 'SHOPEE' ||
+    const explicitCatalogText = typeof item === 'object' && typeof item?.catalogText === 'string' &&
+      Boolean(item.catalogText.trim());
+    const canUseCatalog = platform === 'SHOPEE' || explicitCatalogText ||
       (platform === 'TIKTOK' && typeof (typeof item === 'string' ? item : item?.text) === 'string' &&
         String(typeof item === 'string' ? item : item?.text).includes('|'));
     if (canUseCatalog) return resolveCatalog(index, platform, item);

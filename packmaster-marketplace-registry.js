@@ -186,6 +186,31 @@
     return store;
   };
 
+  // The source may list products with no variants AND no Seller SKU. They do
+  // not have a skuRows entry, but must still be nameable by their Product ID.
+  // Return view-only rows; never modify or fabricate marketplace source SKUs.
+  const getNameableRows = (platformRegistry, platform) => {
+    if (!PLATFORMS.includes(platform)) throw new Error('Unsupported marketplace platform');
+    if (!platformRegistry) return [];
+    const idField = idFieldFor(platform);
+    const nameField = nameFieldFor(platform);
+    const rows = platformRegistry.skuRows || [];
+    const productIdsWithRows = new Set(rows.map(row => row[idField]));
+    const productsOnly = (platformRegistry.products || [])
+      .filter(product => !productIdsWithRows.has(product[idField]))
+      .map(product => ({
+        platform,
+        [idField]: product[idField],
+        [nameField]: product[nameField],
+        sellerSku: hasText(product.sellerSku) ? product.sellerSku : null,
+        sellerSkuStatus: hasText(product.sellerSku) ? 'present' : 'not_displayed',
+        sourceRowType: 'product_only',
+        modelId: null,
+        variantName: null
+      }));
+    return [...rows, ...productsOnly];
+  };
+
   const getSummary = (storeCandidate) => {
     const store = validateStore(storeCandidate);
     return PLATFORMS.reduce((summary, platform) => {
@@ -222,6 +247,7 @@
     replacePlatformRegistry,
     loadStore,
     saveStore,
+    getNameableRows,
     getSummary
   };
 });

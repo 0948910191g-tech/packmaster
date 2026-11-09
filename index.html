@@ -1588,6 +1588,7 @@
       const [marketplaceRegistrySearch, setMarketplaceRegistrySearch] = useState('');
       const [marketplaceRegistryPage, setMarketplaceRegistryPage] = useState(1);
       const [registryNamePage, setRegistryNamePage] = useState(1);
+      const [registryNameStatusFilter, setRegistryNameStatusFilter] = useState('all');
       const [marketplaceRegistryPageSize, setMarketplaceRegistryPageSize] = useState(20);
       const [marketplaceRegistryBusy, setMarketplaceRegistryBusy] = useState(false);
       useEffect(() => {
@@ -2777,6 +2778,24 @@
           candidate,
           captureDate: marketplaceCatalogIndex?.[platform]?.captureDate || null
         };
+      };
+
+      const getRegistryRowAssignment = (platform, row) => {
+        if (!registryMatcherApi || !registryAssignments?.entries) return null;
+        const evidence = getRegistryRowEvidence(platform, row);
+        if (evidence.status !== 'found') return null;
+        // A saved catalog name is not an active Seller SKU match if the
+        // registry later changes to a unique SKU. Count only its active key.
+        const activeKey = registryMatcherApi.assignmentKey(
+          registryMatcherApi.makeAssignment(platform, evidence, 'probe')
+        );
+        return registryAssignments.entries.find(entry =>
+          registryMatcherApi.assignmentKey(entry) === activeKey) || null;
+      };
+
+      const hasDuplicateRegistrySku = (platform, row) => {
+        const sku = registryMatcherApi?.normalizeSku(row?.sellerSku || '');
+        return Boolean(sku && (marketplaceCatalogIndex?.[platform]?.sellerSkus?.get(sku) || []).length > 1);
       };
 
       const saveRegistryRowAssignment = async (platform, row, internalName) =>
@@ -3993,33 +4012,43 @@
         ? marketplaceRegistryApi.getSummary(marketplaceRegistry)
         : null, [marketplaceRegistry]);
       const selectedMarketplaceRegistry = marketplaceRegistry?.platforms?.[marketplaceRegistryPlatformFilter] || null;
+      const registryNamingRows = useMemo(() => marketplaceRegistryApi
+        ? marketplaceRegistryApi.getNameableRows(selectedMarketplaceRegistry, marketplaceRegistryPlatformFilter)
+        : [], [selectedMarketplaceRegistry, marketplaceRegistryPlatformFilter]);
+      const registryNameStats = useMemo(() => {
+        const counts = { all: registryNamingRows.length, unnamed: 0, missingSku: 0, duplicateSku: 0, productOnly: 0 };
+        for (const row of registryNamingRows) {
+          if (!getRegistryRowAssignment(marketplaceRegistryPlatformFilter, row)) counts.unnamed++;
+          if (!String(row.sellerSku || '').trim()) counts.missingSku++;
+          if (hasDuplicateRegistrySku(marketplaceRegistryPlatformFilter, row)) counts.duplicateSku++;
+          if (row.sourceRowType === 'product_only') counts.productOnly++;
+        }
+        return counts;
+      }, [registryNamingRows, marketplaceRegistryPlatformFilter, registryAssignments, marketplaceCatalogIndex]);
       const filteredRegistryNameRows = useMemo(() => {
         const query = marketplaceRegistrySearch.trim().toLowerCase();
-        return (selectedMarketplaceRegistry?.skuRows || []).filter(row => !query ||
-          [row.sellerSku, row.productName, row.title, row.variantName,
+        return registryNamingRows.filter(row => {
+          if (query && ![row.sellerSku, row.productName, row.title, row.variantName,
             row.productId, row.itemId, row.modelId].some(value =>
-              String(value || '').toLowerCase().includes(query)));
-      }, [selectedMarketplaceRegistry, marketplaceRegistrySearch]);
+              String(value || '').toLowerCase().includes(query))) return false;
+          if (registryNameStatusFilter === 'unnamed') return !getRegistryRowAssignment(marketplaceRegistryPlatformFilter, row);
+          if (registryNameStatusFilter === 'missingSku') return !String(row.sellerSku || '').trim();
+          if (registryNameStatusFilter === 'duplicateSku') return hasDuplicateRegistrySku(marketplaceRegistryPlatformFilter, row);
+          if (registryNameStatusFilter === 'productOnly') return row.sourceRowType === 'product_only';
+          return true;
+        });
+      }, [registryNamingRows, marketplaceRegistrySearch, registryNameStatusFilter,
+        marketplaceRegistryPlatformFilter, registryAssignments, marketplaceCatalogIndex]);
       const registryNamePageSize = 50;
       const registryNamePageCount = Math.max(1, Math.ceil(filteredRegistryNameRows.length / registryNamePageSize));
       const visibleRegistryNameRows = filteredRegistryNameRows.slice(
         (registryNamePage - 1) * registryNamePageSize, registryNamePage * registryNamePageSize);
-      useEffect(() => { setRegistryNamePage(1); }, [marketplaceRegistryPlatformFilter, marketplaceRegistrySearch]);
+      useEffect(() => { setRegistryNameStatusFilter('all'); }, [marketplaceRegistryPlatformFilter]);
+      useEffect(() => { setRegistryNamePage(1); }, [marketplaceRegistryPlatformFilter, marketplaceRegistrySearch, registryNameStatusFilter]);
       useEffect(() => {
         if (registryNamePage > registryNamePageCount) setRegistryNamePage(registryNamePageCount);
       }, [registryNamePage, registryNamePageCount]);
-      const selectedMarketplaceAssignmentCoverage = useMemo(() => {
-        if (!selectedMarketplaceRegistry || !registryAssignments || !registryMatcherApi) return 0;
-        return (selectedMarketplaceRegistry.skuRows || []).reduce((count, row) => {
-          const evidence = getRegistryRowEvidence(marketplaceRegistryPlatformFilter, row);
-          if (evidence.status !== 'found') return count;
-          const key = registryMatcherApi.assignmentKey(
-            registryMatcherApi.makeAssignment(marketplaceRegistryPlatformFilter, evidence, 'probe')
-          );
-          return count + ((registryAssignments.entries || []).some(entry =>
-            registryMatcherApi.assignmentKey(entry) === key) ? 1 : 0);
-        }, 0);
-      }, [selectedMarketplaceRegistry, marketplaceRegistryPlatformFilter, registryAssignments, marketplaceCatalogIndex]);
+      const selectedMarketplaceAssignmentCoverage = registryNameStats.all - registryNameStats.unnamed;
       const filteredMarketplaceRegistryRows = useMemo(() => {
         if (!selectedMarketplaceRegistry) return [];
         const sourceRows = marketplaceRegistryDisplayMode === 'products'
@@ -4582,7 +4611,7 @@
 
                 {activeView === 'marketplace-registry' && (
                   <section data-pm-view="marketplace-registry" className="pm-page">
-                    <div className="pm-page-head"><div><div className="pm-eyebrow">Marketplace Catalog</div><h2 className="pm-page-title">ทะเบียนสินค้า Marketplace</h2><p className="pm-page-subtitle">ทะเบียนสินค้าคือแหล่งจับคู่ SKU หลัก ผูก Seller SKU แต่ละแพลตฟอร์มเข้ากับชื่อภายในที่ยืนยันแล้วเท่านั้น</p></div><div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-black"><PMIcon name="shield"/> {cloudMode ? 'Cloud Registry • Exact SKU Only' : 'Local Registry • Exact SKU Only'}</div></div>
+                    <div className="pm-page-head"><div><div className="pm-eyebrow">Marketplace Catalog</div><h2 className="pm-page-title">ทะเบียนสินค้า Marketplace</h2><p className="pm-page-subtitle">ตั้งชื่อแพ็กได้ทุก SKU/ตัวเลือก รวมถึงสินค้าที่ไม่มี Seller SKU หรือไม่มีแถว SKU ด้วย Product ID ที่ระบุตัวได้แน่นอน</p></div><div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-black"><PMIcon name="shield"/> {cloudMode ? 'Cloud Registry • Exact SKU Only' : 'Local Registry • Exact SKU Only'}</div></div>
 
                     {marketplaceRegistryLoadError && <div role="alert" className="pm-card mb-4 border-2 border-amber-300 bg-amber-50 p-4"><div className="text-sm font-black text-amber-900">อ่านทะเบียนเดิมไม่สำเร็จ</div><div className="mt-1 text-xs font-semibold text-amber-800">{marketplaceRegistryLoadError} • ระบบคงข้อมูลเดิมไว้จนกว่าจะเลือกนำเข้าและยืนยันสร้างทะเบียนใหม่</div></div>}
 
@@ -4602,7 +4631,7 @@
                       {!cloudMode && <a href="./registry-sync.html" rel="noopener noreferrer" className="pm-primary-btn inline-flex mt-3">เปิดหน้าซิงก์ทะเบียนอย่างปลอดภัย</a>}
                     </div>
 
-                    <div className="pm-card p-4 mb-4"><div className="flex flex-wrap gap-2 items-center justify-between"><div className="flex flex-wrap gap-2"><button onClick={()=>setMarketplaceRegistryPlatformFilter('TIKTOK')} className={`pm-chip ${marketplaceRegistryPlatformFilter==='TIKTOK'?'pm-chip-active':''}`}>TikTok</button><button onClick={()=>setMarketplaceRegistryPlatformFilter('SHOPEE')} className={`pm-chip ${marketplaceRegistryPlatformFilter==='SHOPEE'?'pm-chip-active':''}`}>Shopee</button><span className="mx-1 border-l border-slate-200"/><button onClick={()=>setMarketplaceRegistryDisplayMode('products')} className={`pm-chip ${marketplaceRegistryDisplayMode==='products'?'pm-chip-active':''}`}>สินค้า</button><button onClick={()=>setMarketplaceRegistryDisplayMode('skuRows')} className={`pm-chip ${marketplaceRegistryDisplayMode==='skuRows'?'pm-chip-active':''}`}>SKU / ตัวเลือก</button></div><div className="flex items-center gap-2"><input aria-label="ค้นหาทะเบียนสินค้า" value={marketplaceRegistrySearch} onChange={event=>setMarketplaceRegistrySearch(event.target.value)} placeholder="ค้นหาชื่อ, ID, Seller SKU..." className="pm-input !py-2 min-w-[220px]"/><select aria-label="จำนวนรายการต่อหน้า" value={marketplaceRegistryPageSize} onChange={event=>{setMarketplaceRegistryPageSize(Number(event.target.value));setMarketplaceRegistryPage(1);}} className="pm-select !py-2"><option value="20">20/หน้า</option><option value="50">50/หน้า</option><option value="100">100/หน้า</option></select></div></div></div>
+                    <div className="pm-card p-4 mb-4"><div className="flex flex-wrap gap-2 items-center justify-between"><div className="flex flex-wrap gap-2"><button onClick={()=>setMarketplaceRegistryPlatformFilter('TIKTOK')} className={`pm-chip ${marketplaceRegistryPlatformFilter==='TIKTOK'?'pm-chip-active':''}`}>TikTok</button><button onClick={()=>setMarketplaceRegistryPlatformFilter('SHOPEE')} className={`pm-chip ${marketplaceRegistryPlatformFilter==='SHOPEE'?'pm-chip-active':''}`}>Shopee</button></div><div className="flex items-center gap-2"><input aria-label="ค้นหาทะเบียนสินค้า" value={marketplaceRegistrySearch} onChange={event=>setMarketplaceRegistrySearch(event.target.value)} placeholder="ค้นหาชื่อ, ID, Seller SKU..." className="pm-input !py-2 min-w-[220px]"/></div></div></div>
 
                     {(
                       <div data-pm-registry-assignments className="pm-card p-4 mb-4">
@@ -4610,15 +4639,29 @@
                           <div>
                             <h3 className="text-base font-black text-slate-900">ผูกทะเบียนสินค้ากับชื่อภายใน PPG</h3>
                             <p className="text-xs font-semibold text-slate-500 mt-1">ตั้งชื่อสั้นสำหรับป้ายแพ็กด้วย Seller SKU หรือ Product ID + Model ID/ตัวเลือก • ไม่มี Keyword/Fuzzy Fallback</p>
-                            <p className="text-[11px] font-semibold text-amber-700 mt-1">ชื่อที่ระบบเติมให้อัตโนมัติอาจเป็น Seller SKU หรือชื่อจาก Marketplace กรุณาตรวจสอบก่อนพิมพ์</p>
+                            <p className="text-[11px] font-semibold text-amber-700 mt-1">ชื่อเดิมบางรายการเป็นชื่ออัตโนมัติจาก Seller SKU หรือ Marketplace กรุณาตรวจสอบก่อนพิมพ์ • หาก PDF ไม่มีตัวระบุชัดเจน ยังต้องตรวจออเดอร์เอง</p>
                           </div>
                           <span className="rounded-lg bg-blue-50 text-blue-700 font-black text-xs px-3 py-2">
-                            มีชื่อสำหรับจับคู่ {selectedMarketplaceAssignmentCoverage}/{selectedMarketplaceRegistry?.skuRows?.length || 0} แถว (รวมชื่ออัตโนมัติ)
+                            มีชื่อสำหรับจับคู่ {selectedMarketplaceAssignmentCoverage}/{registryNameStats.all} แถว (รวมชื่ออัตโนมัติ)
                           </span>
+                        </div>
+                        <div data-pm-registry-name-filters className="flex flex-wrap gap-2 mt-3">
+                          {[
+                            { value: 'all', label: 'ทั้งหมด', count: registryNameStats.all },
+                            { value: 'unnamed', label: 'ยังไม่ตั้งชื่อ', count: registryNameStats.unnamed },
+                            { value: 'missingSku', label: 'ไม่มี Seller SKU', count: registryNameStats.missingSku },
+                            { value: 'duplicateSku', label: 'SKU ซ้ำ', count: registryNameStats.duplicateSku },
+                            { value: 'productOnly', label: 'ไม่มีแถว SKU/ตัวเลือก', count: registryNameStats.productOnly }
+                          ].map(option => <button key={option.value} type="button"
+                            aria-pressed={registryNameStatusFilter === option.value}
+                            className={`pm-chip ${registryNameStatusFilter === option.value ? 'pm-chip-active' : ''}`}
+                            onClick={() => setRegistryNameStatusFilter(option.value)}>
+                            {option.label} ({option.count})
+                          </button>)}
                         </div>
                         {selectedMarketplaceRegistry && (
                           <div className="overflow-x-auto mt-3 max-h-[560px] overflow-y-auto">
-                            <table className="pm-table min-w-[800px]">
+                            <table className="pm-table min-w-[960px]">
                               <thead><tr><th>Marketplace SKU / สินค้า</th><th>สถานะ</th><th>ชื่อบนป้ายแพ็ก (แก้ไขได้)</th><th>บันทึก</th></tr></thead>
                               <tbody>
                                 {visibleRegistryNameRows.map((row, index) => {
@@ -4626,37 +4669,8 @@
                                     const sku = String(row.sellerSku || '').trim();
                                     const productId = String(row.productId || row.itemId || '').trim();
                                     const rowEvidence = getRegistryRowEvidence(platform, row);
-                                    const catalogEvidence = {
-                                      ...rowEvidence,
-                                      identityType: 'catalog_row',
-                                      sellerSku: null
-                                    };
-                                    const assignmentKeys = [
-                                      rowEvidence.identityType === 'seller_sku'
-                                        ? registryMatcherApi.assignmentKey({
-                                            platform,
-                                            sellerSku: sku,
-                                            productId,
-                                            modelId: row.modelId || null,
-                                            variantName: row.variantName || null,
-                                            shortName: 'row-key'
-                                          })
-                                        : null,
-                                      registryMatcherApi.assignmentKey({
-                                        platform,
-                                        identityType: 'catalog_row',
-                                        sellerSku: null,
-                                        productId,
-                                        modelId: row.modelId || null,
-                                        variantName: row.variantName || null,
-                                        shortName: 'row-key'
-                                      })
-                                    ].filter(Boolean);
-                                    const assignment = (registryAssignments?.entries || []).find(entry =>
-                                      assignmentKeys.includes(registryMatcherApi.assignmentKey(entry)));
-                                    const saveEvidence = assignment?.identityType === 'catalog_row'
-                                      ? catalogEvidence
-                                      : rowEvidence;
+                                    const assignment = getRegistryRowAssignment(platform, row);
+                                    const saveEvidence = rowEvidence;
                                     const key = [platform, productId, row.modelId || '', row.variantName || ''].join(':');
                                     const draft = Object.prototype.hasOwnProperty.call(registryNameDrafts, key)
                                       ? registryNameDrafts[key] : assignment?.shortName || '';
@@ -4666,9 +4680,11 @@
                                       <td>
                                         <div className="font-mono text-xs font-black text-blue-900">{sku || 'ไม่มี Seller SKU'}</div>
                                         <div className="text-[11px] text-slate-600">{row.productName || row.title || '-'}{row.variantName ? ' • ' + row.variantName : ''}</div>
+                                        <div className="font-mono text-[10px] text-slate-500 mt-1">Product ID: {productId}{row.modelId ? ' • Model: ' + row.modelId : ''}</div>
                                       </td>
                                       <td><span className={`text-xs font-black ${assignment ? 'text-emerald-700' : 'text-amber-700'}`}>
                                         {assignment ? 'มีชื่อสำหรับจับคู่' :
+                                          row.sourceRowType === 'product_only' ? 'ไม่มีแถว SKU • ตั้งชื่อด้วย Product ID' :
                                           !sku ? 'ไม่มี SKU • ใช้ Product/Model' :
                                           sellerSkuNeedsCatalog ? 'SKU ซ้ำ • ใช้ Product/Model' :
                                           'รอชื่อภายใน'}
@@ -4700,9 +4716,20 @@
                       </div>
                     )}
 
+                    <details data-pm-registry-raw-details className="pm-card p-4 mb-4">
+                      <summary className="cursor-pointer font-black text-sm text-slate-700">ดูข้อมูลทะเบียนต้นทาง (อ่านอย่างเดียว)</summary>
+                      <div className="flex flex-wrap items-center justify-between gap-2 mt-3 mb-2">
+                        <div className="flex gap-2">
+                          <button onClick={()=>setMarketplaceRegistryDisplayMode('products')} className={`pm-chip ${marketplaceRegistryDisplayMode==='products'?'pm-chip-active':''}`}>สินค้า</button>
+                          <button onClick={()=>setMarketplaceRegistryDisplayMode('skuRows')} className={`pm-chip ${marketplaceRegistryDisplayMode==='skuRows'?'pm-chip-active':''}`}>SKU / ตัวเลือก</button>
+                        </div>
+                        <select aria-label="จำนวนแถวข้อมูลต้นทางต่อหน้า" value={marketplaceRegistryPageSize} onChange={event=>{setMarketplaceRegistryPageSize(Number(event.target.value));setMarketplaceRegistryPage(1);}} className="pm-select !py-2">
+                          <option value="20">20/หน้า</option><option value="50">50/หน้า</option><option value="100">100/หน้า</option>
+                        </select>
+                      </div>
                     {!selectedMarketplaceRegistry ? <PMEmptyState icon="box" title={`ยังไม่มีทะเบียน ${marketplaceRegistryPlatformFilter === 'TIKTOK' ? 'TikTok' : 'Shopee'}`} body="นำเข้าไฟล์ Registry JSON ของแพลตฟอร์มนี้เพื่อดูแคตตาล็อกสินค้าและ SKU"/> : <div className="pm-card overflow-x-auto"><table className="pm-table min-w-[860px]"><thead><tr><th>{marketplaceRegistryDisplayMode==='products'?'Product / Item ID':'Product / Model ID'}</th><th>ชื่อสินค้า / ตัวเลือก</th><th>Seller SKU</th><th>Parent SKU</th><th>สถานะ</th></tr></thead><tbody>{visibleMarketplaceRegistryRows.map((row,index)=>{const productName=row.productName||row.title||'-';const productId=row.productId||row.itemId||'-';const skuRow=row.__recordType==='skuRow';const productHasVariantSku=Array.isArray(row.variants)&&row.variants.some(variant=>variant.sellerSku&&variant.sellerSku.trim());const sellerSku=skuRow?(row.sellerSku&&row.sellerSku.trim()?row.sellerSku:'ไม่แสดง'):marketplaceRegistryPlatformFilter==='SHOPEE'?(productHasVariantSku?'อยู่ในตัวเลือก':'ดูตัวเลือก'):(row.sellerSku&&row.sellerSku.trim()?row.sellerSku:productHasVariantSku?'อยู่ในตัวเลือก':'ไม่แสดง');const missingSku=sellerSku==='ไม่แสดง';return <tr key={`${marketplaceRegistryPlatformFilter}-${skuRow?'sku':'product'}-${row.modelId||row.variantOrdinal||productId}-${(marketplaceRegistryPage-1)*marketplaceRegistryPageSize+index}`}><td><div className="font-mono text-xs font-bold text-slate-700 break-all">{skuRow?(row.modelId||productId):productId}</div><div className="text-[11px] text-slate-400">{skuRow?`Product: ${productId}`:row.status||'-'}</div></td><td><div className="text-xs font-bold text-slate-800">{productName}</div>{skuRow&&row.variantName&&<div className="text-[11px] text-slate-500 mt-1">{row.variantName}</div>}{!skuRow&&<div className="text-[11px] text-slate-500 mt-1">{Array.isArray(row.variants)?row.variants.length:0} ตัวเลือก</div>}</td><td><span className={`text-xs font-black ${missingSku?'text-amber-700':marketplaceRegistryDisplayMode==='products'?'text-blue-700':'text-slate-800'}`}>{sellerSku}</span></td><td className="text-xs font-semibold text-slate-600">{row.parentSku||'-'}</td><td><span className={`text-[11px] font-black px-2 py-1 rounded-full ${missingSku?'bg-amber-50 text-amber-700':marketplaceRegistryDisplayMode==='products'?'bg-blue-50 text-blue-700':'bg-emerald-50 text-emerald-700'}`}>{missingSku?'ไม่มี Seller SKU':skuRow?'มี Seller SKU':'ดู SKU/ตัวเลือก'}</span></td></tr>;})}{visibleMarketplaceRegistryRows.length===0&&<tr><td colSpan="5" className="text-center text-xs font-semibold text-slate-400 py-8">ไม่พบรายการที่ตรงกับคำค้นหา</td></tr>}</tbody></table><div className="pm-pagination p-4"><div className="text-xs font-bold text-slate-500">แสดง {visibleMarketplaceRegistryRows.length} จาก {filteredMarketplaceRegistryRows.length} รายการ • หน้า {marketplaceRegistryPage}/{marketplaceRegistryPageCount}</div><div className="flex gap-2"><button disabled={marketplaceRegistryPage<=1} onClick={()=>setMarketplaceRegistryPage(page=>Math.max(1,page-1))} className="pm-page-btn">‹</button><button disabled={marketplaceRegistryPage>=marketplaceRegistryPageCount} onClick={()=>setMarketplaceRegistryPage(page=>Math.min(marketplaceRegistryPageCount,page+1))} className="pm-page-btn">›</button></div></div></div>}
 
-                    {selectedMarketplaceRegistry?.productsWithoutAnySellerSku?.length>0&&<details className="pm-card mt-4 p-4"><summary className="cursor-pointer text-sm font-black text-amber-800">สินค้าที่ไม่มี Seller SKU ในทุกตัวเลือก ({selectedMarketplaceRegistry.productsWithoutAnySellerSku.length})</summary><div className="mt-3 grid md:grid-cols-2 gap-2">{selectedMarketplaceRegistry.productsWithoutAnySellerSku.map(product=><div key={product.productId||product.itemId} className="rounded-lg border border-amber-100 bg-amber-50/60 p-2.5"><div className="text-xs font-bold text-slate-800">{product.productName||product.title||'-'}</div><div className="font-mono text-[11px] text-slate-500 mt-1">{product.productId||product.itemId}</div></div>)}</div></details>}
+                    </details>
 
                     <div className="mt-4 text-xs font-semibold text-slate-500">{cloudMode ? 'ทะเบียน TikTok/Shopee และชื่อภายในที่ยืนยันแล้วเป็นข้อมูลกลางบน Cloud • ถ้า Seller SKU ว่างหรือซ้ำ ระบบใช้ Product ID + Model ID/ตัวเลือกเป็นตัวตนของแถวแทน • ไม่ใช้ Keyword Matcher เดิม' : 'ทะเบียนและชื่อภายในที่ยืนยันแล้วเก็บใน Browser เครื่องนี้และรวมใน Workspace Backup • ถ้า Seller SKU ว่างหรือซ้ำ ระบบใช้ Product ID + Model ID/ตัวเลือกเป็นตัวตนของแถวแทน'}</div>
                   </section>
