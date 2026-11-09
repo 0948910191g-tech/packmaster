@@ -12,7 +12,7 @@ assert.match(html, /keyword:\s*''/, 'Quick Mapping must not auto-select a sugges
 assert.match(html, /handleApplyQuickOrderName/, 'Quick Mapping must have an order-only apply action');
 assert.match(html, /upsertManualSkuOverride\(/, 'order-only apply must persist a local order override');
 assert.match(html, /ใช้กับ Order นี้/, 'Quick Mapping must expose the safe default action');
-assert.match(html, /ยืนยันชื่อภายในให้ Seller SKU นี้/, 'persistent SKU assignment must be a separate explicit action');
+assert.match(html, /บันทึกชื่อในทะเบียน \(เฉพาะ SKU ที่ระบุตัวได้\)/, 'persistent SKU assignment must be a separate explicit action');
 assert.match(html, /pm-internal-name-options/, 'Quick Mapping must expose searchable existing internal-name choices');
 assert.match(html, /getUniqueInternalNames\(skuRules\)/, 'internal-name choices must come from the current SKU Library');
 assert.match(html, /ยังตั้งชื่อเฉพาะ Order นี้ได้/, 'no Keyword suggestion state must not block manual completion');

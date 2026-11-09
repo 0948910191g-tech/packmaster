@@ -71,10 +71,10 @@
   }
 
   const evidenceKey = (platform, evidence) => {
-    if (evidence?.identityType === 'seller_sku' || normalizeSku(evidence?.sellerSku)) {
-      return JSON.stringify(['seller_sku', platform, normalizeSku(evidence.sellerSku)]);
-    }
-    if (evidence?.identityType === 'catalog_row' && evidence?.candidate) {
+    // Duplicated SKUs can be resolved by an exact catalog row. Preserve that
+    // identity even when the evidence carries the original Seller SKU.
+    if (evidence?.identityType === 'catalog_row') {
+      if (!evidence.candidate) return '';
       return assignmentKey({
         platform,
         identityType: 'catalog_row',
@@ -84,6 +84,10 @@
         variantName: evidence.candidate.variantName || null,
         shortName: 'catalog-row-key'
       });
+    }
+    const sellerSku = normalizeSku(evidence?.sellerSku);
+    if (sellerSku && (!evidence.identityType || evidence.identityType === 'seller_sku')) {
+      return JSON.stringify(['seller_sku', platform, sellerSku]);
     }
     return '';
   };

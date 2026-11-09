@@ -1587,6 +1587,7 @@
       const [marketplaceRegistryDisplayMode, setMarketplaceRegistryDisplayMode] = useState('products');
       const [marketplaceRegistrySearch, setMarketplaceRegistrySearch] = useState('');
       const [marketplaceRegistryPage, setMarketplaceRegistryPage] = useState(1);
+      const [registryNamePage, setRegistryNamePage] = useState(1);
       const [marketplaceRegistryPageSize, setMarketplaceRegistryPageSize] = useState(20);
       const [marketplaceRegistryBusy, setMarketplaceRegistryBusy] = useState(false);
       useEffect(() => {
@@ -2795,7 +2796,7 @@
             showToast('ผูก Seller SKU กับชื่อภายในแล้ว', 'success');
             setQuickMapState({ open: false, row: null, keyword: '', shortName: '' });
           } catch (error) {
-            showToast('ยังบันทึกชื่อภายในไม่ได้: ' + error.message, 'error');
+            showToast('ยังบันทึกชื่อถาวรไม่ได้: ' + error.message + ' • ถ้าเป็นรายการเฉพาะใบ ให้เลือกใช้กับ Order นี้', 'error');
           }
           return;
         }
@@ -3992,6 +3993,21 @@
         ? marketplaceRegistryApi.getSummary(marketplaceRegistry)
         : null, [marketplaceRegistry]);
       const selectedMarketplaceRegistry = marketplaceRegistry?.platforms?.[marketplaceRegistryPlatformFilter] || null;
+      const filteredRegistryNameRows = useMemo(() => {
+        const query = marketplaceRegistrySearch.trim().toLowerCase();
+        return (selectedMarketplaceRegistry?.skuRows || []).filter(row => !query ||
+          [row.sellerSku, row.productName, row.title, row.variantName,
+            row.productId, row.itemId, row.modelId].some(value =>
+              String(value || '').toLowerCase().includes(query)));
+      }, [selectedMarketplaceRegistry, marketplaceRegistrySearch]);
+      const registryNamePageSize = 50;
+      const registryNamePageCount = Math.max(1, Math.ceil(filteredRegistryNameRows.length / registryNamePageSize));
+      const visibleRegistryNameRows = filteredRegistryNameRows.slice(
+        (registryNamePage - 1) * registryNamePageSize, registryNamePage * registryNamePageSize);
+      useEffect(() => { setRegistryNamePage(1); }, [marketplaceRegistryPlatformFilter, marketplaceRegistrySearch]);
+      useEffect(() => {
+        if (registryNamePage > registryNamePageCount) setRegistryNamePage(registryNamePageCount);
+      }, [registryNamePage, registryNamePageCount]);
       const selectedMarketplaceAssignmentCoverage = useMemo(() => {
         if (!selectedMarketplaceRegistry || !registryAssignments || !registryMatcherApi) return 0;
         return (selectedMarketplaceRegistry.skuRows || []).reduce((count, row) => {
@@ -4152,7 +4168,8 @@
                         {(quickMapState.suggestions || []).length > 0 ? <div className="mt-2 grid gap-2">{(quickMapState.suggestions || []).map((suggestion,index)=>{const selected=quickMapState.keyword===suggestion.value;return <button key={`${suggestion.value}-${index}`} type="button" data-pm-keyword-suggestion onClick={()=>setQuickMapState(prev => ({ ...prev, keyword: suggestion.value }))} className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${selected ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-100' : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-blue-50/40'}`}><div className="flex items-start justify-between gap-3"><span className="text-xs font-black text-slate-800 break-words">{suggestion.displayValue || suggestion.value}</span><span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-black ${suggestion.confidence === 'recommended' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>{suggestion.confidence === 'recommended' ? 'ปลอดภัย' : 'ตรวจอีกครั้ง'}</span></div><div className="mt-1 text-[10px] font-semibold text-slate-500">{suggestion.confidence === 'recommended' ? 'ผ่าน Smart Matcher กับคลังและ Batch ปัจจุบัน' : 'เฉพาะที่สุดจากใบจริง • ระบบจะเช็ก Safety อีกครั้งก่อนบันทึก'}</div></button>})}</div> : <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-500">ยังตั้งชื่อเฉพาะ Order นี้ได้ — กรุณาอ้างอิงใบจริงด้านซ้ายและใช้ Keyword ที่เฉพาะเจาะจง</div>}
                       </div>}
                       <div className="mt-3"><label htmlFor="pm-quick-map-internal-name" className="pm-label">ชื่อภายใน / ผลลัพธ์ที่จะพิมพ์</label><input id="pm-quick-map-internal-name" autoFocus list="pm-internal-name-options" value={quickMapState.shortName} onChange={(e)=>setQuickMapState(prev=>({ ...prev, shortName:e.target.value }))} placeholder="ระบุชื่อภายในที่ตรวจสอบแล้ว" className="pm-input text-base font-black" /><datalist id="pm-internal-name-options">{[...new Set((registryAssignments?.entries || []).map(entry => entry.shortName))].map(name=><option key={name} value={name} />)}</datalist></div>
-                      <div className="mt-3 grid sm:grid-cols-2 gap-2"><button onClick={handleSaveQuickMapping} disabled={registryAssignmentsBusy || !quickMapState.shortName.trim()} className="pm-secondary-btn justify-center">ยืนยันชื่อภายในให้ Seller SKU นี้</button><button onClick={handleApplyQuickOrderName} disabled={!quickMapState.shortName.trim()} className="pm-primary-btn justify-center">ใช้กับ Order นี้</button></div>
+                      <div className="mt-3 grid sm:grid-cols-2 gap-2"><button onClick={handleSaveQuickMapping} disabled={registryAssignmentsBusy || !quickMapState.shortName.trim()} className="pm-secondary-btn justify-center">บันทึกชื่อในทะเบียน (เฉพาะ SKU ที่ระบุตัวได้)</button><button onClick={handleApplyQuickOrderName} disabled={!quickMapState.shortName.trim()} className="pm-primary-btn justify-center">ใช้ชื่อเฉพาะ Order นี้</button></div>
+                      <p className="mt-2 text-[11px] font-semibold text-slate-500">หาก SKU ยังไม่ตรงกับทะเบียน ให้เลือกใช้ชื่อเฉพาะ Order นี้โดยตรวจใบจริงก่อน • ระบบจะไม่เพิ่มกฎเดาสินค้าอัตโนมัติ</p>
                     </>}
 
                     {(quickMapState.row?.types || []).includes('REVIEW_SKU') && <label data-pm-review-confirm-sku className="mt-4 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 cursor-pointer"><input type="checkbox" className="mt-0.5 w-4 h-4" checked={reviewOverridesApi ? reviewOverridesApi.getReviewAcknowledgement(quickMapState.row?.order,'sku') : false} onChange={(e)=>handleSetReviewConfirmation('sku',e.target.checked)} /><span><span className="block text-xs font-black text-emerald-900">SKU ถูกต้อง</span><span className="block text-[10px] font-semibold text-emerald-700/75 mt-0.5">ติ๊กเมื่อเทียบกับใบจริงแล้ว ชื่อ/การจับคู่ถูกต้อง</span></span></label>}
@@ -4592,25 +4609,19 @@
                         <div className="flex flex-wrap gap-3 items-center justify-between">
                           <div>
                             <h3 className="text-base font-black text-slate-900">ผูกทะเบียนสินค้ากับชื่อภายใน PPG</h3>
-                            <p className="text-xs font-semibold text-slate-500 mt-1">ตั้งชื่อได้ทุกแถวจาก Seller SKU หรือ Product ID + Model ID/ตัวเลือก • ไม่มี Keyword/Fuzzy Fallback</p>
+                            <p className="text-xs font-semibold text-slate-500 mt-1">ตั้งชื่อสั้นสำหรับป้ายแพ็กด้วย Seller SKU หรือ Product ID + Model ID/ตัวเลือก • ไม่มี Keyword/Fuzzy Fallback</p>
+                            <p className="text-[11px] font-semibold text-amber-700 mt-1">ชื่อที่ระบบเติมให้อัตโนมัติอาจเป็น Seller SKU หรือชื่อจาก Marketplace กรุณาตรวจสอบก่อนพิมพ์</p>
                           </div>
                           <span className="rounded-lg bg-blue-50 text-blue-700 font-black text-xs px-3 py-2">
-                            ชื่อภายใน {selectedMarketplaceAssignmentCoverage}/{selectedMarketplaceRegistry?.skuRows?.length || 0} แถว
+                            มีชื่อสำหรับจับคู่ {selectedMarketplaceAssignmentCoverage}/{selectedMarketplaceRegistry?.skuRows?.length || 0} แถว (รวมชื่ออัตโนมัติ)
                           </span>
                         </div>
                         {selectedMarketplaceRegistry && (
                           <div className="overflow-x-auto mt-3 max-h-[560px] overflow-y-auto">
                             <table className="pm-table min-w-[800px]">
-                              <thead><tr><th>Marketplace SKU / สินค้า</th><th>สถานะ</th><th>ชื่อภายในที่ยืนยันแล้ว</th><th>บันทึก</th></tr></thead>
+                              <thead><tr><th>Marketplace SKU / สินค้า</th><th>สถานะ</th><th>ชื่อบนป้ายแพ็ก (แก้ไขได้)</th><th>บันทึก</th></tr></thead>
                               <tbody>
-                                {(selectedMarketplaceRegistry.skuRows || [])
-                                  .filter(row => {
-                                    const search = marketplaceRegistrySearch.trim().toLowerCase();
-                                    return !search || [row.sellerSku, row.productName, row.title, row.variantName,
-                                      row.productId, row.itemId, row.modelId].some(value =>
-                                        String(value || '').toLowerCase().includes(search));
-                                  })
-                                  .slice(0, 50).map((row, index) => {
+                                {visibleRegistryNameRows.map((row, index) => {
                                     const platform = marketplaceRegistryPlatformFilter;
                                     const sku = String(row.sellerSku || '').trim();
                                     const productId = String(row.productId || row.itemId || '').trim();
@@ -4651,13 +4662,13 @@
                                       ? registryNameDrafts[key] : assignment?.shortName || '';
                                     const sellerSkuNeedsCatalog = Boolean(sku && rowEvidence.identityType === 'catalog_row');
                                     const canSave = Boolean(productId && draft.trim() && !registryAssignmentsBusy);
-                                    return <tr key={platform + '-' + (row.modelId || row.productId || row.itemId) + '-' + index}>
+                                    return <tr key={platform + '-' + (row.modelId || row.productId || row.itemId) + '-' + ((registryNamePage - 1) * registryNamePageSize + index)}>
                                       <td>
                                         <div className="font-mono text-xs font-black text-blue-900">{sku || 'ไม่มี Seller SKU'}</div>
                                         <div className="text-[11px] text-slate-600">{row.productName || row.title || '-'}{row.variantName ? ' • ' + row.variantName : ''}</div>
                                       </td>
                                       <td><span className={`text-xs font-black ${assignment ? 'text-emerald-700' : 'text-amber-700'}`}>
-                                        {assignment ? 'ผูกชื่อแล้ว' :
+                                        {assignment ? 'มีชื่อสำหรับจับคู่' :
                                           !sku ? 'ไม่มี SKU • ใช้ Product/Model' :
                                           sellerSkuNeedsCatalog ? 'SKU ซ้ำ • ใช้ Product/Model' :
                                           'รอชื่อภายใน'}
@@ -4676,7 +4687,14 @@
                                   })}
                               </tbody>
                             </table>
-                            <p className="text-[11px] font-semibold text-slate-500 mt-3">แสดงสูงสุด 50 แถว • Seller SKU ปกติจะผูกด้วย SKU • ถ้า SKU ว่างหรือซ้ำ ระบบจะผูกชื่อด้วย Product ID + Model ID/ตัวเลือกแทน</p>
+                            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                              <p className="text-[11px] font-semibold text-slate-500">แสดง {(registryNamePage - 1) * registryNamePageSize + (filteredRegistryNameRows.length ? 1 : 0)}–{Math.min(registryNamePage * registryNamePageSize, filteredRegistryNameRows.length)} จาก {filteredRegistryNameRows.length} แถว • SKU ว่างหรือซ้ำ ใช้ Product ID + Model ID/ตัวเลือกแทน</p>
+                              <div className="flex items-center gap-2">
+                                <button type="button" className="pm-secondary-btn !py-1.5" disabled={registryNamePage <= 1} onClick={() => setRegistryNamePage(page => Math.max(1, page - 1))}>ก่อนหน้า</button>
+                                <span className="text-xs font-black text-slate-700">หน้า {registryNamePage}/{registryNamePageCount}</span>
+                                <button type="button" className="pm-secondary-btn !py-1.5" disabled={registryNamePage >= registryNamePageCount} onClick={() => setRegistryNamePage(page => Math.min(registryNamePageCount, page + 1))}>ถัดไป</button>
+                              </div>
+                            </div>
                           </div>
                         )}
                       </div>
