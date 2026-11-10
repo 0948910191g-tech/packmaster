@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 
 const html = fs.readFileSync('index.html', 'utf8');
 
@@ -27,3 +28,28 @@ const applyBody = html.slice(applyStart, persistentStart);
 assert.doesNotMatch(applyBody, /saveSkuRule\(/, 'using a name for one order must never create a shared SKU rule');
 
 console.log('PackMaster safe Quick Mapping contract passed');
+
+const helper = await import('../packmaster-review-overrides.js');
+const reviewApi = helper.default || helper;
+const selector = html.slice(html.indexOf('const getReviewSourceText ='), html.indexOf('const getReviewKeywordSuggestions =')) +
+  '\nglobalThis.selectText = getReviewSourceText; globalThis.selectIndex = getReviewSourceItemIndex;';
+for (const cloudMode of [false, true]) {
+  const order = { platform: 'SHOPEE', parsedItems: [{ text: 'FIRST', qty: 1 }, { text: 'SECOND', qty: 1 }] };
+  const named = reviewApi.upsertManualSkuOverride(order, 'FIRST', 'Verified', 0);
+  const context = { cloudMode, reviewOverridesApi: reviewApi, getMatchResult: () => ({ status: 'unmatched' }) };
+  vm.createContext(context);
+  vm.runInContext(selector, context);
+  const row = { types: ['UNMAPPED'], order: named };
+  assert.equal(context.selectText(row), 'SECOND', `Review must advance in ${cloudMode ? 'Cloud' : 'Local'}`);
+  assert.equal(context.selectIndex(row, 'SECOND'), 1);
+}
+{
+  const order = { platform: 'SHOPEE', parsedItems: [{ text: 'DUPLICATE' }, { text: 'DUPLICATE' }] };
+  const named = reviewApi.upsertManualSkuOverride(order, 'DUPLICATE', 'First row', 0);
+  const context = { cloudMode: true, reviewOverridesApi: reviewApi, getMatchResult: () => ({ status: 'unmatched' }) };
+  vm.createContext(context);
+  vm.runInContext(selector, context);
+  const row = { types: ['UNMAPPED'], order: named };
+  assert.equal(context.selectText(row), 'DUPLICATE');
+  assert.equal(context.selectIndex(row, 'DUPLICATE'), 1, 'duplicate text must select the still-unresolved row identity');
+}

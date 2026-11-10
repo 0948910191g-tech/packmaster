@@ -16,11 +16,14 @@
     return type === 'sku' || type === 'qty' ? type : '';
   };
 
-  const getManualSkuOverride = (order, sourceText) => {
+  const getManualSkuOverride = (order, sourceText, indexValue) => {
     const key = normalizeOverrideKey(sourceText);
     if (!key) return null;
     const overrides = Array.isArray(order && order.manualSkuOverrides) ? order.manualSkuOverrides : [];
-    const match = overrides.find((row) => normalizeOverrideKey(row && row.sourceText) === key);
+    const itemKey = getItemKey(indexValue);
+    const match = (itemKey ? overrides.find(row => row && row.itemKey === itemKey && normalizeOverrideKey(row.sourceText) === key) : null) ||
+      (countSourceMatches(order, sourceText) === 1 ? overrides.find(row => !String(row && row.itemKey || '').trim() && normalizeOverrideKey(row && row.sourceText) === key) : null) ||
+      (!itemKey ? overrides.find(row => !String(row && row.itemKey || '').trim() && normalizeOverrideKey(row && row.sourceText) === key) : null);
     if (!match || !String(match.shortName || '').trim()) return null;
     return {
       sourceText: String(match.sourceText || '').trim(),
@@ -28,17 +31,20 @@
     };
   };
 
-  const upsertManualSkuOverride = (order, sourceText, shortName) => {
+  const upsertManualSkuOverride = (order, sourceText, shortName, indexValue) => {
     const source = String(sourceText == null ? '' : sourceText).trim();
     const name = String(shortName == null ? '' : shortName).trim();
     const key = normalizeOverrideKey(source);
     if (!order || !key || !name) return order;
 
     const existing = Array.isArray(order.manualSkuOverrides) ? order.manualSkuOverrides : [];
+    const itemKey = getItemKey(indexValue);
     const nextOverrides = existing
-      .filter((row) => normalizeOverrideKey(row && row.sourceText) !== key)
+      .filter((row) => itemKey
+        ? String(row && row.itemKey || '') !== itemKey && !( !String(row && row.itemKey || '').trim() && countSourceMatches(order, sourceText) === 1 && normalizeOverrideKey(row && row.sourceText) === key )
+        : normalizeOverrideKey(row && row.sourceText) !== key)
       .map((row) => ({ ...row }));
-    nextOverrides.push({ sourceText: source, shortName: name });
+    nextOverrides.push(itemKey ? { itemKey, sourceText: source, shortName: name } : { sourceText: source, shortName: name });
 
     return { ...order, manualSkuOverrides: nextOverrides };
   };

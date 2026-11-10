@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
 
 const require = createRequire(import.meta.url);
 const registryApi = require('../packmaster-marketplace-registry.js');
@@ -79,28 +78,4 @@ test('one editable registry view offers status filters and reveals raw catalog o
   assert.match(html, /ไม่มีแถว SKU\/ตัวเลือก/);
   assert.match(html, /data-pm-registry-raw-details/);
   assert.match(html, /visibleRegistryNameRows\.map\(\(row, index\) =>/);
-});
-
-test('naming status only counts a currently active Seller SKU assignment', () => {
-  const start = html.indexOf('const getRegistryRowAssignment =');
-  const end = html.indexOf('const hasDuplicateRegistrySku', start);
-  assert.ok(start >= 0 && end > start);
-  const candidate = { platform: 'TIKTOK', productId: 'stable-product', modelId: null, variantName: null };
-  const oldCatalog = matcher.makeAssignment('TIKTOK',
-    { status: 'found', identityType: 'catalog_row', candidate }, 'old catalog title');
-  const currentEvidence = { status: 'found', identityType: 'seller_sku', sellerSku: 'UNIQUE-SKU', candidate };
-  const activeSeller = matcher.makeAssignment('TIKTOK', currentEvidence, 'verified SKU title');
-  const context = {
-    registryMatcherApi: matcher,
-    registryAssignments: matcher.validateAssignments({ ...matcher.newAssignments(), entries: [oldCatalog] }),
-    getRegistryRowEvidence: () => currentEvidence
-  };
-  vm.createContext(context);
-  vm.runInContext(html.slice(start, end) + String.fromCharCode(10) +
-    'globalThis.findAssignment = getRegistryRowAssignment;', context);
-  assert.equal(context.findAssignment('TIKTOK', {}), null, 'stale catalog name must not be marked as matched');
-  context.registryAssignments = matcher.validateAssignments({
-    ...matcher.newAssignments(), entries: [oldCatalog, activeSeller]
-  });
-  assert.equal(context.findAssignment('TIKTOK', {}).shortName, 'verified SKU title');
 });

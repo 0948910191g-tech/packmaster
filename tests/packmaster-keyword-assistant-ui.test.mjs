@@ -23,7 +23,7 @@ test('Quick Mapping keeps the exact safe seed as source identity and never guess
 });
 
 test('Quick Mapping leaves Keyword blank until the user explicitly chooses one', () => {
-  assert.match(html, /setQuickMapState\(\{\s*open:\s*true,\s*row,\s*sourceText:\s*seed,\s*keyword:\s*'',\s*shortName:\s*'',\s*suggestions\s*\}\);/s);
+  assert.match(html, /setQuickMapState\(\{\s*open:\s*true,\s*row,\s*sourceText:\s*seed,\s*itemIndex:\s*getReviewSourceItemIndex\(row, seed\),\s*keyword:\s*'',\s*shortName:\s*'',\s*suggestions\s*\}\);/s);
   assert.doesNotMatch(html, /const initialKeyword = suggestions\.length > 0 \? suggestions\[0\]\.value : '';/);
 });
 

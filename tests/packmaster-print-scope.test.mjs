@@ -29,6 +29,16 @@ const logicalOrders = [
   { id: 'no-order-blocked', orderId: null, ready: false }
 ];
 
+const sameIdDifferentPlatforms = [
+  { id: 'tiktok-ready', platform: 'TIKTOK', orderId: 'SAME-ID', ready: true },
+  { id: 'shopee-blocked', platform: 'SHOPEE', orderId: 'SAME-ID', ready: false }
+];
+assert.deepEqual(
+  helpers.selectPrintOrders(sameIdDifferentPlatforms, 'READY_ONLY', isReady).map(row => row.id),
+  ['tiktok-ready'],
+  'equal Order IDs on different marketplaces must have independent readiness'
+);
+
 assert.deepEqual(
   helpers.selectPrintOrders(logicalOrders, 'READY_ONLY', isReady).map(row => row.id),
   ['ready-main', 'ready-cont', 'no-order-ready'],

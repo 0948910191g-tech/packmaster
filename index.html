@@ -1665,6 +1665,7 @@
       const [previewMode, setPreviewMode] = useState('labels');
       const [testInput, setTestInput] = useState('');
       const [testQty, setTestQty] = useState('1');
+      const [testPlatform, setTestPlatform] = useState('SHOPEE');
       const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
       // Phase 1 UI/UX V2 — presentation-only controls
@@ -2377,7 +2378,7 @@
 
         o.parsedItems.forEach((item, itemIndex) => {
             const effectiveQty = reviewOverridesApi ? reviewOverridesApi.getEffectiveItemQty(o, item, itemIndex) : item.qty;
-            const manualOverride = reviewOverridesApi ? reviewOverridesApi.getManualSkuOverride(o, item.text) : null;
+            const manualOverride = reviewOverridesApi ? reviewOverridesApi.getManualSkuOverride(o, item.text, itemIndex) : null;
             if (manualOverride) {
                 const baseName = manualOverride.shortName.trim().replace(/\u00A0/g, ' ');
                 const current = skuMap.get(baseName) || { qty: 0, sourceKeyword: item.text || '' };
@@ -2553,18 +2554,29 @@
       const getReviewSourceText = (row) => {
         if (!row || !row.order) return '';
         const types = row.types || [];
+        const parsedItems = Array.isArray(row.order.parsedItems) ? row.order.parsedItems : [];
+        const unresolved = parsedItems.find((item, itemIndex) => {
+          try {
+            if (reviewOverridesApi?.getManualSkuOverride(row.order, item.text, itemIndex)) return false;
+            return getMatchResult(item, row.order.platform).status !== 'matched';
+          } catch (error) { return true; }
+        });
+        if (unresolved) return String(unresolved.text || '').trim();
         let seed = '';
         if (!cloudMode && pilotSafetyApi && types.some(type => type === 'REVIEW_SKU' || type === 'UNMAPPED')) {
           try { seed = pilotSafetyApi.getSkuFixSeed(row, getMatchResult) || ''; }
           catch (error) { console.warn('Pilot Safety seed unavailable', error); }
         }
         if (seed) return seed;
-        const parsedItems = Array.isArray(row.order.parsedItems) ? row.order.parsedItems : [];
-        const unresolved = parsedItems.find(item => {
-          try { return getMatchResult(item, row.order.platform).status !== 'matched'; }
-          catch (error) { return true; }
-        });
-        return String((unresolved || parsedItems[0])?.text || '').trim();
+        return String(parsedItems[0]?.text || '').trim();
+      };
+
+      const getReviewSourceItemIndex = (row, sourceText) => {
+        const items = Array.isArray(row?.order?.parsedItems) ? row.order.parsedItems : [];
+        const exact = items.findIndex((item, itemIndex) => String(item?.text || '').trim() === String(sourceText || '').trim() &&
+          !reviewOverridesApi?.getManualSkuOverride(row.order, item.text, itemIndex) &&
+          (() => { try { return getMatchResult(item, row.order.platform).status !== 'matched'; } catch (_) { return true; } })());
+        return exact >= 0 ? exact : items.findIndex(item => String(item?.text || '').trim() === String(sourceText || '').trim());
       };
 
       const getReviewKeywordSuggestions = (seed) => {
@@ -2623,7 +2635,7 @@
         }
         const suggestions = cloudMode ? [] : getReviewKeywordSuggestions(seed);
         quickMapOpenerRef.current = document.activeElement;
-        setQuickMapState({ open: true, row, sourceText: seed, keyword: '', shortName: '', suggestions });
+        setQuickMapState({ open: true, row, sourceText: seed, itemIndex: getReviewSourceItemIndex(row, seed), keyword: '', shortName: '', suggestions });
       };
 
       const handleReviewException = (row) => {
@@ -2635,7 +2647,7 @@
         }
         const seed = getReviewSourceText(row);
         quickMapOpenerRef.current = document.activeElement;
-        setQuickMapState({ open: true, row, sourceText: seed, keyword: '', shortName: '', suggestions: [] });
+        setQuickMapState({ open: true, row, sourceText: seed, itemIndex: getReviewSourceItemIndex(row, seed), keyword: '', shortName: '', suggestions: [] });
       };
 
       const handleSetReviewConfirmation = async (type, confirmed) => {
@@ -2699,7 +2711,7 @@
         if (!await resetActiveBatchCompletion()) return;
         setOrders(prev => prev.map(order => {
           if (order.id !== targetOrderId) return order;
-          let next = reviewOverridesApi.upsertManualSkuOverride(order, sourceText, shortName);
+          let next = reviewOverridesApi.upsertManualSkuOverride(order, sourceText, shortName, quickMapState.itemIndex);
           if ((quickMapState.row?.types || []).includes('REVIEW_SKU')) next = reviewOverridesApi.confirmReview(next, 'sku');
           return next;
         }));
@@ -2718,8 +2730,8 @@
             ? 'รายการนี้ยังระบุตัวเลือกในทะเบียนได้ไม่ชัดเจน'
             : 'ไม่พบแถวทะเบียนที่ระบุตัวได้แบบแน่นอน');
         }
-        const next = registryMatcherApi.upsertAssignment(
-          registryAssignments, platform, evidence, internalName);
+        const next = registryMatcherApi.saveConfirmedAssignment(
+          registryAssignments, marketplaceCatalogIndex, platform, evidence, internalName);
         setRegistryAssignmentsBusy(true);
         try {
           if (cloudMode) await cloud.saveRegistryAssignments(next);
@@ -2737,7 +2749,7 @@
 
       const saveRegistryAssignment = async (platform, item, internalName) => {
         const evidence = registryIdentityApi.resolve(marketplaceCatalogIndex, platform, item);
-        return persistRegistryAssignmentEvidence(platform, evidence, internalName);
+        return persistRegistryAssignmentEvidence(platform, registryMatcherApi.canonicalEvidence(marketplaceCatalogIndex, platform, evidence), internalName);
       };
 
       const getRegistryRowEvidence = (platform, row) => {
@@ -2780,19 +2792,6 @@
         };
       };
 
-      const getRegistryRowAssignment = (platform, row) => {
-        if (!registryMatcherApi || !registryAssignments?.entries) return null;
-        const evidence = getRegistryRowEvidence(platform, row);
-        if (evidence.status !== 'found') return null;
-        // A saved catalog name is not an active Seller SKU match if the
-        // registry later changes to a unique SKU. Count only its active key.
-        const activeKey = registryMatcherApi.assignmentKey(
-          registryMatcherApi.makeAssignment(platform, evidence, 'probe')
-        );
-        return registryAssignments.entries.find(entry =>
-          registryMatcherApi.assignmentKey(entry) === activeKey) || null;
-      };
-
       const hasDuplicateRegistrySku = (platform, row) => {
         const sku = registryMatcherApi?.normalizeSku(row?.sellerSku || '');
         return Boolean(sku && (marketplaceCatalogIndex?.[platform]?.sellerSkus?.get(sku) || []).length > 1);
@@ -2804,8 +2803,9 @@
       const handleSaveQuickMapping = async () => {
         {
           const order = quickMapState.row?.order;
-          const item = (order?.parsedItems || []).find(entry =>
-            String(entry.text || '').trim() === String(quickMapState.sourceText || '').trim());
+          const item = Number.isInteger(quickMapState.itemIndex)
+            ? (order?.parsedItems || [])[quickMapState.itemIndex]
+            : (order?.parsedItems || []).find(entry => String(entry.text || '').trim() === String(quickMapState.sourceText || '').trim());
           if (!item || !order) {
             showToast('ไม่พบรายการใน Order กรุณาตรวจข้อมูลจากใบจริง', 'error');
             return;
@@ -3963,13 +3963,13 @@
 
       const testResult = useMemo(() => {
         if (!testInput) return null;
-        const match = getMatchResult(testInput);
+        const match = getMatchResult(testInput, testPlatform);
         const totalQty = parseInt(testQty, 10) || 1;
         if (match.status === 'ambiguous') return '⚠️ ตรวจสอบ SKU';
         if (match.status !== 'matched' || !match.rule) return 'ไม่พบคีย์เวิร์ด';
         const baseName = match.rule.shortName.trim().replace(/\u00A0/g, ' ');
         return getAggregatedShortName(baseName, totalQty);
-      }, [testInput, testQty, getMatchResult]);
+      }, [testInput, testQty, testPlatform, getMatchResult]);
 
       const skuFilterOptions = [
         { id: 'ALL', label: 'ทั้งหมด' },
@@ -4015,30 +4015,47 @@
       const registryNamingRows = useMemo(() => marketplaceRegistryApi
         ? marketplaceRegistryApi.getNameableRows(selectedMarketplaceRegistry, marketplaceRegistryPlatformFilter)
         : [], [selectedMarketplaceRegistry, marketplaceRegistryPlatformFilter]);
+      const preparedRegistryAssignments = useMemo(() => registryMatcherApi?.prepareAssignments && Array.isArray(registryAssignments?.entries)
+        ? registryMatcherApi.prepareAssignments(registryAssignments)
+        : null, [registryMatcherApi, registryAssignments]);
+      const registryNameRowMatches = useMemo(() => {
+        const matches = new Map();
+        if (!registryMatcherApi || !registryIdentityApi || !registryAssignments?.entries) return matches;
+        for (const row of registryNamingRows) {
+          const evidence = getRegistryRowEvidence(marketplaceRegistryPlatformFilter, row);
+          const result = evidence.status === 'found'
+            ? registryMatcherApi.match(marketplaceCatalogIndex, marketplaceRegistryPlatformFilter, {},
+              registryAssignments, { resolve: () => evidence }, preparedRegistryAssignments)
+            : { status: evidence.status || 'unmatched', evidence };
+          matches.set(row, result);
+        }
+        return matches;
+      }, [registryNamingRows, marketplaceRegistryPlatformFilter, marketplaceRegistry,
+        marketplaceCatalogIndex, registryAssignments, registryMatcherApi, registryIdentityApi, preparedRegistryAssignments]);
       const registryNameStats = useMemo(() => {
         const counts = { all: registryNamingRows.length, unnamed: 0, missingSku: 0, duplicateSku: 0, productOnly: 0 };
         for (const row of registryNamingRows) {
-          if (!getRegistryRowAssignment(marketplaceRegistryPlatformFilter, row)) counts.unnamed++;
+          if (registryNameRowMatches.get(row)?.status !== 'matched') counts.unnamed++;
           if (!String(row.sellerSku || '').trim()) counts.missingSku++;
           if (hasDuplicateRegistrySku(marketplaceRegistryPlatformFilter, row)) counts.duplicateSku++;
           if (row.sourceRowType === 'product_only') counts.productOnly++;
         }
         return counts;
-      }, [registryNamingRows, marketplaceRegistryPlatformFilter, registryAssignments, marketplaceCatalogIndex]);
+      }, [registryNamingRows, registryNameRowMatches, marketplaceRegistryPlatformFilter, registryAssignments, marketplaceCatalogIndex]);
       const filteredRegistryNameRows = useMemo(() => {
         const query = marketplaceRegistrySearch.trim().toLowerCase();
         return registryNamingRows.filter(row => {
           if (query && ![row.sellerSku, row.productName, row.title, row.variantName,
             row.productId, row.itemId, row.modelId].some(value =>
               String(value || '').toLowerCase().includes(query))) return false;
-          if (registryNameStatusFilter === 'unnamed') return !getRegistryRowAssignment(marketplaceRegistryPlatformFilter, row);
+          if (registryNameStatusFilter === 'unnamed') return registryNameRowMatches.get(row)?.status !== 'matched';
           if (registryNameStatusFilter === 'missingSku') return !String(row.sellerSku || '').trim();
           if (registryNameStatusFilter === 'duplicateSku') return hasDuplicateRegistrySku(marketplaceRegistryPlatformFilter, row);
           if (registryNameStatusFilter === 'productOnly') return row.sourceRowType === 'product_only';
           return true;
         });
       }, [registryNamingRows, marketplaceRegistrySearch, registryNameStatusFilter,
-        marketplaceRegistryPlatformFilter, registryAssignments, marketplaceCatalogIndex]);
+        marketplaceRegistryPlatformFilter, registryAssignments, marketplaceCatalogIndex, registryNameRowMatches]);
       const registryNamePageSize = 50;
       const registryNamePageCount = Math.max(1, Math.ceil(filteredRegistryNameRows.length / registryNamePageSize));
       const visibleRegistryNameRows = filteredRegistryNameRows.slice(
@@ -4512,7 +4529,7 @@
                         <div className="pm-card p-5">
                           <div className="pm-section-kicker">Quick Test</div><h3 className="text-sm font-black text-slate-900 mb-3">ทดสอบ Mapping ก่อนใช้จริง</h3>
                           <textarea rows="3" value={testInput} onChange={(e) => setTestInput(e.target.value)} placeholder="วางชื่อสินค้าเต็ม..." className="pm-input resize-none"></textarea>
-                          <div className="flex items-center gap-2 mt-2"><label className="pm-label !mb-0">Qty</label><input type="number" min="1" value={testQty} onChange={(e) => setTestQty(e.target.value)} className="pm-input !py-2 w-24 text-center" /></div>
+                          <div className="flex items-center gap-2 mt-2"><label className="pm-label !mb-0" htmlFor="pm-test-platform">Platform</label><select id="pm-test-platform" value={testPlatform} onChange={e => setTestPlatform(e.target.value)} className="pm-select"><option value="SHOPEE">Shopee</option><option value="TIKTOK">TikTok</option></select><label className="pm-label !mb-0">Qty</label><input type="number" min="1" value={testQty} onChange={(e) => setTestQty(e.target.value)} className="pm-input !py-2 w-24 text-center" /></div>
                           <div className="mt-3 p-3 rounded-xl bg-slate-50 border border-slate-200"><div className="text-[9px] font-black uppercase tracking-wider text-slate-400">Result</div><div className={`mt-1 text-sm font-black ${testInput && (testResult === 'ไม่พบคีย์เวิร์ด' || testResult === '⚠️ ตรวจสอบ SKU') ? 'text-red-600' : 'text-slate-900'}`}>{testInput ? testResult : '-'}</div></div>
                         </div>
                       </div>
@@ -4669,7 +4686,10 @@
                                     const sku = String(row.sellerSku || '').trim();
                                     const productId = String(row.productId || row.itemId || '').trim();
                                     const rowEvidence = getRegistryRowEvidence(platform, row);
-                                    const assignment = getRegistryRowAssignment(platform, row);
+                                    const rowMatch = registryNameRowMatches.get(row) || null;
+                                    const assignment = rowMatch?.status === 'matched' ? rowMatch.assignment : null;
+                                    const nameConflict = rowMatch?.reason === 'registry_name_conflict_or_stale' ||
+                                      rowMatch?.reason === 'registry_identity_changed';
                                     const saveEvidence = rowEvidence;
                                     const key = [platform, productId, row.modelId || '', row.variantName || ''].join(':');
                                     const draft = Object.prototype.hasOwnProperty.call(registryNameDrafts, key)
@@ -4683,7 +4703,7 @@
                                         <div className="font-mono text-[10px] text-slate-500 mt-1">Product ID: {productId}{row.modelId ? ' • Model: ' + row.modelId : ''}</div>
                                       </td>
                                       <td><span className={`text-xs font-black ${assignment ? 'text-emerald-700' : 'text-amber-700'}`}>
-                                        {assignment ? 'มีชื่อสำหรับจับคู่' :
+                                        {nameConflict ? 'ชื่อขัดกันหรือข้อมูลเก่า • ตรวจและบันทึกชื่ออีกครั้ง' : assignment ? 'มีชื่อสำหรับจับคู่' :
                                           row.sourceRowType === 'product_only' ? 'ไม่มีแถว SKU • ตั้งชื่อด้วย Product ID' :
                                           !sku ? 'ไม่มี SKU • ใช้ Product/Model' :
                                           sellerSkuNeedsCatalog ? 'SKU ซ้ำ • ใช้ Product/Model' :

@@ -14,12 +14,15 @@
       rows.forEach((order) => {
         const orderId = order && order.orderId != null ? String(order.orderId).trim() : '';
         if (!orderId) return;
-        const current = logicalReadiness.has(orderId) ? logicalReadiness.get(orderId) : true;
-        logicalReadiness.set(orderId, current && isReady(order));
+        const platform = String(order && order.platform || '').trim().toUpperCase();
+        const key = JSON.stringify([platform, orderId]);
+        const current = logicalReadiness.has(key) ? logicalReadiness.get(key) : true;
+        logicalReadiness.set(key, current && isReady(order));
       });
       return rows.filter((order) => {
         const orderId = order && order.orderId != null ? String(order.orderId).trim() : '';
-        return orderId ? logicalReadiness.get(orderId) === true : isReady(order);
+        const platform = String(order && order.platform || '').trim().toUpperCase();
+        return orderId ? logicalReadiness.get(JSON.stringify([platform, orderId])) === true : isReady(order);
       });
     }
     throw new Error(`Unknown print scope: ${mode}`);

@@ -70,6 +70,14 @@
     return { schema: SCHEMA, version: 1, entries };
   }
 
+  // Callers may retain this snapshot while the source assignment object is immutable.
+  // The returned entries are validated copies and never alias the caller's array.
+  function prepareAssignments(candidate) {
+    const store = validateAssignments(candidate);
+    const byKey = new Map(store.entries.map(entry => [assignmentKey(entry), entry]));
+    return Object.freeze({ source: candidate, store, byKey });
+  }
+
   const evidenceKey = (platform, evidence) => {
     // Duplicated SKUs can be resolved by an exact catalog row. Preserve that
     // identity even when the evidence carries the original Seller SKU.
@@ -126,7 +134,33 @@
     });
   }
 
-  function match(index, platform, item, assignments, identityApi) {
+  function canonicalEvidence(index, platform, evidence) {
+    const candidate = evidence?.candidate;
+    const sku = normalizeSku(candidate?.sellerSku);
+    const candidates = sku ? index?.[platform]?.sellerSkus?.get(sku) || [] : [];
+    const same = c => c.platform === platform && c.productId === candidate.productId &&
+      (c.modelId || null) === (candidate.modelId || null) &&
+      (candidate.modelId || (c.variantName || null) === (candidate.variantName || null));
+    if (evidence?.status === 'found' && candidates.length === 1 && same(candidates[0])) {
+      return { ...evidence, identityType: 'seller_sku', sellerSku: candidate.sellerSku };
+    }
+    return evidence;
+  }
+
+  // An explicit save confirms the selected name for this exact row, including
+  // any legacy catalog-key name, without deleting historical assignments.
+  function saveConfirmedAssignment(current, index, platform, evidence, shortName) {
+    const canonical = canonicalEvidence(index, platform, evidence);
+    let next = upsertAssignment(current, platform, canonical, shortName);
+    if (canonical.identityType === 'seller_sku') {
+      const catalogKey = evidenceKey(platform, { ...evidence, identityType: 'catalog_row' });
+      next = validateAssignments({ ...next, entries: next.entries.map(entry =>
+        assignmentKey(entry) === catalogKey ? { ...entry, shortName: shortName.trim() } : entry) });
+    }
+    return next;
+  }
+
+  function match(index, platform, item, assignments, identityApi, prepared) {
     if (!identityApi || typeof identityApi.resolve !== 'function') {
       return { status: 'unmatched', reason: 'registry_identity_unavailable' };
     }
@@ -143,20 +177,28 @@
       return { status: 'unmatched', reason: evidence.reason || evidence.status, evidence };
     }
 
-    const store = validateAssignments(assignments);
-    const key = evidenceKey(platform, evidence);
-    const assignment = store.entries.find(entry => assignmentKey(entry) === key);
+    const store = prepared && prepared.source === assignments ? prepared.store : validateAssignments(assignments);
+    const canonical = canonicalEvidence(index, platform, evidence);
+    const key = evidenceKey(platform, canonical);
+    const assignment = prepared && prepared.source === assignments
+      ? prepared.byKey.get(key)
+      : store.entries.find(entry => assignmentKey(entry) === key);
+    const catalogKey = evidenceKey(platform, { ...evidence, identityType: 'catalog_row' });
+    const catalogAssignment = prepared && prepared.source === assignments
+      ? prepared.byKey.get(catalogKey)
+      : store.entries.find(entry => assignmentKey(entry) === catalogKey);
+    if (canonical.identityType === 'seller_sku' && catalogAssignment &&
+        (!assignment || catalogAssignment.shortName !== assignment.shortName)) {
+      return { status: 'ambiguous', reason: 'registry_name_conflict_or_stale', evidence };
+    }
     if (!assignment) {
       return { status: 'unmatched', reason: 'internal_name_not_assigned', evidence };
     }
 
     const candidate = evidence.candidate;
-    const catalogVariantChanged = assignment.identityType === 'catalog_row' &&
-      !assignment.modelId &&
-      (assignment.variantName || null) !== (candidate.variantName || null);
     if (assignment.productId !== candidate.productId ||
         (assignment.modelId || null) !== (candidate.modelId || null) ||
-        catalogVariantChanged) {
+        (!(assignment.modelId || candidate.modelId) && (assignment.variantName || null) !== (candidate.variantName || null))) {
       return { status: 'ambiguous', reason: 'registry_identity_changed', evidence };
     }
 
@@ -170,6 +212,7 @@
       identityType: evidence.identityType,
       sellerSku: normalizeSku(evidence.sellerSku) || null,
       evidence,
+      assignment,
       rule: { keyword, shortName: assignment.shortName }
     };
   }
@@ -190,8 +233,11 @@
     LOCAL_ASSIGNMENTS_KEY,
     newAssignments,
     validateAssignments,
+    prepareAssignments,
     makeAssignment,
     upsertAssignment,
+    canonicalEvidence,
+    saveConfirmedAssignment,
     match,
     normalizeSku,
     assignmentKey,

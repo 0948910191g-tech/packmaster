@@ -21,6 +21,14 @@ const replaced = helpers.upsertManualSkuOverride(first, 'HOYA Baby 5 ห่อ',
 assert.equal(replaced.manualSkuOverrides.length, 1, 'upsert must replace an existing sourceText override instead of duplicating it');
 assert.equal(helpers.getManualSkuOverride(replaced, 'HOYA Baby 5 ห่อ')?.shortName, 'หมูเด้งใหม่5');
 
+const duplicateTextOrder = { id: 'duplicate', parsedItems: [{ text: 'Same item', qty: 1 }, { text: 'Same item', qty: 1 }] };
+const firstDuplicateNamed = helpers.upsertManualSkuOverride(duplicateTextOrder, 'Same item', 'First', 0);
+assert.equal(helpers.getManualSkuOverride(firstDuplicateNamed, 'Same item', 0)?.shortName, 'First');
+assert.equal(helpers.getManualSkuOverride(firstDuplicateNamed, 'Same item', 1), null, 'row-scoped manual names must not leak to duplicate text');
+const legacyOrder = { ...orderA, parsedItems: [{ text: 'Unique text', qty: 1 }] };
+const legacyUnique = helpers.upsertManualSkuOverride(legacyOrder, 'Unique text', 'Legacy');
+assert.equal(helpers.getManualSkuOverride(legacyUnique, 'Unique text', 0)?.shortName, 'Legacy', 'legacy text-only overrides remain readable for unique text');
+
 assert.deepEqual(
   helpers.getUniqueInternalNames([
     { shortName: 'หมูเด้ง5' },

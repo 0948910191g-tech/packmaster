@@ -28,7 +28,7 @@ test('SKU/unmapped Review keeps Pilot Safety source identity and never auto-sele
   mustInclude('pilotSafetyApi.getSkuFixSeed(row, getMatchResult)');
   mustInclude('const seed = getReviewSourceText(row);');
   mustInclude('sourceText: seed');
-  assert.match(html, /setQuickMapState\(\{\s*open:\s*true,\s*row,\s*sourceText:\s*seed,\s*keyword:\s*'',\s*shortName:\s*'',\s*suggestions\s*\}\);/s);
+  assert.match(html, /setQuickMapState\(\{\s*open:\s*true,\s*row,\s*sourceText:\s*seed,\s*itemIndex:\s*getReviewSourceItemIndex\(row, seed\),\s*keyword:\s*'',\s*shortName:\s*'',\s*suggestions\s*\}\);/s);
   assert.doesNotMatch(html, /const initialKeyword = suggestions\.length > 0 \? suggestions\[0\]\.value : '';/);
   mustInclude('data-pm-action="review-exception"');
   mustInclude('ตรวจรายการ');
