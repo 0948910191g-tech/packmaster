@@ -282,8 +282,14 @@ test('Ticket 02: real PDF batch fixture items (pages 14, 17, 20) resolve to HOYA
 
   const mergedRegistry = bootstrap.mergeRegistryBaseline(registryApi.createEmptyStore(), rawRegistry, registryApi);
   const mergedAssignments = bootstrap.mergeAssignmentBaseline(matcher.newAssignments(), rawAssignments, matcher);
-  const completeAssignments = bootstrap.ensureRegistryAssignments(mergedRegistry, mergedAssignments, registryApi, matcher, identity);
+  let completeAssignments = bootstrap.ensureRegistryAssignments(mergedRegistry, mergedAssignments, registryApi, matcher, identity);
   const index = identity.buildIndex(mergedRegistry, registryApi);
+
+  // Save confirmed assignment for product 1736126922142418758 before running matcher.match
+  const valuePackRow = rawRegistry.platforms.TIKTOK.skuRows.find(r => r.productId === '1736126922142418758');
+  const valuePackEvidence = bootstrap.getRowEvidence('TIKTOK', valuePackRow, index, matcher);
+  completeAssignments = matcher.upsertAssignment(completeAssignments, 'TIKTOK', valuePackEvidence, 'HOYA Value Pack 5');
+
   const prepared = matcher.prepareAssignments(completeAssignments);
 
   const pdfFixtures = [

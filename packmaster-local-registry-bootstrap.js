@@ -8,12 +8,46 @@
   const REGISTRY_URL = './data/packmaster-marketplace-registry.json';
   const ASSIGNMENTS_URL = './data/packmaster-registry-assignments.json';
 
+  const REGISTRY_BRAND_CATEGORIES = [
+    { id: 'HOYA_BABY', label: 'HOYA Baby' },
+    { id: 'HAKU_BABY', label: 'HAKU Baby' },
+    { id: 'EXCARE', label: 'EXCARE' },
+    { id: 'NONO', label: 'NONO' },
+    { id: 'HOYA_OTHER', label: 'HOYA อื่นๆ' },
+    { id: 'OTHER', label: 'สินค้าอื่นๆ' }
+  ];
+
+  function getRegistryBrandCategory(row) {
+    const text = [row?.sellerSku, row?.productName, row?.title, row?.variantName]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    if (text.includes('nono') || text.includes('โนโน่')) return 'NONO';
+    if (text.includes('excare') || text.includes('เอ็กซ์แคร์')) return 'EXCARE';
+    if (text.includes('haku') || text.includes('ฮากุ')) return 'HAKU_BABY';
+    if (text.includes('hoya') || text.includes('โฮญ่า')) {
+      const babyKeys = ['baby', 'เบบี้', 'bb', 'value pack', 'ม่วง', 'ชมพู', '80แผ่น', '400 แผ่น', 'สูตรมีกลิ่น', 'สูตรไม่มีกลิ่น'];
+      if (babyKeys.some(k => text.includes(k))) return 'HOYA_BABY';
+      return 'HOYA_OTHER';
+    }
+    return 'OTHER';
+  }
+
   const timestamp = value => {
     const time = Date.parse(value || '');
     return Number.isNaN(time) ? 0 : time;
   };
 
   const trimName = value => String(value || '').trim().slice(0, 150);
+
+  const SYNTHETIC_MARKETING_PATTERN = /\(\s*ราคาส่ง|ราคาส่งยกลัง|ผ้าเช็ดทำความสะอาด|Official Jersey|เสื้อเบสบอล|Everyday Care 24\/7/i;
+
+  function isSyntheticAssignmentEntry(entry, rowInfo) {
+    const name = String(entry?.shortName || '');
+    if (name.length > 40 || SYNTHETIC_MARKETING_PATTERN.test(name)) return true;
+    if (!rowInfo) return false;
+    return name === rowInfo.defaultName || Boolean(rowInfo.productName && name === rowInfo.productName);
+  }
 
   function mergeRegistryBaseline(currentCandidate, baselineCandidate, registryApi) {
     if (!registryApi) throw new Error('Marketplace registry API is required');
@@ -95,13 +129,17 @@
     return sellerSku || variantName || productName;
   }
 
-  function ensureRegistryAssignments(registryCandidate, assignmentsCandidate, registryApi, matcherApi, identityApi) {
+  function ensureRegistryAssignments(registryCandidate, assignmentsCandidate, registryApi, matcherApi, identityApi, baselineCandidate) {
     if (!registryApi || !matcherApi || !identityApi) {
       throw new Error('Registry APIs are required');
     }
     const registry = registryApi.validateStore(registryCandidate);
     let assignments = matcherApi.validateAssignments(assignmentsCandidate);
     const index = identityApi.buildIndex(registry, registryApi);
+
+    // Collect catalog row records and build rowMap in a single pass
+    const catalogRowRecords = [];
+    const rowMap = new Map();
 
     for (const platform of registryApi.PLATFORMS) {
       const platformRegistry = registry.platforms[platform];
@@ -113,30 +151,101 @@
         if (!evidence) continue;
 
         const probe = matcherApi.makeAssignment(platform, evidence, 'probe');
-        const key = matcherApi.assignmentKey(probe);
-        if (assignments.entries.some(entry => matcherApi.assignmentKey(entry) === key)) continue;
+        const rowKey = matcherApi.assignmentKey(probe);
+        const catalogKey = matcherApi.assignmentKey({
+          platform,
+          identityType: 'catalog_row',
+          sellerSku: null,
+          productId: evidence.candidate.productId,
+          modelId: evidence.candidate.modelId || null,
+          variantName: evidence.candidate.variantName || null
+        });
 
-        let shortName = '';
-        if (evidence.identityType === 'seller_sku') {
-          const catalogKey = matcherApi.assignmentKey({
-            platform,
-            identityType: 'catalog_row',
-            sellerSku: null,
-            productId: evidence.candidate.productId,
-            modelId: evidence.candidate.modelId || null,
-            variantName: evidence.candidate.variantName || null
-          });
-          const existingCatalog = assignments.entries.find(entry => matcherApi.assignmentKey(entry) === catalogKey);
-          if (existingCatalog && existingCatalog.shortName) {
-            shortName = existingCatalog.shortName;
+        const info = {
+          defaultName: defaultInternalName(row, evidence),
+          productName: trimName(row?.productName || row?.title),
+          catalogKey
+        };
+        rowMap.set(rowKey, info);
+        if (catalogKey && !rowMap.has(catalogKey)) {
+          rowMap.set(catalogKey, info);
+        }
+
+        catalogRowRecords.push({
+          platform,
+          row,
+          evidence,
+          rowKey,
+          catalogKey,
+          info
+        });
+      }
+    }
+
+    // Build a set of baseline assignmentKeys if baselineCandidate?.entries is provided
+    const baselineKeys = new Set(
+      Array.isArray(baselineCandidate?.entries)
+        ? baselineCandidate.entries.map(e => matcherApi.assignmentKey(e))
+        : []
+    );
+
+    // Identify verified catalog_row entries
+    const verifiedCatalogKeys = new Set();
+    if (Array.isArray(baselineCandidate?.entries)) {
+      for (const entry of baselineCandidate.entries) {
+        if (entry.identityType === 'catalog_row') {
+          verifiedCatalogKeys.add(matcherApi.assignmentKey(entry));
+        }
+      }
+    } else {
+      for (const entry of assignments.entries) {
+        if (entry.identityType === 'catalog_row') {
+          const entryKey = matcherApi.assignmentKey(entry);
+          const info = rowMap.get(entryKey);
+          if (!isSyntheticAssignmentEntry(entry, info)) {
+            verifiedCatalogKeys.add(entryKey);
           }
         }
-        if (!shortName) {
-          shortName = defaultInternalName(row, evidence);
-        }
-        if (!shortName) continue;
-        assignments = matcherApi.upsertAssignment(assignments, platform, evidence, shortName);
       }
+    }
+
+    // Identify keys promoted from verified catalog_row entries
+    const promotedKeys = new Set();
+    for (const record of catalogRowRecords) {
+      if (record.evidence.identityType !== 'seller_sku') continue;
+      if (verifiedCatalogKeys.has(record.catalogKey)) {
+        promotedKeys.add(record.rowKey);
+      }
+    }
+
+    // Filter assignments.entries to purge legacy synthetic auto-generated entries
+    const filteredEntries = assignments.entries.filter(entry => {
+      const key = matcherApi.assignmentKey(entry);
+      if (baselineKeys.has(key)) return true;
+      if (promotedKeys.has(key)) return true;
+
+      const rowInfo = rowMap.get(key);
+      return !isSyntheticAssignmentEntry(entry, rowInfo);
+    });
+
+    assignments = matcherApi.validateAssignments({
+      ...assignments,
+      entries: filteredEntries
+    });
+
+    // Iterate over catalog row records: promote existingCatalog.shortName to seller_sku when applicable
+    for (const record of catalogRowRecords) {
+      if (assignments.entries.some(entry => matcherApi.assignmentKey(entry) === record.rowKey)) continue;
+
+      let shortName = '';
+      if (record.evidence.identityType === 'seller_sku') {
+        const existingCatalog = assignments.entries.find(entry => matcherApi.assignmentKey(entry) === record.catalogKey);
+        if (existingCatalog && existingCatalog.shortName) {
+          shortName = existingCatalog.shortName;
+        }
+      }
+      if (!shortName) continue;
+      assignments = matcherApi.upsertAssignment(assignments, record.platform, record.evidence, shortName);
     }
     return matcherApi.validateAssignments(assignments);
   }
@@ -158,6 +267,10 @@
   return {
     REGISTRY_URL,
     ASSIGNMENTS_URL,
+    REGISTRY_BRAND_CATEGORIES,
+    SYNTHETIC_MARKETING_PATTERN,
+    isSyntheticAssignmentEntry,
+    getRegistryBrandCategory,
     mergeRegistryBaseline,
     mergeAssignmentBaseline,
     getRowEvidence,

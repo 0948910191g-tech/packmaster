@@ -1589,6 +1589,8 @@
       const [marketplaceRegistryPage, setMarketplaceRegistryPage] = useState(1);
       const [registryNamePage, setRegistryNamePage] = useState(1);
       const [registryNameStatusFilter, setRegistryNameStatusFilter] = useState('all');
+      const [registryBrandFilter, setRegistryBrandFilter] = useState('ALL');
+      const baselineAssignmentsRef = useRef(null);
       const [marketplaceRegistryPageSize, setMarketplaceRegistryPageSize] = useState(20);
       const [marketplaceRegistryBusy, setMarketplaceRegistryBusy] = useState(false);
       const [registryLinkRowIndex, setRegistryLinkRowIndex] = useState(0);
@@ -1599,6 +1601,7 @@
         let active = true;
         localRegistryBootstrapApi.loadBaselines(window.fetch.bind(window)).then(({ registry, assignments }) => {
           if (!active) return;
+          baselineAssignmentsRef.current = assignments;
           const latestRegistry = marketplaceRegistryApi.loadStore(window.localStorage).store;
           let latestAssignments;
           try { latestAssignments = registryMatcherApi.loadLocalAssignments(window.localStorage); }
@@ -1613,7 +1616,8 @@
             mergedAssignments,
             marketplaceRegistryApi,
             registryMatcherApi,
-            registryIdentityApi
+            registryIdentityApi,
+            assignments
           );
 
           marketplaceRegistryApi.saveStore(window.localStorage, mergedRegistry);
@@ -2831,7 +2835,7 @@
       };
 
       const handleLinkNewRegistrySku = async () => {
-        const selectedRow = registryNamingRows[registryLinkRowIndex] || null;
+        const selectedRow = brandScopedRegistryNamingRows[registryLinkRowIndex] || null;
         const platform = marketplaceRegistryPlatformFilter;
         const sellerSku = registryLinkSellerSku.trim();
         const shortName = registryLinkShortName.trim();
@@ -3477,7 +3481,8 @@
               registryAssignments || registryMatcherApi.newAssignments(),
               marketplaceRegistryApi,
               registryMatcherApi,
-              registryIdentityApi
+              registryIdentityApi,
+              baselineAssignmentsRef.current
             );
             registryMatcherApi.saveLocalAssignments(window.localStorage, completedAssignments);
             setRegistryAssignments(completedAssignments);
@@ -4048,9 +4053,24 @@
         }
         return counts;
       }, [registryNamingRows, registryNameRowMatches, marketplaceRegistryPlatformFilter, registryAssignments, marketplaceCatalogIndex]);
+      const classifyRegistryBrand = row => typeof localRegistryBootstrapApi !== 'undefined' && typeof localRegistryBootstrapApi?.getRegistryBrandCategory === 'function'
+        ? localRegistryBootstrapApi.getRegistryBrandCategory(row)
+        : 'OTHER';
+      const registryBrandCounts = useMemo(() => {
+        const counts = { ALL: registryNamingRows.length, HOYA_BABY: 0, HAKU_BABY: 0, EXCARE: 0, NONO: 0, HOYA_OTHER: 0, OTHER: 0 };
+        for (const row of registryNamingRows) {
+          const cat = classifyRegistryBrand(row);
+          counts[cat] = (counts[cat] || 0) + 1;
+        }
+        return counts;
+      }, [registryNamingRows]);
+      const brandScopedRegistryNamingRows = useMemo(() => {
+        if (!registryBrandFilter || registryBrandFilter === 'ALL') return registryNamingRows;
+        return registryNamingRows.filter(row => classifyRegistryBrand(row) === registryBrandFilter);
+      }, [registryNamingRows, registryBrandFilter]);
       const filteredRegistryNameRows = useMemo(() => {
         const query = marketplaceRegistrySearch.trim().toLowerCase();
-        return registryNamingRows.filter(row => {
+        return brandScopedRegistryNamingRows.filter(row => {
           if (query && ![row.sellerSku, row.productName, row.title, row.variantName,
             row.productId, row.itemId, row.modelId].some(value =>
               String(value || '').toLowerCase().includes(query))) return false;
@@ -4060,14 +4080,15 @@
           if (registryNameStatusFilter === 'productOnly') return row.sourceRowType === 'product_only';
           return true;
         });
-      }, [registryNamingRows, marketplaceRegistrySearch, registryNameStatusFilter,
+      }, [brandScopedRegistryNamingRows, registryBrandFilter, marketplaceRegistrySearch, registryNameStatusFilter,
         marketplaceRegistryPlatformFilter, registryAssignments, marketplaceCatalogIndex, registryNameRowMatches]);
       const registryNamePageSize = 50;
       const registryNamePageCount = Math.max(1, Math.ceil(filteredRegistryNameRows.length / registryNamePageSize));
       const visibleRegistryNameRows = filteredRegistryNameRows.slice(
         (registryNamePage - 1) * registryNamePageSize, registryNamePage * registryNamePageSize);
-      useEffect(() => { setRegistryNameStatusFilter('all'); setRegistryLinkRowIndex(0); }, [marketplaceRegistryPlatformFilter]);
-      useEffect(() => { setRegistryNamePage(1); }, [marketplaceRegistryPlatformFilter, marketplaceRegistrySearch, registryNameStatusFilter]);
+      useEffect(() => { setRegistryBrandFilter('ALL'); setRegistryNameStatusFilter('all'); setRegistryLinkRowIndex(0); }, [marketplaceRegistryPlatformFilter]);
+      useEffect(() => { setRegistryNamePage(1); }, [marketplaceRegistryPlatformFilter, marketplaceRegistrySearch, registryNameStatusFilter, registryBrandFilter]);
+      useEffect(() => { setRegistryLinkRowIndex(0); }, [registryBrandFilter]);
       useEffect(() => {
         if (registryNamePage > registryNamePageCount) setRegistryNamePage(registryNamePageCount);
       }, [registryNamePage, registryNamePageCount]);
@@ -4603,10 +4624,10 @@
                           <div>
                             <h3 className="text-base font-black text-slate-900">ผูกทะเบียนสินค้ากับชื่อภายใน PPG</h3>
                             <p className="text-xs font-semibold text-slate-500 mt-1">ตั้งชื่อสั้นสำหรับป้ายแพ็กด้วย Seller SKU หรือ Product ID + Model ID/ตัวเลือก • ไม่มี Keyword/Fuzzy Fallback</p>
-                            <p className="text-[11px] font-semibold text-amber-700 mt-1">ชื่อเดิมบางรายการเป็นชื่ออัตโนมัติจาก Seller SKU หรือ Marketplace กรุณาตรวจสอบก่อนพิมพ์ • หาก PDF ไม่มีตัวระบุชัดเจน ยังต้องตรวจออเดอร์เอง</p>
+                            <p className="text-[11px] font-semibold text-amber-700 mt-1">รายชื่อยืนยันจากทะเบียนสินค้า PPG กรุณาตรวจสอบก่อนพิมพ์ • หาก PDF ไม่มีตัวระบุชัดเจน ยังต้องตรวจออเดอร์เอง</p>
                           </div>
                           <span className="rounded-lg bg-blue-50 text-blue-700 font-black text-xs px-3 py-2">
-                            มีชื่อสำหรับจับคู่ {selectedMarketplaceAssignmentCoverage}/{registryNameStats.all} แถว (รวมชื่ออัตโนมัติ)
+                            มีชื่อสำหรับจับคู่ {selectedMarketplaceAssignmentCoverage}/{registryNameStats.all} แถว
                           </span>
                         </div>
                         <div data-pm-add-registry-sku className="p-3 my-3 bg-slate-50 rounded-lg border border-slate-200">
@@ -4620,7 +4641,7 @@
                                 onChange={e => setRegistryLinkRowIndex(Number(e.target.value))}
                                 className="pm-input text-xs w-full"
                               >
-                                {registryNamingRows.map((r, idx) => (
+                                {brandScopedRegistryNamingRows.map((r, idx) => (
                                   <option key={idx} value={idx}>
                                     {String(r.productId || r.itemId || '')} | {r.sellerSku ? r.sellerSku + ' | ' : ''}{r.variantName ? r.variantName + ' | ' : ''}{String(r.productName || r.title || '').slice(0, 40)}
                                   </option>
@@ -4658,6 +4679,29 @@
                               </div>
                             </div>
                           </div>
+                        </div>
+                        <div data-pm-registry-brand-filters className="flex flex-wrap gap-2 mt-3 pb-2 border-b border-slate-100">
+                          {[
+                            { value: 'ALL', label: 'ทั้งหมด', count: registryBrandCounts.ALL },
+                            ...(localRegistryBootstrapApi?.REGISTRY_BRAND_CATEGORIES || [
+                              { id: 'HOYA_BABY', label: 'HOYA Baby' },
+                              { id: 'HAKU_BABY', label: 'HAKU Baby' },
+                              { id: 'EXCARE', label: 'EXCARE' },
+                              { id: 'NONO', label: 'NONO' },
+                              { id: 'HOYA_OTHER', label: 'HOYA อื่นๆ' },
+                              { id: 'OTHER', label: 'สินค้าอื่นๆ' }
+                            ]).map(cat => ({
+                              value: cat.id,
+                              label: cat.label,
+                              count: registryBrandCounts[cat.id] || 0
+                            }))
+                          ].map(option => <button key={option.value} type="button"
+                            data-pm-brand-chip={option.value}
+                            aria-pressed={registryBrandFilter === option.value}
+                            className={`pm-chip ${registryBrandFilter === option.value ? 'pm-chip-active' : ''}`}
+                            onClick={() => { setRegistryBrandFilter(option.value); setRegistryLinkRowIndex(0); }}>
+                            {option.label} ({option.count})
+                          </button>)}
                         </div>
                         <div data-pm-registry-name-filters className="flex flex-wrap gap-2 mt-3">
                           {[

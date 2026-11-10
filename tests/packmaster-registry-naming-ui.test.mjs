@@ -11,7 +11,7 @@ test('all registry name rows have their own page navigation', () => {
   assert.doesNotMatch(html, /\.slice\(0, 50\)\.map\(\(row, index\) =>/);
 });
 test('auto-generated name is not called confirmed in the registry table', () => {
-  assert.match(html, /รวมชื่ออัตโนมัติ/);
+  assert.doesNotMatch(html, /\(รวมชื่ออัตโนมัติ\)/);
   assert.match(html, /กรุณาตรวจสอบก่อนพิมพ์/);
   assert.match(html, /มีชื่อสำหรับจับคู่/);
   assert.doesNotMatch(html, /<th>ชื่อภายในที่ยืนยันแล้ว<\/th>/);
@@ -57,6 +57,7 @@ test('actual registry naming pipeline keeps stale/conflicting rows unresolved an
       registryMatcherApi: matcher, registryIdentityApi: identityApi, registryAssignments: assignments,
       marketplaceCatalogIndex: catalogIndex, marketplaceRegistry: registry, marketplaceRegistryPlatformFilter: platform,
       registryNamingRows: [row], marketplaceRegistrySearch: '', registryNameStatusFilter: 'unnamed',
+      registryBrandFilter: 'ALL',
       useMemo: callback => callback()
     };
     vm.createContext(context);
@@ -178,4 +179,126 @@ test('saveRegistryAssignment updates registryAssignments and subsequent getMatch
   const result = context.getMatchResult({ sellerSku: 'HOYA-VALUE-NEW-LABEL' }, platform);
   assert.equal(result.status, 'matched');
   assert.equal(result.rule.shortName, 'HOYA ฟ้า 5 ห่อ');
+});
+
+test('Brand filter chips container and all 6 PPG brand options render in index.html', () => {
+  assert.match(html, /data-pm-registry-brand-filters/);
+  assert.match(html, /const \[registryBrandFilter, setRegistryBrandFilter\] = useState\('ALL'\)/);
+  assert.match(html, /REGISTRY_BRAND_CATEGORIES/);
+  for (const label of ['ทั้งหมด', 'HOYA Baby', 'HAKU Baby', 'EXCARE', 'NONO', 'HOYA อื่นๆ', 'สินค้าอื่นๆ']) {
+    assert.ok(html.includes(label), `Brand filter chips must include label ${label}`);
+  }
+  for (const brand of ['ALL', 'HOYA_BABY', 'HAKU_BABY', 'EXCARE', 'NONO', 'HOYA_OTHER', 'OTHER']) {
+    assert.match(html, new RegExp(`['"]${brand}['"]`));
+  }
+  assert.match(html, /brandScopedRegistryNamingRows\.map\(\(r, idx\) =>/);
+  assert.match(html, /const selectedRow = brandScopedRegistryNamingRows\[registryLinkRowIndex\]/);
+});
+
+test('Registry naming pipeline filters rows and scopes dropdown by brand category, combining with status and search', async () => {
+  const { createRequire } = await import('node:module');
+  const require = createRequire(import.meta.url);
+  const registryApi = require('../packmaster-marketplace-registry.js');
+  const identityApi = require('../packmaster-registry-identity.js');
+  const matcher = require('../packmaster-registry-matcher.js');
+  const bootstrap = require('../packmaster-local-registry-bootstrap.js');
+  const rawRegistry = require('../data/packmaster-marketplace-registry.json');
+  const rawAssignments = require('../data/packmaster-registry-assignments.json');
+
+  const platform = 'TIKTOK';
+  const catalogIndex = identityApi.buildIndex(rawRegistry, registryApi);
+  const rows = registryApi.getNameableRows(rawRegistry.platforms[platform], platform);
+
+  const helperStart = html.indexOf('const getRegistryRowEvidence =');
+  const helperEnd = html.indexOf('const saveRegistryRowAssignment =', helperStart);
+  const pipelineStart = html.indexOf('const preparedRegistryAssignments = useMemo(');
+  const pipelineEnd = html.indexOf('const registryNamePageSize =', pipelineStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart && pipelineStart > 0 && pipelineEnd > pipelineStart);
+
+  const helperSource = html.slice(helperStart, helperEnd);
+  const pipelineSource = html.slice(pipelineStart, pipelineEnd) +
+    '\nglobalThis.filteredRows = filteredRegistryNameRows;' +
+    '\nglobalThis.scopedDropdownRows = brandScopedRegistryNamingRows;' +
+    '\nglobalThis.brandCounts = registryBrandCounts;';
+
+  assert.equal(typeof bootstrap.getRegistryBrandCategory, 'function', 'bootstrap.getRegistryBrandCategory must be a function');
+  const classify = bootstrap.getRegistryBrandCategory;
+
+  const complete = bootstrap.ensureRegistryAssignments
+    ? bootstrap.ensureRegistryAssignments(rawRegistry, rawAssignments, registryApi, matcher, identityApi)
+    : rawAssignments;
+
+  const runPipeline = (brandFilter = 'ALL', statusFilter = 'all', search = '') => {
+    const context = {
+      registryMatcherApi: matcher,
+      registryIdentityApi: identityApi,
+      localRegistryBootstrapApi: bootstrap,
+      registryAssignments: complete,
+      marketplaceCatalogIndex: catalogIndex,
+      marketplaceRegistry: rawRegistry,
+      marketplaceRegistryPlatformFilter: platform,
+      registryNamingRows: rows,
+      marketplaceRegistrySearch: search,
+      registryNameStatusFilter: statusFilter,
+      registryBrandFilter: brandFilter,
+      hasDuplicateRegistrySku: () => false,
+      useMemo: cb => cb()
+    };
+    vm.createContext(context);
+    vm.runInContext(helperSource, context);
+    vm.runInContext(pipelineSource, context);
+    return context;
+  };
+
+  // 1. ALL brands
+  const allCtx = runPipeline('ALL', 'all', '');
+  assert.equal(allCtx.filteredRows.length, rows.length);
+  assert.equal(allCtx.scopedDropdownRows.length, rows.length);
+  assert.equal(allCtx.brandCounts.ALL, rows.length);
+
+  // 2. Filter by specific brands
+  const hoyaCtx = runPipeline('HOYA_BABY', 'all', '');
+  assert.equal(hoyaCtx.filteredRows.length, 20);
+  assert.equal(hoyaCtx.scopedDropdownRows.length, 20);
+  assert.equal(hoyaCtx.brandCounts.HOYA_BABY, 20);
+
+  const hakuCtx = runPipeline('HAKU_BABY', 'all', '');
+  assert.equal(hakuCtx.filteredRows.length, 43);
+  assert.equal(hakuCtx.scopedDropdownRows.length, 43);
+  assert.equal(hakuCtx.brandCounts.HAKU_BABY, 43);
+
+  const excareCtx = runPipeline('EXCARE', 'all', '');
+  assert.equal(excareCtx.filteredRows.length, 42);
+  assert.equal(excareCtx.scopedDropdownRows.length, 42);
+  assert.equal(excareCtx.brandCounts.EXCARE, 42);
+
+  const nonoCtx = runPipeline('NONO', 'all', '');
+  assert.equal(nonoCtx.filteredRows.length, 10);
+  assert.equal(nonoCtx.scopedDropdownRows.length, 10);
+  assert.equal(nonoCtx.brandCounts.NONO, 10);
+
+  const hoyaOtherCtx = runPipeline('HOYA_OTHER', 'all', '');
+  assert.equal(hoyaOtherCtx.filteredRows.length, 39);
+  assert.equal(hoyaOtherCtx.scopedDropdownRows.length, 39);
+  assert.equal(hoyaOtherCtx.brandCounts.HOYA_OTHER, 39);
+
+  const otherCtx = runPipeline('OTHER', 'all', '');
+  assert.equal(otherCtx.filteredRows.length, 15);
+  assert.equal(otherCtx.scopedDropdownRows.length, 15);
+  assert.equal(otherCtx.brandCounts.OTHER, 15);
+
+  // 3. Combined brand + status filter (HOYA_BABY + missingSku)
+  const missingSkuCtx = runPipeline('HOYA_BABY', 'missingSku', '');
+  assert.ok(missingSkuCtx.filteredRows.length >= 0 && missingSkuCtx.filteredRows.length <= 20);
+  for (const r of missingSkuCtx.filteredRows) {
+    assert.equal(classify(r), 'HOYA_BABY');
+    assert.equal(String(r.sellerSku || '').trim(), '');
+  }
+
+  // 4. Combined brand + search
+  const searchCtx = runPipeline('HOYA_BABY', 'all', 'value');
+  assert.ok(searchCtx.filteredRows.length > 0 && searchCtx.filteredRows.length <= 20);
+  for (const r of searchCtx.filteredRows) {
+    assert.equal(classify(r), 'HOYA_BABY');
+  }
 });

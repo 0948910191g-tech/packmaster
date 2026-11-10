@@ -75,7 +75,7 @@ test('Git page loads the local registry baseline module before the app runs', ()
   assert.match(html, /registryMatcherApi\.saveLocalAssignments\(window\.localStorage, completeAssignments\)/);
 });
 
-test('local bootstrap auto-fills every current registry row without overwriting verified names', () => {
+test('local bootstrap does not fabricate default names for unassigned rows, leaving exactly 85 verified entries', () => {
   const merged = bootstrap.mergeAssignmentBaseline(
     matcherApi.newAssignments(),
     assignments,
@@ -88,30 +88,18 @@ test('local bootstrap auto-fills every current registry row without overwriting 
     matcherApi,
     identityApi
   );
+  assert.equal(complete.entries.length, 85, 'Must contain exactly 85 verified entries (75 baseline + 10 promoted Shopee seller_sku)');
+  assert.equal(complete.entries.some(e => e.shortName.length > 40), false, 'Must not contain synthetic names > 40 chars');
+  assert.equal(complete.entries.some(e => e.shortName.includes('Official Jersey')), false, 'Must not fabricate default name for unassigned rows');
+
+  // Verify unassigned row resolves as unmatched
   const index = identityApi.buildIndex(registry, registryApi);
-  let covered = 0;
-
-  for (const platform of registryApi.PLATFORMS) {
-    for (const row of registry.platforms[platform].skuRows) {
-      const evidence = bootstrap.getRowEvidence(platform, row, index, matcherApi);
-      assert.ok(evidence, `row identity is required for ${platform}`);
-      const probe = matcherApi.makeAssignment(platform, evidence, 'probe');
-      const key = matcherApi.assignmentKey(probe);
-      const assignment = complete.entries.find(entry => matcherApi.assignmentKey(entry) === key);
-      assert.ok(assignment, `missing assignment for ${platform} ${row.sellerSku || row.variantName || row.modelId}`);
-      assert.ok(assignment.shortName.trim());
-      covered += 1;
-    }
-  }
-
-  assert.equal(covered, 317);
-  const comboRow = registry.platforms.TIKTOK.skuRows.find(row =>
-    row.variantName === 'คละ Peach 3กระปุก Kyoho Grape 3กระปุก');
-  assert.ok(comboRow);
-  const comboEvidence = bootstrap.getRowEvidence('TIKTOK', comboRow, index, matcherApi);
-  const comboKey = matcherApi.assignmentKey(matcherApi.makeAssignment('TIKTOK', comboEvidence, 'probe'));
-  const comboAssignment = complete.entries.find(entry => matcherApi.assignmentKey(entry) === comboKey);
-  assert.equal(comboAssignment.shortName, 'คละ Peach 3กระปุก Kyoho Grape 3กระปุก');
+  const prepared = matcherApi.prepareAssignments(complete);
+  const tiktokRows = registryApi.getNameableRows(registry.platforms.TIKTOK, 'TIKTOK');
+  const jerseyRow = tiktokRows.find(r => String(r.productName || '').includes('Official Jersey'));
+  const ev = bootstrap.getRowEvidence('TIKTOK', jerseyRow, index, matcherApi);
+  const match = matcherApi.match(index, 'TIKTOK', {}, complete, { resolve: () => ev }, prepared);
+  assert.equal(match.status, 'unmatched', 'Unassigned row must resolve as unmatched');
 });
 
 test('bootstrap reuses existing catalog_row shortName for seller_sku assignment preventing name conflict', () => {
@@ -150,51 +138,51 @@ test('bootstrap reuses existing catalog_row shortName for seller_sku assignment 
   assert.equal(checkedConflicts, 10);
 });
 
-test('bootstrap creates valid default assignments for all TikTok product_only rows', () => {
-  const merged = bootstrap.mergeAssignmentBaseline(
-    matcherApi.newAssignments(),
-    assignments,
-    matcherApi
-  );
-  const complete = bootstrap.ensureRegistryAssignments(
-    registry,
-    merged,
-    registryApi,
-    matcherApi,
-    identityApi
-  );
+test('bootstrap purges legacy synthetic auto-generated names from localStorage while preserving baseline and custom user names', () => {
   const index = identityApi.buildIndex(registry, registryApi);
-  const prepared = matcherApi.prepareAssignments(complete);
+  let polluted = matcherApi.validateAssignments(assignments);
 
-  const tiktokNameable = registryApi.getNameableRows(registry.platforms.TIKTOK, 'TIKTOK');
-  const productOnlyRows = tiktokNameable.filter(row => row.sourceRowType === 'product_only');
-  assert.equal(productOnlyRows.length, 8);
-
-  for (const row of productOnlyRows) {
-    const ev = bootstrap.getRowEvidence('TIKTOK', row, index, matcherApi);
-    assert.ok(ev, 'Row evidence should be found');
-    const matchResult = matcherApi.match(index, 'TIKTOK', {}, complete, { resolve: () => ev }, prepared);
-    assert.equal(matchResult.status, 'matched');
-    assert.ok(matchResult.assignment.shortName.trim());
+  // Populate polluted assignments with defaultInternalName for all rows
+  for (const platform of registryApi.PLATFORMS) {
+    const rows = registryApi.getNameableRows(registry.platforms[platform], platform);
+    for (const row of rows) {
+      const ev = bootstrap.getRowEvidence(platform, row, index, matcherApi);
+      if (!ev) continue;
+      const probe = matcherApi.makeAssignment(platform, ev, 'probe');
+      const key = matcherApi.assignmentKey(probe);
+      if (polluted.entries.some(e => matcherApi.assignmentKey(e) === key)) continue;
+      const defName = bootstrap.defaultInternalName(row, ev);
+      if (defName) {
+        polluted = matcherApi.upsertAssignment(polluted, platform, ev, defName);
+      }
+    }
   }
-});
 
-test('clean bootstrap produces 0 unresolved rows for both TikTok and Shopee', () => {
-  const mergedRegistry = bootstrap.mergeRegistryBaseline(registryApi.createEmptyStore(), registry, registryApi);
-  const mergedAssignments = bootstrap.mergeAssignmentBaseline(matcherApi.newAssignments(), assignments, matcherApi);
-  const completeAssignments = bootstrap.ensureRegistryAssignments(mergedRegistry, mergedAssignments, registryApi, matcherApi, identityApi);
-  const catalogIndex = identityApi.buildIndex(mergedRegistry, registryApi);
-  const prepared = matcherApi.prepareAssignments(completeAssignments);
+  // Add a genuine human-saved custom name on an unassigned row
+  const tiktokRows = registryApi.getNameableRows(registry.platforms.TIKTOK, 'TIKTOK');
+  const customRow = tiktokRows.find(r => String(r.productName || '').includes('Official Jersey') && r.variantName === 'S');
+  assert.ok(customRow, 'Must find Jersey S row');
+  const customEv = bootstrap.getRowEvidence('TIKTOK', customRow, index, matcherApi);
+  polluted = matcherApi.upsertAssignment(polluted, 'TIKTOK', customEv, 'เสื้อ S');
 
-  for (const platform of ['TIKTOK', 'SHOPEE']) {
-    const rows = registryApi.getNameableRows(mergedRegistry.platforms[platform], platform);
-    const unresolved = rows.filter(row => {
-      const ev = bootstrap.getRowEvidence(platform, row, catalogIndex, matcherApi);
-      const match = matcherApi.match(catalogIndex, platform, {}, completeAssignments, { resolve: () => ev }, prepared);
-      return match.status !== 'matched';
-    });
-    assert.equal(unresolved.length, 0, `Expected 0 unresolved rows for ${platform}`);
+  const merged = bootstrap.mergeAssignmentBaseline(polluted, assignments, matcherApi);
+  const sanitized = bootstrap.ensureRegistryAssignments(registry, merged, registryApi, matcherApi, identityApi, assignments);
+
+  // Verify synthetic auto-generated names were purged
+  assert.equal(sanitized.entries.some(e => e.shortName.includes('Official Jersey')), false, 'Synthetic Jersey names must be purged');
+  assert.equal(sanitized.entries.some(e => e.shortName.length > 40), false, 'Names > 40 chars must be purged');
+
+  // Verify genuine human-saved custom name was preserved
+  assert.equal(sanitized.entries.some(e => e.shortName === 'เสื้อ S'), true, 'Genuine custom name must be preserved');
+
+  // Verify all 75 baseline entries remain intact
+  for (const baseEntry of assignments.entries) {
+    const key = matcherApi.assignmentKey(baseEntry);
+    assert.ok(sanitized.entries.some(e => matcherApi.assignmentKey(e) === key), `Baseline entry ${key} must remain intact`);
   }
+
+  // 75 baseline + 10 promoted + 1 custom = 86
+  assert.equal(sanitized.entries.length, 86, `Expected 86 entries, got ${sanitized.entries.length}`);
 });
 
 test('all 15 pre-existing TikTok seller SKU assignments match cleanly with registry_exact_verified', () => {
