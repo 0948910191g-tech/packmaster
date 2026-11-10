@@ -28,16 +28,13 @@ test('Review modal shows original PDF page beside review controls', () => {
   assert.ok(html.includes('lg:grid-cols-'), 'desktop Review modal must use a side-by-side layout');
 });
 
-test('Review modal exposes advisory Keyword choices without auto-fill', () => {
+test('Review modal generates advisory Keyword state without auto-fill', () => {
   assert.ok(html.includes('reviewKeywordSuggestionsApi.generateReviewKeywordSuggestions'));
-  assert.ok(html.includes('data-pm-keyword-suggestion'));
   assert.match(html, /setQuickMapState\(\{[^}]*keyword:\s*''/s, 'opening Review must keep Keyword blank until user clicks a recommendation');
 });
 
 test('Review modal repairs Thai extraction gaps only for visible text while keeping raw matcher values', () => {
   assert.ok(html.includes('reviewKeywordSuggestionsApi.formatReviewDisplayText(quickMapState.sourceText)'), 'source text must use Review-only Thai display cleanup');
-  assert.ok(html.includes('suggestion.displayValue || suggestion.value'), 'Keyword suggestion labels must prefer repaired display text');
-  assert.ok(html.includes('reviewKeywordSuggestionsApi.formatReviewDisplayText(quickMapState.keyword)'), 'selected Keyword input must display repaired Thai while raw state remains available for matcher safety');
 });
 
 test('SKU and Qty warnings can be confirmed or corrected per Order', () => {

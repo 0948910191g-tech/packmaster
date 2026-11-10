@@ -47,8 +47,8 @@
       .replace(/[\u200B-\u200D\uFEFF]/g, '')
       .replace(/\s+/g, ' ')
       .trim()
-      // "10 ห่อ" and "10ห่อ" represent the same explicit quantity and pack unit.
-      .replace(/([0-9])\s+(ห่อ)(?=$|[\s,|])/gu, '$1$2')
+      // PDF text may insert a space between a quantity and its pack or sheet unit.
+      .replace(/([0-9])\s+(ห่อ|แผ่น)(?=$|[\s,|])/gu, '$1$2')
       .toUpperCase();
   }
 

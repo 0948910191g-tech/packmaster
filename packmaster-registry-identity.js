@@ -141,6 +141,38 @@
     if (skuKey) {
       const candidates = index[platform].sellerSkus.get(skuKey) || [];
       if (candidates.length === 0) {
+        const rawText = typeof item === 'string' ? item : (typeof item?.text === 'string' ? item.text : null);
+        let productTitle = null;
+        if (rawText && rawText.includes('|')) {
+          const pieces = rawText.split('|').map(piece => piece.trim()).filter(Boolean);
+          if (pieces.length > 0) productTitle = pieces[0];
+        }
+        if (!productTitle && item && typeof item === 'object') {
+          if (typeof item.productName === 'string' && item.productName.trim()) {
+            productTitle = item.productName.trim();
+          } else if (typeof item.title === 'string' && item.title.trim()) {
+            productTitle = item.title.trim();
+          }
+        }
+
+        if (productTitle) {
+          const titleKey = normalizeCatalogText(productTitle);
+          if (titleKey) {
+            const titleCandidates = index[platform].catalogTexts.get(titleKey) || [];
+            if (titleCandidates.length === 1) {
+              const candidate = titleCandidates[0];
+              return {
+                status: 'found',
+                identityType: 'catalog_row',
+                sellerSku: skuText,
+                catalogKey: titleKey,
+                candidate: { ...candidate },
+                captureDate: index[platform].captureDate,
+                reason: 'exact_title_fallback'
+              };
+            }
+          }
+        }
         return { status: 'not_found', reason: 'seller_sku_not_found', identityType: 'seller_sku', sellerSku: skuText };
       }
       if (candidates.length === 1) {

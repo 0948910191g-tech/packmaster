@@ -150,3 +150,221 @@ test('Catalog-row assignments keep TikTok variants separate when modelId is unav
     matcher.assignmentKey(assignments.entries[1])
   );
 });
+
+test('Seller SKU assignment with null variantName matches candidate with non-null variantName', () => {
+  const store = registryApi.replacePlatformRegistry(
+    registryApi.createEmptyStore(),
+    {
+      schemaVersion: 1,
+      registryType: 'marketplace_product_sku_source_registry',
+      platform: 'TIKTOK',
+      source: { shop: 'test', captureDate: '2026-11-04' },
+      products: [{ platform: 'TIKTOK', productId: 'p1', productName: 'Item 1', sellerSku: 'SKU-VAR', variants: [] }],
+      skuRows: [{
+        platform: 'TIKTOK', productId: 'p1', productName: 'Item 1',
+        sellerSku: 'SKU-VAR', sellerSkuStatus: 'present',
+        modelId: null, variantName: 'Red 500ml',
+        sourceRowType: 'product_sku'
+      }],
+      productsWithoutAnySellerSku: [],
+      pages: [{ products: 1 }],
+      summary: {
+        listedProductCount: 1, uniqueProductIdCount: 1, skuModelRowCount: 1,
+        sellerSkuPresentRowCount: 1, sellerSkuMissingInRowsCount: 0, productsWithoutAnySellerSkuCount: 0
+      }
+    }
+  );
+  const catalog = identity.buildIndex(store, registryApi);
+
+  // 1. Seller SKU assignment with null variantName matches candidate with variantName 'Red 500ml'
+  const assignmentWithNullVariant = matcher.validateAssignments({
+    schema: matcher.SCHEMA,
+    version: 1,
+    entries: [{
+      platform: 'TIKTOK',
+      identityType: 'seller_sku',
+      sellerSku: 'SKU-VAR',
+      productId: 'p1',
+      modelId: null,
+      variantName: null,
+      shortName: 'แดง 500'
+    }]
+  });
+  const res1 = matcher.match(catalog, 'TIKTOK', { sellerSku: 'SKU-VAR' }, assignmentWithNullVariant, identity);
+  assert.equal(res1.status, 'matched');
+  assert.equal(res1.reason, 'registry_exact_verified');
+  assert.equal(res1.rule.shortName, 'แดง 500');
+
+  // 2. Seller SKU assignment with specific non-null variantName requires strict match
+  const assignmentWithSpecificVariant = matcher.validateAssignments({
+    schema: matcher.SCHEMA,
+    version: 1,
+    entries: [{
+      platform: 'TIKTOK',
+      identityType: 'seller_sku',
+      sellerSku: 'SKU-VAR',
+      productId: 'p1',
+      modelId: null,
+      variantName: 'Blue 500ml',
+      shortName: 'น้ำเงิน 500'
+    }]
+  });
+  const res2 = matcher.match(catalog, 'TIKTOK', { sellerSku: 'SKU-VAR' }, assignmentWithSpecificVariant, identity);
+  assert.equal(res2.status, 'ambiguous');
+  assert.equal(res2.reason, 'registry_identity_changed');
+
+  // 3. Catalog-row assignment with null variantName does not match candidate with 'Red 500ml'
+  const catalogRowNullVariant = matcher.validateAssignments({
+    schema: matcher.SCHEMA,
+    version: 1,
+    entries: [{
+      platform: 'TIKTOK',
+      identityType: 'catalog_row',
+      sellerSku: null,
+      productId: 'p1',
+      modelId: null,
+      variantName: null,
+      shortName: 'แถวแคตตาล็อก'
+    }]
+  });
+  const res3 = matcher.match(catalog, 'TIKTOK', { catalogText: 'Item 1 Red 500ml' }, catalogRowNullVariant, identity);
+  assert.equal(res3.status, 'unmatched');
+  assert.equal(res3.reason, 'internal_name_not_assigned');
+});
+
+test('saveConfirmedAssignment persists label requested seller SKU when candidate SKU differs', () => {
+  const store = registryApi.replacePlatformRegistry(
+    registryApi.createEmptyStore(),
+    {
+      schemaVersion: 1,
+      registryType: 'marketplace_product_sku_source_registry',
+      platform: 'TIKTOK',
+      source: { shop: 'test', captureDate: '2026-11-04' },
+      products: [{ platform: 'TIKTOK', productId: 'prod-hoya-5', productName: 'HOYA 5 pack title', sellerSku: 'CATALOG-SKU-ORIGINAL', variants: [] }],
+      skuRows: [{
+        platform: 'TIKTOK', productId: 'prod-hoya-5', productName: 'HOYA 5 pack title',
+        sellerSku: 'CATALOG-SKU-ORIGINAL', sellerSkuStatus: 'present',
+        modelId: null, variantName: null, sourceRowType: 'product_sku'
+      }],
+      productsWithoutAnySellerSku: [],
+      pages: [{ products: 1 }],
+      summary: { listedProductCount: 1, uniqueProductIdCount: 1, skuModelRowCount: 1, sellerSkuPresentRowCount: 1, sellerSkuMissingInRowsCount: 0, productsWithoutAnySellerSkuCount: 0 }
+    }
+  );
+  const catalog = identity.buildIndex(store, registryApi);
+
+  // Label has modified sellerSku but resolves via title
+  const labelItem = {
+    qty: 1,
+    sellerSku: 'MODIFIED-LABEL-SKU-5PK',
+    text: 'HOYA 5 pack title | 1 | MODIFIED-LABEL-SKU-5PK'
+  };
+  const resolved = identity.resolve(catalog, 'TIKTOK', labelItem);
+  const canonical = matcher.canonicalEvidence(catalog, 'TIKTOK', resolved);
+  const saved = matcher.saveConfirmedAssignment(matcher.newAssignments(), catalog, 'TIKTOK', canonical, 'HOYA ฟ้า 5 ห่อ');
+
+  // Verify both canonical SKU and modified label SKU are saved
+  assert.ok(saved.entries.some(e => e.sellerSku === 'CATALOG-SKU-ORIGINAL' && e.shortName === 'HOYA ฟ้า 5 ห่อ'));
+  assert.ok(saved.entries.some(e => e.sellerSku === 'MODIFIED-LABEL-SKU-5PK' && e.shortName === 'HOYA ฟ้า 5 ห่อ'));
+
+  // Subsequent item with only the modified SKU matches automatically
+  const subsequent = matcher.match(catalog, 'TIKTOK', { sellerSku: 'MODIFIED-LABEL-SKU-5PK' }, saved, identity);
+  assert.equal(subsequent.status, 'matched');
+  assert.equal(subsequent.reason, 'registry_exact_verified');
+  assert.equal(subsequent.rule.shortName, 'HOYA ฟ้า 5 ห่อ');
+});
+
+test('saveConfirmedAssignment binds unfound seller SKU by matching existing unambiguous shortName', () => {
+  const store = registryApi.replacePlatformRegistry(
+    registryApi.createEmptyStore(),
+    {
+      schemaVersion: 1,
+      registryType: 'marketplace_product_sku_source_registry',
+      platform: 'TIKTOK',
+      source: { shop: 'test', captureDate: '2026-11-04' },
+      products: [{ platform: 'TIKTOK', productId: 'prod-purple', productName: 'HOYA Purple', sellerSku: 'HOYA-PURPLE-EXISTING', variants: [] }],
+      skuRows: [{
+        platform: 'TIKTOK', productId: 'prod-purple', productName: 'HOYA Purple',
+        sellerSku: 'HOYA-PURPLE-EXISTING', sellerSkuStatus: 'present',
+        modelId: null, variantName: null, sourceRowType: 'product_sku'
+      }],
+      productsWithoutAnySellerSku: [],
+      pages: [{ products: 1 }],
+      summary: { listedProductCount: 1, uniqueProductIdCount: 1, skuModelRowCount: 1, sellerSkuPresentRowCount: 1, sellerSkuMissingInRowsCount: 0, productsWithoutAnySellerSkuCount: 0 }
+    }
+  );
+  const catalog = identity.buildIndex(store, registryApi);
+
+  const initialAssignments = matcher.validateAssignments({
+    schema: matcher.SCHEMA,
+    version: 1,
+    entries: [{
+      platform: 'TIKTOK',
+      identityType: 'seller_sku',
+      sellerSku: 'HOYA-PURPLE-EXISTING',
+      productId: 'prod-purple',
+      modelId: null,
+      variantName: null,
+      shortName: 'ม่วง5'
+    }]
+  });
+
+  const unfoundItem = {
+    qty: 1,
+    sellerSku: 'HOYA-PURPLE-BRAND-NEW',
+    text: 'Some Unmatched Title | New Variant | HOYA-PURPLE-BRAND-NEW'
+  };
+  const unfoundEv = identity.resolve(catalog, 'TIKTOK', unfoundItem);
+  assert.equal(unfoundEv.status, 'not_found');
+
+  const saved = matcher.saveConfirmedAssignment(initialAssignments, catalog, 'TIKTOK', unfoundEv, 'ม่วง5');
+  const subsequent = matcher.match(catalog, 'TIKTOK', unfoundItem, saved, identity);
+  assert.equal(subsequent.status, 'matched');
+  assert.equal(subsequent.reason, 'registry_exact_verified');
+  assert.equal(subsequent.rule.shortName, 'ม่วง5');
+});
+
+test('saveConfirmedAssignment throws when evidence.status !== found and shortName is shared across multiple distinct productIds', () => {
+  const store = registryApi.replacePlatformRegistry(
+    registryApi.createEmptyStore(),
+    {
+      schemaVersion: 1,
+      registryType: 'marketplace_product_sku_source_registry',
+      platform: 'SHOPEE',
+      source: { shop: 'test', captureDate: '2026-11-04' },
+      products: [
+        { platform: 'SHOPEE', itemId: 'prod-adult', title: 'Adult wipes', sellerSku: 'ADULT-1', variants: [] },
+        { platform: 'SHOPEE', itemId: 'prod-baby', title: 'Baby wipes', sellerSku: 'BABY-1', variants: [] }
+      ],
+      skuRows: [
+        { platform: 'SHOPEE', itemId: 'prod-adult', title: 'Adult wipes', sellerSku: 'ADULT-1', sellerSkuStatus: 'present', modelId: 'm1', variantName: null, sourceRowType: 'variant' },
+        { platform: 'SHOPEE', itemId: 'prod-baby', title: 'Baby wipes', sellerSku: 'BABY-1', sellerSkuStatus: 'present', modelId: 'm2', variantName: null, sourceRowType: 'variant' }
+      ],
+      productsWithoutAnySellerSku: [],
+      pages: [{ products: 2 }],
+      summary: { listedProductCount: 2, uniqueProductIdCount: 2, skuModelRowCount: 2, sellerSkuPresentRowCount: 2, sellerSkuMissingInRowsCount: 0, productsWithoutAnySellerSkuCount: 0 }
+    }
+  );
+  const catalog = identity.buildIndex(store, registryApi);
+
+  // Initial assignments have two different products sharing the same shortName 'ผู้ใหญ่6'
+  const ambiguousAssignments = matcher.validateAssignments({
+    schema: matcher.SCHEMA,
+    version: 1,
+    entries: [
+      { platform: 'SHOPEE', identityType: 'catalog_row', sellerSku: null, productId: 'prod-adult', modelId: 'm1', variantName: null, shortName: 'ผู้ใหญ่6' },
+      { platform: 'SHOPEE', identityType: 'catalog_row', sellerSku: null, productId: 'prod-baby', modelId: 'm2', variantName: null, shortName: 'ผู้ใหญ่6' }
+    ]
+  });
+
+  const unfoundEv = {
+    status: 'not_found',
+    reason: 'seller_sku_not_found',
+    identityType: 'seller_sku',
+    sellerSku: 'AMBIGUOUS-NEW-SKU'
+  };
+
+  assert.throws(() => {
+    matcher.saveConfirmedAssignment(ambiguousAssignments, catalog, 'SHOPEE', unfoundEv, 'ผู้ใหญ่6');
+  }, /Confirmed registry assignment requires productId|An exact unique registry identity/);
+});

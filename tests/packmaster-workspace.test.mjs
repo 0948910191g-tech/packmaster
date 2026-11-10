@@ -37,6 +37,7 @@ assert.equal(backup.appVersion, 'test');
 assert.deepEqual(workspace.validateBackup(backup), backup);
 assert.deepEqual(workspace.getBackupSummary(backup), {
   skuRules: 1,
+  registryAssignments: 0,
   batches: 1,
   orders: 1,
   createdAt: '2026-08-08T12:00:00.000Z'
@@ -53,12 +54,32 @@ const invalidCases = [
   [{ ...backup, batchOrders: {} }, /batchOrders/i],
   [{ ...backup, batchOrders: [{ orders: [] }] }, /batchId/i],
   [{ ...backup, batches: [{ id: 'dup' }, { id: 'dup' }], batchOrders: [] }, /duplicate/i],
-  [{ ...backup, batches: [{ id: 'batch-1' }], batchOrders: [{ batchId: 'missing', orders: [] }] }, /missing/i]
+  [{ ...backup, batches: [{ id: 'batch-1' }], batchOrders: [{ batchId: 'missing', orders: [] }] }, /missing/i],
+  [{ ...backup, settings: { registryAssignments: 'not-an-object' } }, /settings\.registryAssignments/i],
+  [{ ...backup, settings: { registryAssignments: { schema: 'wrong', entries: [] } } }, /settings\.registryAssignments/i],
+  [{ ...backup, settings: { registryAssignments: { schema: 'packmaster-registry-sku-assignments', version: 1, entries: 'not-an-array' } } }, /settings\.registryAssignments/i]
 ];
 
 for (const [candidate, expectedMessage] of invalidCases) {
   assert.throws(() => workspace.validateBackup(candidate), expectedMessage);
 }
+
+// registryAssignments serialization and summary
+const registryBackup = workspace.createBackup({
+  ...payload,
+  settings: {
+    registryAssignments: {
+      schema: 'packmaster-registry-sku-assignments',
+      version: 1,
+      updatedAt: '2026-11-10T00:00:00.000Z',
+      entries: [
+        { platform: 'TIKTOK', identityType: 'seller_sku', sellerSku: 'SKU1', productId: 'p1', modelId: null, variantName: null, shortName: 'Name1' }
+      ]
+    }
+  }
+});
+assert.equal(workspace.getBackupSummary(registryBackup).registryAssignments, 1);
+assert.equal(registryBackup.settings.registryAssignments.entries.length, 1);
 
 const fakeStore = new Map([
   ['old-a', { meta: { id: 'old-a', name: 'Old A' }, orders: [{ id: 'old-order-a', parsedItems: [{ text: 'OLD SANITIZED SKU', qty: 1 }] }] }],
@@ -136,7 +157,8 @@ const requiredUiMarkers = [
   'ความปลอดภัย Workspace',
   'สำรอง Workspace',
   'กู้คืน Workspace',
-  'Replace Workspace'
+  'Replace Workspace',
+  'Registry Names'
 ];
 
 for (const marker of requiredUiMarkers) {

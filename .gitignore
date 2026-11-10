@@ -12,3 +12,5 @@ cloudflare/.wrangler/
 *.dpapi
 .env
 .env.*
+.scratch/
+

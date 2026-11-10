@@ -104,7 +104,11 @@
     const index = identityApi.buildIndex(registry, registryApi);
 
     for (const platform of registryApi.PLATFORMS) {
-      for (const row of registry.platforms[platform]?.skuRows || []) {
+      const platformRegistry = registry.platforms[platform];
+      const rows = typeof registryApi.getNameableRows === 'function'
+        ? registryApi.getNameableRows(platformRegistry, platform)
+        : (platformRegistry?.skuRows || []);
+      for (const row of rows) {
         const evidence = getRowEvidence(platform, row, index, matcherApi);
         if (!evidence) continue;
 
@@ -112,7 +116,24 @@
         const key = matcherApi.assignmentKey(probe);
         if (assignments.entries.some(entry => matcherApi.assignmentKey(entry) === key)) continue;
 
-        const shortName = defaultInternalName(row, evidence);
+        let shortName = '';
+        if (evidence.identityType === 'seller_sku') {
+          const catalogKey = matcherApi.assignmentKey({
+            platform,
+            identityType: 'catalog_row',
+            sellerSku: null,
+            productId: evidence.candidate.productId,
+            modelId: evidence.candidate.modelId || null,
+            variantName: evidence.candidate.variantName || null
+          });
+          const existingCatalog = assignments.entries.find(entry => matcherApi.assignmentKey(entry) === catalogKey);
+          if (existingCatalog && existingCatalog.shortName) {
+            shortName = existingCatalog.shortName;
+          }
+        }
+        if (!shortName) {
+          shortName = defaultInternalName(row, evidence);
+        }
         if (!shortName) continue;
         assignments = matcherApi.upsertAssignment(assignments, platform, evidence, shortName);
       }

@@ -16,9 +16,7 @@ test('Quick Mapping keeps the exact safe seed as source identity and never guess
   assert.match(html, /getSkuFixSeed\(row, getMatchResult\)/);
   assert.match(html, /sourceText:\s*seed/);
   assert.match(html, /shortName:\s*''/);
-  assert.match(html, /Keyword แนะนำที่ผ่าน Safety Check/);
-  assert.match(html, /data-pm-keyword-suggestion/);
-  assert.match(html, /setQuickMapState\(prev\s*=>\s*\(\{\s*\.\.\.prev,\s*keyword:\s*suggestion\.value\s*\}\)\)/s);
+  assert.match(html, /บันทึกชื่อในทะเบียน \(เฉพาะ SKU ที่ระบุตัวได้\)/);
   assert.doesNotMatch(html, /shortName:\s*suggestion\./);
 });
 
@@ -36,9 +34,8 @@ test('Quick Mapping generates fail-closed suggestions with the actual Smart Matc
   assert.match(html, /matchNormalizer:\s*normalizeMatchText/);
 });
 
-test('persistent Quick Mapping save rechecks safety before creating a shared rule', () => {
+test('persistent Quick Mapping save confirms registry assignment directly', () => {
   assert.match(html, /handleSaveQuickMapping/);
-  assert.match(html, /assessKeywordSafety\(\{/);
-  assert.match(html, /saveSkuRule\(\{\s*keyword,\s*shortName\s*\}/s);
+  assert.match(html, /saveRegistryAssignment\(order\.platform,\s*item,\s*quickMapState\.shortName\)/);
   assert.match(html, /บันทึกชื่อในทะเบียน \(เฉพาะ SKU ที่ระบุตัวได้\)/);
 });

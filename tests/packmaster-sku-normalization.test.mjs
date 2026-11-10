@@ -33,6 +33,16 @@ function makeIndex(sellerSkus) {
   return identity.buildIndex(store, registry);
 }
 
+test('PDF.js EX AD sheet and pack spacing resolves without changing quantities', () => {
+  const catalog = makeIndex(['EX AD 50แผ่น 3ห่อ', 'EX AD 51แผ่น 3ห่อ']);
+  const evidence = identity.resolve(catalog, 'TIKTOK', { sellerSku: 'EX AD 50แผ่น 3ห่อ' });
+  const names = matcher.upsertAssignment(matcher.newAssignments(), 'TIKTOK', evidence, 'EX AD 3');
+  const fromPdf = { sellerSku: 'EX AD 50 แผ\uF70Aน 3 ห\uF70Aอ', qty: 1 };
+  assert.equal(matcher.match(catalog, 'TIKTOK', fromPdf, names, identity).rule?.shortName, 'EX AD 3');
+  assert.notEqual(matcher.match(catalog, 'TIKTOK', { sellerSku: 'EX AD 51 แผ\uF70Aน 3 ห\uF70Aอ' }, names, identity).status, 'matched');
+  assert.notEqual(matcher.match(catalog, 'TIKTOK', { sellerSku: 'EX AD 50 แผ\uF70Aน 6 ห\uF70Aอ' }, names, identity).status, 'matched');
+});
+
 test('Windows Thai PDF glyphs and pack spacing resolve to the exact registered SKU', () => {
   // Sanitized from the failed November 5 Cloud Batch; no order/customer identity.
   const registered = 'HOYA BB สีม่วง *10ห่อ';

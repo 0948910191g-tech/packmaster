@@ -70,6 +70,21 @@
       }
     }
 
+    if (candidate.settings.registryAssignments != null) {
+      if (!isPlainObject(candidate.settings.registryAssignments) ||
+          candidate.settings.registryAssignments.schema !== 'packmaster-registry-sku-assignments' ||
+          candidate.settings.registryAssignments.version !== 1 ||
+          !Array.isArray(candidate.settings.registryAssignments.entries)) {
+        throw new Error('settings.registryAssignments must be a valid registry assignments object');
+      }
+      const matcherValidator = (typeof root !== 'undefined' && root && root.PackMasterRegistryMatcher && typeof root.PackMasterRegistryMatcher.validateAssignments === 'function')
+        ? root.PackMasterRegistryMatcher.validateAssignments
+        : null;
+      if (matcherValidator) {
+        matcherValidator(candidate.settings.registryAssignments);
+      }
+    }
+
     requireArray(candidate.skuRules, 'skuRules');
     requireArray(candidate.batches, 'batches');
     requireArray(candidate.batchOrders, 'batchOrders');
@@ -156,6 +171,9 @@
     const orders = backup.batchOrders.reduce((sum, row) => sum + row.orders.length, 0);
     return {
       skuRules: backup.skuRules.length,
+      registryAssignments: Array.isArray(backup.settings?.registryAssignments?.entries)
+        ? backup.settings.registryAssignments.entries.length
+        : 0,
       batches: backup.batches.length,
       orders,
       createdAt: backup.createdAt

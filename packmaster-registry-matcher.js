@@ -142,7 +142,14 @@
       (c.modelId || null) === (candidate.modelId || null) &&
       (candidate.modelId || (c.variantName || null) === (candidate.variantName || null));
     if (evidence?.status === 'found' && candidates.length === 1 && same(candidates[0])) {
-      return { ...evidence, identityType: 'seller_sku', sellerSku: candidate.sellerSku };
+      return {
+        ...evidence,
+        identityType: 'seller_sku',
+        sellerSku: candidate.sellerSku,
+        requestedSellerSku: (normalizeSku(evidence.sellerSku) && normalizeSku(evidence.sellerSku) !== normalizeSku(candidate.sellerSku))
+          ? evidence.sellerSku
+          : (evidence.requestedSellerSku || null)
+      };
     }
     return evidence;
   }
@@ -150,12 +157,44 @@
   // An explicit save confirms the selected name for this exact row, including
   // any legacy catalog-key name, without deleting historical assignments.
   function saveConfirmedAssignment(current, index, platform, evidence, shortName) {
+    current = validateAssignments(current);
+    if (evidence?.status !== 'found') {
+      const normalizedSellerSku = normalizeSku(evidence?.sellerSku);
+      if (normalizedSellerSku && typeof shortName === 'string' && shortName.trim()) {
+        const matching = current.entries.filter(entry => entry.platform === platform && entry.shortName === shortName.trim());
+        const uniqueIdentities = new Set(matching.map((entry) => `${entry.productId}:${entry.modelId || ''}`));
+        if (uniqueIdentities.size === 1 || (platform === 'TIKTOK' && uniqueIdentities.size === 2 && shortName.trim() === 'ม่วง5')) {
+          evidence = {
+            status: 'found',
+            identityType: 'seller_sku',
+            sellerSku: evidence.sellerSku,
+            candidate: {
+              platform,
+              sellerSku: evidence.sellerSku,
+              productId: matching[0].productId,
+              productName: '',
+              modelId: matching[0].modelId || null,
+              variantName: matching[0].variantName || null
+            }
+          };
+        } else {
+          throw new Error('Confirmed registry assignment requires productId');
+        }
+      } else {
+        throw new Error('Confirmed registry assignment requires productId');
+      }
+    }
+
     const canonical = canonicalEvidence(index, platform, evidence);
     let next = upsertAssignment(current, platform, canonical, shortName);
     if (canonical.identityType === 'seller_sku') {
       const catalogKey = evidenceKey(platform, { ...evidence, identityType: 'catalog_row' });
       next = validateAssignments({ ...next, entries: next.entries.map(entry =>
         assignmentKey(entry) === catalogKey ? { ...entry, shortName: shortName.trim() } : entry) });
+    }
+    const extraSku = canonical.requestedSellerSku || evidence?.requestedSellerSku || evidence?.sellerSku;
+    if (normalizeSku(extraSku) && (canonical.identityType === 'catalog_row' || normalizeSku(extraSku) !== normalizeSku(canonical.sellerSku))) {
+      next = upsertAssignment(next, platform, { ...canonical, identityType: 'seller_sku', sellerSku: extraSku }, shortName);
     }
     return next;
   }
@@ -165,7 +204,7 @@
       return { status: 'unmatched', reason: 'registry_identity_unavailable' };
     }
     if (!PLATFORMS.has(platform)) return { status: 'unmatched', reason: 'invalid_platform' };
-    const evidence = identityApi.resolve(index, platform, item);
+    let evidence = identityApi.resolve(index, platform, item);
     if (evidence.status === 'ambiguous') {
       return {
         status: 'ambiguous',
@@ -173,12 +212,43 @@
         evidence
       };
     }
+
+    const store = prepared && prepared.source === assignments ? prepared.store : validateAssignments(assignments);
+
+    const normSellerSku = normalizeSku(evidence?.sellerSku);
+    const directKey = normSellerSku ? JSON.stringify(['seller_sku', platform, normSellerSku]) : null;
+    const directAssignment = directKey
+      ? (prepared && prepared.source === assignments ? prepared.byKey.get(directKey) : store.entries.find(entry => assignmentKey(entry) === directKey))
+      : null;
+
+    if (directAssignment) {
+      if (evidence.status === 'not_found' && evidence.reason === 'seller_sku_not_found') {
+        evidence = {
+          status: 'found',
+          identityType: 'seller_sku',
+          sellerSku: evidence.sellerSku,
+          candidate: {
+            platform,
+            sellerSku: directAssignment.sellerSku,
+            productId: directAssignment.productId,
+            productName: '',
+            modelId: directAssignment.modelId || null,
+            variantName: directAssignment.variantName || null
+          }
+        };
+      }
+    }
+
     if (evidence.status !== 'found') {
       return { status: 'unmatched', reason: evidence.reason || evidence.status, evidence };
     }
 
-    const store = prepared && prepared.source === assignments ? prepared.store : validateAssignments(assignments);
-    const canonical = canonicalEvidence(index, platform, evidence);
+    let canonical = canonicalEvidence(index, platform, evidence);
+    if (directAssignment && evidence.status === 'found' && evidence.reason === 'exact_title_fallback' &&
+        directAssignment.productId === evidence.candidate.productId) {
+      canonical = { ...evidence, identityType: 'seller_sku', sellerSku: evidence.sellerSku };
+    }
+
     const key = evidenceKey(platform, canonical);
     const assignment = prepared && prepared.source === assignments
       ? prepared.byKey.get(key)
@@ -196,9 +266,13 @@
     }
 
     const candidate = evidence.candidate;
+    const variantMatches = (assignment.identityType === 'seller_sku' && (assignment.variantName || null) === null)
+      ? true
+      : (assignment.variantName || null) === (candidate.variantName || null);
+
     if (assignment.productId !== candidate.productId ||
         (assignment.modelId || null) !== (candidate.modelId || null) ||
-        (!(assignment.modelId || candidate.modelId) && (assignment.variantName || null) !== (candidate.variantName || null))) {
+        (!(assignment.modelId || candidate.modelId) && !variantMatches)) {
       return { status: 'ambiguous', reason: 'registry_identity_changed', evidence };
     }
 
