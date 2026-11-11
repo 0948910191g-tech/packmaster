@@ -2732,7 +2732,7 @@
             registryAssignmentsError || registryAssignmentsBusy) {
           throw new Error('Registry SKU mapping is not ready');
         }
-        const canProceed = evidence?.status === 'found' || (evidence?.status === 'not_found' && evidence?.sellerSku);
+        const canProceed = evidence?.status === 'found' || (evidence?.status === 'not_found' && (evidence?.sellerSku || internalName));
         if (!canProceed) {
           throw new Error(evidence?.status === 'ambiguous'
             ? 'รายการนี้ยังระบุตัวเลือกในทะเบียนได้ไม่ชัดเจน'

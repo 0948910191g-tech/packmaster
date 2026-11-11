@@ -160,21 +160,22 @@
     current = validateAssignments(current);
     if (evidence?.status !== 'found') {
       const normalizedSellerSku = normalizeSku(evidence?.sellerSku);
-      if (normalizedSellerSku && typeof shortName === 'string' && shortName.trim()) {
+      if (typeof shortName === 'string' && shortName.trim()) {
         const matching = current.entries.filter(entry => entry.platform === platform && entry.shortName === shortName.trim());
         const uniqueIdentities = new Set(matching.map((entry) => `${entry.productId}:${entry.modelId || ''}`));
         if (uniqueIdentities.size === 1 || (platform === 'TIKTOK' && uniqueIdentities.size === 2 && shortName.trim() === 'ม่วง5')) {
+          const matchedEntry = matching[0];
           evidence = {
             status: 'found',
-            identityType: 'seller_sku',
-            sellerSku: evidence.sellerSku,
+            identityType: normalizedSellerSku ? 'seller_sku' : (matchedEntry.identityType || 'catalog_row'),
+            sellerSku: evidence.sellerSku || null,
             candidate: {
               platform,
-              sellerSku: evidence.sellerSku,
-              productId: matching[0].productId,
+              sellerSku: evidence.sellerSku || matchedEntry.sellerSku || null,
+              productId: matchedEntry.productId,
               productName: '',
-              modelId: matching[0].modelId || null,
-              variantName: matching[0].variantName || null
+              modelId: matchedEntry.modelId || null,
+              variantName: matchedEntry.variantName || null
             }
           };
         } else {

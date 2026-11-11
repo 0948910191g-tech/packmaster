@@ -56,5 +56,17 @@
     return normalizeSellerSku(value).replace(/\s+/g, '');
   }
 
-  return { cleanPdfSellerSku, normalizeSellerSku, normalizeCatalogText, repairThaiPdfGlyphs };
+  // Thai text skeleton for fuzzy-safe fallback: strips Thai vowels/tones/diacritics
+  // and non-alphanumeric chars to bridge PDF font extraction glitches and reordered marks.
+  function normalizeThaiSkeleton(value) {
+    if (typeof value !== 'string') return '';
+    return repairThaiPdfGlyphs(value)
+      .normalize('NFKD')
+      .replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/g, '')
+      .normalize('NFKC')
+      .replace(/[^A-Z0-9\u0E00-\u0E2E]/gi, '')
+      .toUpperCase();
+  }
+
+  return { cleanPdfSellerSku, normalizeSellerSku, normalizeCatalogText, normalizeThaiSkeleton, repairThaiPdfGlyphs };
 });

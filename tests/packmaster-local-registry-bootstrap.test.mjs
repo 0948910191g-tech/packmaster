@@ -19,8 +19,8 @@ test('bundled local baseline contains the current marketplace registry and verif
   assert.equal(cleanRegistry.platforms.TIKTOK.summary.skuModelRowCount, 161);
   assert.equal(cleanRegistry.platforms.SHOPEE.summary.listedProductCount, 126);
   assert.equal(cleanRegistry.platforms.SHOPEE.summary.skuModelRowCount, 156);
-  assert.equal(cleanAssignments.entries.length, 75);
-  assert.equal(cleanAssignments.entries.filter(entry => entry.identityType === 'catalog_row').length, 29);
+  assert.equal(cleanAssignments.entries.length, 78);
+  assert.equal(cleanAssignments.entries.filter(entry => entry.identityType === 'catalog_row').length, 32);
   assert.ok(cleanAssignments.entries.some(entry => entry.platform === 'SHOPEE'));
   assert.ok(cleanAssignments.entries.some(entry => entry.platform === 'TIKTOK'));
 });
@@ -88,7 +88,7 @@ test('local bootstrap does not fabricate default names for unassigned rows, leav
     matcherApi,
     identityApi
   );
-  assert.equal(complete.entries.length, 85, 'Must contain exactly 85 verified entries (75 baseline + 10 promoted Shopee seller_sku)');
+  assert.equal(complete.entries.length, 88, 'Must contain exactly 88 verified entries (78 baseline + 10 promoted Shopee seller_sku)');
   assert.equal(complete.entries.some(e => e.shortName.length > 40), false, 'Must not contain synthetic names > 40 chars');
   assert.equal(complete.entries.some(e => e.shortName.includes('Official Jersey')), false, 'Must not fabricate default name for unassigned rows');
 
@@ -181,8 +181,8 @@ test('bootstrap purges legacy synthetic auto-generated names from localStorage w
     assert.ok(sanitized.entries.some(e => matcherApi.assignmentKey(e) === key), `Baseline entry ${key} must remain intact`);
   }
 
-  // 75 baseline + 10 promoted + 1 custom = 86
-  assert.equal(sanitized.entries.length, 86, `Expected 86 entries, got ${sanitized.entries.length}`);
+  // 78 baseline + 10 promoted + 1 custom = 89
+  assert.equal(sanitized.entries.length, 89, `Expected 89 entries, got ${sanitized.entries.length}`);
 });
 
 test('all 15 pre-existing TikTok seller SKU assignments match cleanly with registry_exact_verified', () => {

@@ -12,6 +12,8 @@
   const normalizeSellerSku = skuNormalization.normalizeSellerSku;
   const normalizeCatalogText = skuNormalization.normalizeCatalogText ||
     (value => normalizeSellerSku(value).replace(/\s+/g, ''));
+  const normalizeThaiSkeleton = skuNormalization.normalizeThaiSkeleton ||
+    (value => normalizeCatalogText(value));
 
   const candidateKey = candidate =>
     JSON.stringify([
@@ -38,6 +40,7 @@
       const data = store.platforms[platform] || null;
       const sellerSkus = new Map();
       const catalogTexts = new Map();
+      const catalogSkeletons = new Map();
       const catalogRows = typeof registryApi.getNameableRows === 'function'
         ? registryApi.getNameableRows(data, platform)
         : (data?.skuRows || []);
@@ -58,10 +61,29 @@
           normalizeCatalogText([productName, row.variantName].filter(Boolean).join(' ')),
           candidate
         );
+        addCandidate(catalogSkeletons, normalizeThaiSkeleton(productName), candidate);
+        addCandidate(
+          catalogSkeletons,
+          normalizeThaiSkeleton([productName, row.variantName].filter(Boolean).join(' ')),
+          candidate
+        );
       }
       index[platform] = {
         sellerSkus,
         catalogTexts,
+        catalogSkeletons,
+        catalogRowsList: catalogRows.map(r => ({
+          candidate: {
+            platform,
+            sellerSku: r.sellerSku || null,
+            productId: platform === 'TIKTOK' ? r.productId : r.itemId,
+            productName: platform === 'TIKTOK' ? r.productName : r.title,
+            modelId: r.modelId || null,
+            variantName: r.variantName || null
+          },
+          titleSkeleton: normalizeThaiSkeleton(platform === 'TIKTOK' ? r.productName : r.title),
+          fullSkeleton: normalizeThaiSkeleton([platform === 'TIKTOK' ? r.productName : r.title, r.variantName].filter(Boolean).join(' '))
+        })),
         captureDate: data?.source?.captureDate || null
       };
     }
@@ -123,6 +145,66 @@
         captureDate: index[platform].captureDate
       };
     }
+
+    // Secondary fallback: normalized Thai skeleton match (handles PUA glyphs, displaced karan, tone reordering)
+    const skeletonKey = normalizeThaiSkeleton(rawText);
+    if (skeletonKey && index[platform].catalogSkeletons) {
+      const skeletonCandidates = index[platform].catalogSkeletons.get(skeletonKey) || [];
+      if (skeletonCandidates.length === 1) {
+        return {
+          status: 'found',
+          identityType: 'catalog_row',
+          sellerSku: null,
+          catalogKey,
+          candidate: { ...skeletonCandidates[0] },
+          captureDate: index[platform].captureDate,
+          reason: 'skeleton_catalog_match'
+        };
+      }
+      if (skeletonCandidates.length > 1) {
+        return {
+          status: 'ambiguous',
+          reason: 'duplicate_catalog_skeleton',
+          identityType: 'catalog_row',
+          catalogKey,
+          candidateCount: skeletonCandidates.length
+        };
+      }
+    }
+
+    // Tertiary fallback: prefix and ellipsis matching for Flash/Shopee labels where title was truncated
+    if (Array.isArray(index[platform].catalogRowsList) && rawText.length >= 20) {
+      const parts = rawText.split(/\.{3,}|\u2026/).map(normalizeThaiSkeleton).filter(p => p.length >= 6);
+      if (parts.length > 0) {
+        const ellipsisCandidates = index[platform].catalogRowsList.filter(row => {
+          return parts.every((p, idx) => {
+            if (idx === 0) return row.fullSkeleton.startsWith(p) || row.titleSkeleton.startsWith(p);
+            return row.fullSkeleton.includes(p);
+          });
+        });
+        if (ellipsisCandidates.length === 1) {
+          return {
+            status: 'found',
+            identityType: 'catalog_row',
+            sellerSku: null,
+            catalogKey,
+            candidate: { ...ellipsisCandidates[0].candidate },
+            captureDate: index[platform].captureDate,
+            reason: 'ellipsis_catalog_match'
+          };
+        }
+        if (ellipsisCandidates.length > 1) {
+          return {
+            status: 'ambiguous',
+            reason: 'duplicate_ellipsis_catalog_match',
+            identityType: 'catalog_row',
+            catalogKey,
+            candidateCount: ellipsisCandidates.length
+          };
+        }
+      }
+    }
+
     return {
       status: 'not_found',
       reason: 'catalog_text_not_found',
@@ -169,6 +251,24 @@
                 candidate: { ...candidate },
                 captureDate: index[platform].captureDate,
                 reason: 'exact_title_fallback'
+              };
+            }
+          }
+
+          // Secondary title fallback: normalized Thai skeleton
+          const titleSkeletonKey = normalizeThaiSkeleton(productTitle);
+          if (titleSkeletonKey && index[platform].catalogSkeletons) {
+            const skelCandidates = index[platform].catalogSkeletons.get(titleSkeletonKey) || [];
+            if (skelCandidates.length === 1) {
+              const candidate = skelCandidates[0];
+              return {
+                status: 'found',
+                identityType: 'catalog_row',
+                sellerSku: skuText,
+                catalogKey: titleKey || titleSkeletonKey,
+                candidate: { ...candidate },
+                captureDate: index[platform].captureDate,
+                reason: 'skeleton_title_fallback'
               };
             }
           }

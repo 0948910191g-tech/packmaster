@@ -601,6 +601,30 @@
       "productId": "16353617335",
       "modelId": "125356839273",
       "shortName": "เย็นฟ้า 3"
+    },
+    {
+      "platform": "SHOPEE",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "1457976379",
+      "modelId": "68330650418",
+      "shortName": "ฮากุ 1 ลัง"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "1737335810511439686",
+      "modelId": null,
+      "shortName": "HOYA Value 5"
+    },
+    {
+      "platform": "TIKTOK",
+      "identityType": "catalog_row",
+      "sellerSku": null,
+      "productId": "1736126922142418758",
+      "modelId": null,
+      "shortName": "HOYA Value 5"
     }
   ]
 }
