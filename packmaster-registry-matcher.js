@@ -12,6 +12,7 @@
   const SCHEMA = 'packmaster-registry-sku-assignments';
   const LOCAL_ASSIGNMENTS_KEY = 'packmasterRegistrySkuAssignmentsV1';
   const normalizeSku = skuNormalization.normalizeSellerSku;
+  const normalizeCatalogPart = value => normalizeSku(value);
   const newAssignments = () => ({ schema: SCHEMA, version: 1, entries: [] });
 
   const catalogVariantKey = entry =>
@@ -29,20 +30,55 @@
     ]);
   };
 
+  const hasSameAssignmentTarget = (existing, incoming) =>
+    existing.productId === incoming.productId &&
+    (existing.modelId || null) === (incoming.modelId || null) &&
+    ((existing.modelId || null) !== null || (existing.variantName || null) === (incoming.variantName || null));
+
+  const sameTarget = (entry, candidate, platform) => entry.platform === platform &&
+    entry.productId === candidate.productId &&
+    (entry.modelId || null) === (candidate.modelId || null) &&
+    ((entry.modelId || null) !== null || (entry.variantName || null) === (candidate.variantName || null));
+  const aliasKey = (platform, pair) => JSON.stringify([platform, normalizeSku(pair?.sellerSku),
+    normalizeCatalogPart(pair?.productText), normalizeCatalogPart(pair?.variantText)]);
+
   function validateAssignments(candidate) {
     if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate) ||
-        candidate.schema !== SCHEMA || candidate.version !== 1 ||
+        candidate.schema !== SCHEMA || ![1, 2].includes(candidate.version) ||
         !Array.isArray(candidate.entries) || candidate.entries.length > 10000) {
       throw new Error('Invalid registry SKU assignments');
     }
     const seen = new Set();
+    const seenAliases = new Set();
     const entries = candidate.entries.map(entry => {
+      const unsupportedManualField = Object.keys(entry || {}).some(key => key.startsWith('manualSku') &&
+        !['manualSkuAliases', 'manualSkuRegistryProductName'].includes(key));
+      const hasManualFields = Object.prototype.hasOwnProperty.call(entry || {}, 'manualSkuAliases') ||
+        Object.prototype.hasOwnProperty.call(entry || {}, 'manualSkuRegistryProductName') ||
+        Object.prototype.hasOwnProperty.call(entry || {}, 'manualSkuAlias') ||
+        Object.prototype.hasOwnProperty.call(entry || {}, 'manualSkuCatalogText');
+      if ((candidate.version === 1 && hasManualFields) || unsupportedManualField ||
+          (candidate.version === 2 && (Object.prototype.hasOwnProperty.call(entry || {}, 'manualSkuAlias') ||
+            Object.prototype.hasOwnProperty.call(entry || {}, 'manualSkuCatalogText') ||
+            (Object.prototype.hasOwnProperty.call(entry || {}, 'manualSkuAliases') && !Array.isArray(entry.manualSkuAliases))))) {
+        throw new Error('Invalid or unsupported manual SKU alias metadata');
+      }
+      if (candidate.version === 2 && Array.isArray(entry?.manualSkuAliases) && entry.manualSkuAliases.some(pair =>
+        !pair || typeof pair !== 'object' || Array.isArray(pair) ||
+        Object.keys(pair).some(key => !['sellerSku', 'productText', 'variantText'].includes(key)))) {
+        throw new Error('Invalid manual SKU alias pair metadata');
+      }
       const sellerSku = normalizeSku(entry?.sellerSku);
       const productId = typeof entry?.productId === 'string' ? entry.productId.trim() : '';
       const modelId = entry?.modelId || null;
       const variantName = typeof entry?.variantName === 'string' && entry.variantName.trim()
         ? entry.variantName.trim()
         : null;
+      const manualSkuAliases = Array.isArray(entry?.manualSkuAliases) ? entry.manualSkuAliases.map(pair => ({
+        sellerSku: typeof pair?.sellerSku === 'string' ? pair.sellerSku.trim() : '',
+        productText: typeof pair?.productText === 'string' ? pair.productText.trim() : '',
+        variantText: typeof pair?.variantText === 'string' ? pair.variantText.trim() : ''
+      })) : [];
       const identityType = sellerSku ? 'seller_sku' : entry?.identityType;
       if (!entry || typeof entry !== 'object' || Array.isArray(entry) ||
           !PLATFORMS.has(entry.platform) ||
@@ -50,6 +86,13 @@
           typeof entry.shortName !== 'string' || !entry.shortName.trim() ||
           entry.shortName.length > 150 ||
           (modelId !== null && typeof modelId !== 'string') ||
+          (candidate.version === 1 && (entry?.manualSkuAliases || entry?.manualSkuRegistryProductName || entry?.manualSkuAlias || entry?.manualSkuCatalogText)) ||
+          (candidate.version === 2 && entry?.manualSkuAlias) ||
+          manualSkuAliases.some(pair => !pair.sellerSku || !pair.productText || !pair.variantText || !normalizeSku(pair.sellerSku) ||
+            !normalizeCatalogPart(pair.productText) || (pair.variantText && !normalizeCatalogPart(pair.variantText)) ||
+            (sellerSku && normalizeSku(pair.sellerSku) === sellerSku)) ||
+          (manualSkuAliases.length && (candidate.version !== 2 || typeof entry.manualSkuRegistryProductName !== 'string' || !entry.manualSkuRegistryProductName.trim())) ||
+          (!manualSkuAliases.length && entry?.manualSkuRegistryProductName !== undefined) ||
           (!sellerSku && identityType !== 'catalog_row')) {
         throw new Error('Invalid registry SKU assignment entry');
       }
@@ -60,14 +103,26 @@
         productId,
         modelId,
         variantName,
-        shortName: entry.shortName.trim()
+        shortName: entry.shortName.trim(),
+        ...(manualSkuAliases.length ? { manualSkuAliases, manualSkuRegistryProductName: entry.manualSkuRegistryProductName.trim() } : {})
       };
       const key = assignmentKey(clean);
       if (seen.has(key)) throw new Error('Duplicate registry identity assignment');
       seen.add(key);
+      for (const pair of clean.manualSkuAliases || []) {
+        const key = aliasKey(clean.platform, pair);
+        if (seenAliases.has(key)) throw new Error('Duplicate manual SKU alias identity');
+        seenAliases.add(key);
+      }
       return clean;
     });
-    return { schema: SCHEMA, version: 1, entries };
+    for (const entry of entries.filter(item => item.manualSkuAliases?.length)) {
+      if (entries.some(other => other !== entry && other.platform === entry.platform &&
+          (entry.manualSkuAliases || []).some(pair => normalizeSku(other.sellerSku) === normalizeSku(pair.sellerSku)))) {
+        throw new Error('Manual SKU alias conflicts with an assigned Seller SKU identity');
+      }
+    }
+    return { schema: SCHEMA, version: entries.some(entry => entry.manualSkuAliases?.length) ? 2 : candidate.version, entries };
   }
 
   // Callers may retain this snapshot while the source assignment object is immutable.
@@ -125,11 +180,26 @@
   function upsertAssignment(current, platform, evidence, shortName) {
     const store = validateAssignments(current);
     const assignment = makeAssignment(platform, evidence, shortName);
+    const existing = store.entries.find(entry => assignmentKey(entry) === assignmentKey(assignment));
+    if (existing && !hasSameAssignmentTarget(existing, assignment)) {
+      throw new Error('Seller SKU identity conflict; review the existing mapping before changing its product or variant');
+    }
+    const aliasTargets = store.entries.filter(entry => entry.manualSkuAliases?.length && sameTarget(entry, assignment, platform));
+    if (aliasTargets.length > 1 || (aliasTargets.length && (!existing || aliasTargets[0] !== existing))) {
+      throw new Error('This registry row has manual PDF aliases under a different assignment key; review aliases before changing its identity');
+    }
+    const replacement = existing?.manualSkuAliases?.length
+      ? {
+          ...assignment,
+          manualSkuAliases: existing.manualSkuAliases,
+          manualSkuRegistryProductName: existing.manualSkuRegistryProductName
+        }
+      : assignment;
     return validateAssignments({
       ...store,
       entries: [
         ...store.entries.filter(entry => assignmentKey(entry) !== assignmentKey(assignment)),
-        assignment
+        replacement
       ]
     });
   }
@@ -200,6 +270,71 @@
     return next;
   }
 
+  function upsertManualSkuAlias(current, index, platform, sourceItem, selectedCandidate, shortName, identityApi) {
+    const store = validateAssignments(current);
+    const sourceSku = identityApi?.extractSellerSku?.(platform, sourceItem);
+    const catalogPair = identityApi?.extractCatalogPair?.(platform, sourceItem);
+    const normalizedSku = normalizeSku(sourceSku);
+    const normalizedPair = catalogPair?.map(normalizeCatalogPart) || [];
+    const candidate = selectedCandidate && {
+      platform,
+      productId: String(selectedCandidate.productId || '').trim(),
+      modelId: selectedCandidate.modelId || null,
+      variantName: selectedCandidate.variantName || null,
+      productName: String(selectedCandidate.productName || selectedCandidate.title || '').trim()
+    };
+    if (!PLATFORMS.has(platform) || !index?.[platform] || !normalizedSku || normalizedPair.length !== 2 || !normalizedPair[0] || !normalizedPair[1] ||
+        !candidate?.productId || typeof shortName !== 'string' || !shortName.trim()) {
+      throw new Error('An explicit PDF Seller SKU, catalog product and variant, selected registry row, and internal name are required');
+    }
+    const knownSkuRows = index[platform].sellerSkus.get(normalizedSku) || [];
+    if (knownSkuRows.length) throw new Error('This PDF Seller SKU already exists in the registry; verify its existing identity before binding');
+    const registryRows = index[platform].registryRows || [];
+    const sameSelectedRow = row => row.platform === platform && row.productId === candidate.productId &&
+      (row.modelId || null) === candidate.modelId && (row.variantName || null) === candidate.variantName;
+    const selectedRows = registryRows.filter(sameSelectedRow);
+    if (selectedRows.length !== 1) {
+      throw new Error('The selected product or variant is missing or not unique in the current registry');
+    }
+    const registryProductName = String(selectedRows[0].productName || '').trim();
+    if (!registryProductName || (candidate.productName && candidate.productName !== registryProductName)) {
+      throw new Error('The selected product title conflicts with the current registry');
+    }
+    const catalogEvidence = identityApi.resolve(index, platform, { catalogText: catalogPair.join(' ') });
+    if (catalogEvidence.status === 'ambiguous' ||
+        (catalogEvidence.status === 'found' && !sameSelectedRow(catalogEvidence.candidate))) {
+      throw new Error('The exact PDF product and variant conflict with the selected registry row; verify the source or use this name for this order only');
+    }
+    const pair = { sellerSku: sourceSku, productText: catalogPair[0], variantText: catalogPair[1] };
+    const sameManualTarget = (entry, target) => entry.platform === platform && entry.productId === target.productId &&
+      (entry.modelId || null) === target.modelId && (entry.variantName || null) === target.variantName;
+    const conflictingAlias = store.entries.find(entry => entry.platform === platform &&
+      (entry.manualSkuAliases || []).some(existing => aliasKey(platform, existing) === aliasKey(platform, pair)) &&
+      !sameManualTarget(entry, candidate));
+    if (conflictingAlias) throw new Error('This exact PDF SKU and product/variant pair is already assigned to a different registry row');
+    const existingTarget = store.entries.filter(entry => sameManualTarget(entry, candidate));
+    if (existingTarget.length > 1) throw new Error('More than one saved registry name targets this product and variant; review existing mappings first');
+    const base = existingTarget[0] || {
+      platform,
+      identityType: 'catalog_row',
+      sellerSku: null,
+      productId: candidate.productId,
+      modelId: candidate.modelId,
+      variantName: candidate.variantName,
+      shortName: shortName.trim()
+    };
+    if (base.manualSkuAliases?.length && base.manualSkuRegistryProductName !== registryProductName) {
+      throw new Error('The selected registry product title changed after the existing alias was saved; review the mapping before adding another');
+    }
+    const existingAliases = base.manualSkuAliases || [];
+    const samePair = existingAliases.some(existing => aliasKey(platform, existing) === aliasKey(platform, pair));
+    const incoming = { ...base, shortName: shortName.trim(), manualSkuAliases: samePair ? existingAliases : [...existingAliases, pair],
+      manualSkuRegistryProductName: registryProductName };
+    const nextEntries = store.entries.filter(entry => entry !== existingTarget[0]);
+    nextEntries.push(incoming);
+    return validateAssignments({ ...store, version: 2, entries: nextEntries });
+  }
+
   function match(index, platform, item, assignments, identityApi, prepared) {
     if (!identityApi || typeof identityApi.resolve !== 'function') {
       return { status: 'unmatched', reason: 'registry_identity_unavailable' };
@@ -240,6 +375,45 @@
       }
     }
 
+    // A confirmed PDF alias takes precedence over title-only fallback.
+    // The catalog target must still be unique and unchanged.
+    if ((evidence.status === 'not_found' && evidence.identityType === 'seller_sku') ||
+        (evidence.status === 'found' && evidence.reason === 'exact_title_fallback')) {
+        const store = validateAssignments(assignments);
+        const sourceSku = identityApi.extractSellerSku(platform, item);
+        const sourcePair = identityApi.extractCatalogPair(platform, item);
+        if (!sourcePair?.[0] || !sourcePair?.[1]) return { status: 'unmatched', reason: 'manual_alias_catalog_pair_incomplete', evidence };
+        const sourceAlias = { sellerSku: sourceSku, productText: sourcePair?.[0], variantText: sourcePair?.[1] };
+        const matchingAliases = store.entries.filter(entry => entry.platform === platform &&
+          (entry.manualSkuAliases || []).some(pair => aliasKey(platform, pair) === aliasKey(platform, sourceAlias)));
+        if (matchingAliases.length > 1) return { status: 'ambiguous', reason: 'duplicate_manual_sku_alias', evidence };
+        if (matchingAliases.length === 1) {
+          const assignment = matchingAliases[0];
+          const currentRows = index[platform].registryRows || [];
+          const sameCurrentTarget = row => row.productId === assignment.productId &&
+            (row.modelId || null) === (assignment.modelId || null) &&
+            (row.variantName || null) === (assignment.variantName || null) &&
+            String(row.productName || '').trim() === assignment.manualSkuRegistryProductName;
+          if (currentRows.filter(sameCurrentTarget).length !== 1) {
+            return { status: 'ambiguous', reason: 'registry_identity_changed', evidence };
+          }
+          const currentCatalog = identityApi.resolve(index, platform, { catalogText: sourcePair?.join(' ') });
+          if (currentCatalog.status === 'ambiguous' ||
+              (currentCatalog.status === 'found' && !sameCurrentTarget(currentCatalog.candidate))) {
+            return { status: 'ambiguous', reason: 'registry_identity_changed', evidence };
+          }
+          return {
+            status: 'matched', reason: 'registry_manual_alias_exact_verified',
+            identityType: 'manual_seller_sku_alias', sellerSku: normalizeSku(sourceSku), evidence,
+            assignment: { ...assignment }, rule: { keyword: normalizeSku(sourceSku), shortName: assignment.shortName }
+          };
+        }
+      // A title-only fallback must not bypass a confirmed SKU+catalog-pair restriction.
+      if (store.entries.some(entry => entry.platform === platform &&
+          (entry.manualSkuAliases || []).some(pair => normalizeSku(pair.sellerSku) === normalizeSku(sourceSku)))) {
+        return { status: 'unmatched', reason: 'manual_alias_catalog_pair_mismatch', evidence };
+      }
+    }
     if (evidence.status !== 'found') {
       return { status: 'unmatched', reason: evidence.reason || evidence.status, evidence };
     }
@@ -313,6 +487,7 @@
     upsertAssignment,
     canonicalEvidence,
     saveConfirmedAssignment,
+    upsertManualSkuAlias,
     match,
     normalizeSku,
     assignmentKey,

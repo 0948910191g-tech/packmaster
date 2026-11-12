@@ -14,6 +14,9 @@
   const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
   const cloneJson = (value) => JSON.parse(JSON.stringify(value));
   const hasText = (value) => typeof value === 'string' && value.trim().length > 0;
+  const normalizeShopOwner = (value) => typeof value === 'string'
+    ? value.trim().replace(/\s+/g, ' ').toLowerCase()
+    : '';
   const isValidDate = (value) => typeof value === 'string' && !Number.isNaN(Date.parse(value));
   const idFieldFor = (platform) => platform === 'TIKTOK' ? 'productId' : 'itemId';
   const nameFieldFor = (platform) => platform === 'TIKTOK' ? 'productName' : 'title';
@@ -157,6 +160,13 @@
     const store = currentStore == null ? createEmptyStore(now) : validateStore(currentStore);
     const registry = validatePlatformRegistry(sourceRegistry);
     const existing = store.platforms[registry.platform];
+    if (existing) {
+      const existingOwner = normalizeShopOwner(existing.source && existing.source.shop);
+      const incomingOwner = normalizeShopOwner(registry.source.shop);
+      if (!existingOwner || !incomingOwner || existingOwner !== incomingOwner) {
+        throw new Error(`Refusing to replace populated ${registry.platform} registry: shop owner does not match`);
+      }
+    }
     if (existing && new Date(existing.source.captureDate).getTime() > new Date(registry.source.captureDate).getTime()) {
       throw new Error(`Refusing to replace newer ${registry.platform} registry data with an older snapshot`);
     }

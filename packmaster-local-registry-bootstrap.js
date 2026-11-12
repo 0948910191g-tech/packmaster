@@ -71,7 +71,7 @@
     const localKeys = new Set(local.entries.map(entry => matcherApi.assignmentKey(entry)));
     return matcherApi.validateAssignments({
       schema: baseline.schema,
-      version: baseline.version,
+      version: Math.max(local.version, baseline.version),
       entries: [
         ...baseline.entries.filter(entry => !localKeys.has(matcherApi.assignmentKey(entry))),
         ...local.entries
@@ -264,6 +264,86 @@
     return { registry, assignments };
   }
 
+  function loadLocalStartupSnapshot(storage, { registryApi, matcherApi, sanitizeSkuRule }) {
+    if (!storage || !registryApi || !matcherApi || typeof sanitizeSkuRule !== 'function') {
+      return {
+        marketplaceRegistry: { store: null, error: 'Local storage modules are unavailable; existing data was not changed' },
+        registryAssignments: null,
+        registryAssignmentsError: 'โมดูลตรวจข้อมูลชื่อภายในไม่พร้อม ข้อมูลเดิมยังไม่ถูกแก้ไข',
+        skuRules: null,
+        skuRulesError: 'โมดูลตรวจข้อมูล Local ไม่พร้อม ข้อมูลเดิมยังไม่ถูกแก้ไข',
+        canPersistSkuRules: false
+      };
+    }
+
+    const marketplaceRegistry = registryApi.loadStore(storage);
+    let registryAssignments = null;
+    let registryAssignmentsError = '';
+    try {
+      registryAssignments = matcherApi.loadLocalAssignments(storage);
+    } catch (error) {
+      registryAssignmentsError = 'ข้อมูลชื่อภายในตามทะเบียนอ่านไม่ได้ กรุณากู้ข้อมูลจาก Backup';
+    }
+
+    let skuRules = null;
+    let skuRulesError = '';
+    try {
+      const raw = storage.getItem('skuMappingRules');
+      if (raw === null) {
+        skuRules = [];
+      } else {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) throw new Error('Saved SKU rules must be an array');
+        const cleaned = parsed.map((rule, index) => sanitizeSkuRule(rule, `saved-${index}`));
+        if (cleaned.some(rule => !rule)) throw new Error('Saved SKU rules contain invalid entries');
+        skuRules = cleaned;
+      }
+    } catch (error) {
+      skuRulesError = 'ข้อมูลกฎ SKU ในเครื่องอ่านไม่ได้ กรุณาสำรองและกู้คืนข้อมูลก่อนแก้ไข';
+    }
+
+    return {
+      marketplaceRegistry,
+      registryAssignments,
+      registryAssignmentsError,
+      skuRules,
+      skuRulesError,
+      canPersistSkuRules: !skuRulesError
+    };
+  }
+
+  function getRegistryBrand(row) {
+    const text = `${row?.productName || ''} ${row?.title || ''}`.toLowerCase();
+    if (/\bhoya\b/i.test(text)) return 'HOYA';
+    if (/\bhaku\b/i.test(text)) return 'HAKU';
+    if (/\bexcare\b/i.test(text)) return 'Excare';
+    if (/\bnono\b/i.test(text)) return 'nono';
+    return 'other';
+  }
+
+  function filterRegistryNameRows(rows, { platform, query = '', brand = 'all', status = 'all', statusMatch = () => true } = {}) {
+    const normalizedQuery = String(query).trim().toLowerCase();
+    return (Array.isArray(rows) ? rows : []).filter(row => {
+      if (platform && row.platform !== platform) return false;
+      if (brand !== 'all' && getRegistryBrand(row) !== brand) return false;
+      if (normalizedQuery && ![row.sellerSku, row.productName, row.title, row.variantName,
+        row.productId, row.itemId, row.modelId].some(value =>
+        String(value || '').toLowerCase().includes(normalizedQuery))) return false;
+      return status === 'all' || statusMatch(row, status);
+    });
+  }
+
+  function paginateRegistryRows(rows, requestedPage = 1, pageSize = 50) {
+    const safePageSize = Number.isInteger(pageSize) && pageSize > 0 ? pageSize : 50;
+    const pageCount = Math.max(1, Math.ceil(rows.length / safePageSize));
+    const page = Math.min(pageCount, Math.max(1, Number.isInteger(requestedPage) ? requestedPage : 1));
+    return {
+      page,
+      pageCount,
+      rows: rows.slice((page - 1) * safePageSize, page * safePageSize)
+    };
+  }
+
   return {
     REGISTRY_URL,
     ASSIGNMENTS_URL,
@@ -276,6 +356,10 @@
     getRowEvidence,
     defaultInternalName,
     ensureRegistryAssignments,
-    loadBaselines
+    loadBaselines,
+    loadLocalStartupSnapshot,
+    getRegistryBrand,
+    filterRegistryNameRows,
+    paginateRegistryRows
   };
 });

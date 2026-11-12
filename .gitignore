@@ -14,3 +14,9 @@ cloudflare/.wrangler/
 .env.*
 .scratch/
 
+
+# Desktop-only generated bundles and installers
+node_modules/
+desktop/app/
+desktop-dist/
+desktop/test-profiles/

@@ -17,9 +17,9 @@ test('auto-generated name is not called confirmed in the registry table', () => 
   assert.doesNotMatch(html, /<th>ชื่อภายในที่ยืนยันแล้ว<\/th>/);
 });
 test('review distinguishes permanent registration and one-order correction', () => {
-  assert.match(html, /บันทึกชื่อในทะเบียน \(เฉพาะ SKU ที่ระบุตัวได้\)/);
+  assert.match(html, /บันทึกชื่อจาก SKU ที่ตรงทะเบียน|ยืนยันและผูกคู่ SKU\/ข้อความใน Local/);
   assert.match(html, /ใช้ชื่อเฉพาะ Order นี้/);
-  assert.match(html, /ไม่เพิ่มกฎเดาสินค้าอัตโนมัติ/);
+  assert.match(html, /หากข้อมูลขัดแย้ง ระบบคง Review ไว้/);
 });
 
 

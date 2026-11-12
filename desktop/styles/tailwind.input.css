@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Thai-capable system fonts, without remote downloads. */
+html body {
+  font-family: "Leelawadee UI", Tahoma, sans-serif;
+}

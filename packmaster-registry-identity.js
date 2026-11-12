@@ -84,6 +84,14 @@
           titleSkeleton: normalizeThaiSkeleton(platform === 'TIKTOK' ? r.productName : r.title),
           fullSkeleton: normalizeThaiSkeleton([platform === 'TIKTOK' ? r.productName : r.title, r.variantName].filter(Boolean).join(' '))
         })),
+        registryRows: catalogRows.map(row => ({
+          platform,
+          sellerSku: row.sellerSku || null,
+          productId: platform === 'TIKTOK' ? row.productId : row.itemId,
+          productName: platform === 'TIKTOK' ? row.productName : row.title,
+          modelId: row.modelId || null,
+          variantName: row.variantName || null
+        })),
         captureDate: data?.source?.captureDate || null
       };
     }
@@ -119,6 +127,20 @@
       return null;
     }
     return text.trim();
+  };
+
+  const extractCatalogPair = (platform, item) => {
+    if (!PLATFORMS.includes(platform) || !item) return null;
+    if (Array.isArray(item.catalogPair) && item.catalogPair.length === 2 && item.catalogPair.every(value => typeof value === 'string' && value.trim())) {
+      return item.catalogPair.map(value => value.trim());
+    }
+    const text = typeof item === 'string' ? item : item.text;
+    if (platform === 'TIKTOK' && typeof text === 'string') {
+      const pieces = text.split('|').map(piece => piece.trim());
+      if (pieces.length === 3 && pieces.every(Boolean)) return pieces.slice(0, 2);
+    }
+    const catalogText = extractCatalogText(platform, item);
+    return catalogText ? [catalogText.trim(), ''] : null;
   };
 
   const resolveCatalog = (index, platform, item) => {
@@ -276,6 +298,17 @@
         return { status: 'not_found', reason: 'seller_sku_not_found', identityType: 'seller_sku', sellerSku: skuText };
       }
       if (candidates.length === 1) {
+        const catalogEvidence = resolveCatalog(index, platform, item);
+        if (catalogEvidence.status === 'found' &&
+            candidateKey(catalogEvidence.candidate) !== candidateKey(candidates[0])) {
+          return {
+            status: 'ambiguous',
+            reason: 'seller_sku_catalog_identity_conflict',
+            identityType: 'seller_sku',
+            sellerSku: skuText,
+            candidateCount: 1
+          };
+        }
         return {
           status: 'found',
           identityType: 'seller_sku',
@@ -319,6 +352,7 @@
     normalizeCatalogText,
     extractSellerSku,
     extractCatalogText,
+    extractCatalogPair,
     resolve
   };
 });

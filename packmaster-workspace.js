@@ -190,25 +190,39 @@
   const collectBackupPayload = async ({ batchApi, skuRules, settings, appVersion }) => {
     requireBatchApi(batchApi);
     const listed = await batchApi.listBatches();
+    if (!Array.isArray(listed)) throw new Error('Batch list could not be read for workspace backup');
     const batches = [];
     const batchOrders = [];
 
-    for (const listedMeta of Array.isArray(listed) ? listed : []) {
-      if (!listedMeta || !listedMeta.id) continue;
-      const loaded = await batchApi.loadBatch(listedMeta.id);
-      const meta = loaded && loaded.meta ? loaded.meta : listedMeta;
-      const orders = loaded && Array.isArray(loaded.orders) ? loaded.orders : [];
+    for (const listedMeta of listed) {
+      if (!isPlainObject(listedMeta) || typeof listedMeta.id !== 'string' || !listedMeta.id.trim()) {
+        throw new Error('Batch list contains an invalid batch identity');
+      }
+      const loaded = await batchApi.loadBatch(listedMeta.id, { requireOrders: true });
+      if (!isPlainObject(loaded) || !isPlainObject(loaded.meta)) {
+        throw new Error(`Batch ${listedMeta.id} could not be loaded for workspace backup`);
+      }
+      if (loaded.meta.id !== listedMeta.id) {
+        throw new Error(`Loaded batch identity does not match requested batch: ${listedMeta.id}`);
+      }
+      if (!Array.isArray(loaded.orders)) {
+        throw new Error(`Loaded batch orders must be an array: ${listedMeta.id}`);
+      }
+      const meta = loaded.meta;
+      const orders = loaded.orders;
       batches.push(cloneJson(meta));
       batchOrders.push({ batchId: meta.id, orders: cloneJson(orders) });
     }
 
-    return {
+    const payload = {
       appVersion: typeof appVersion === 'string' ? appVersion : '',
       settings: cloneJson(isPlainObject(settings) ? settings : {}),
       skuRules: cloneJson(Array.isArray(skuRules) ? skuRules : []),
       batches,
       batchOrders
     };
+    createBackup(payload);
+    return payload;
   };
 
   const replaceWorkspaceBatches = async (candidate, batchApi) => {

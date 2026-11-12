@@ -16,7 +16,7 @@ test('Quick Mapping keeps the exact safe seed as source identity and never guess
   assert.match(html, /getSkuFixSeed\(row, getMatchResult\)/);
   assert.match(html, /sourceText:\s*seed/);
   assert.match(html, /shortName:\s*''/);
-  assert.match(html, /บันทึกชื่อในทะเบียน \(เฉพาะ SKU ที่ระบุตัวได้\)/);
+  assert.match(html, /บันทึกชื่อจาก SKU ที่ตรงทะเบียน|ยืนยันและผูกคู่ SKU\/ข้อความใน Local/);
   assert.doesNotMatch(html, /shortName:\s*suggestion\./);
 });
 
@@ -37,5 +37,5 @@ test('Quick Mapping generates fail-closed suggestions with the actual Smart Matc
 test('persistent Quick Mapping save confirms registry assignment directly', () => {
   assert.match(html, /handleSaveQuickMapping/);
   assert.match(html, /saveRegistryAssignment\(order\.platform,\s*item,\s*quickMapState\.shortName\)/);
-  assert.match(html, /บันทึกชื่อในทะเบียน \(เฉพาะ SKU ที่ระบุตัวได้\)/);
+  assert.match(html, /บันทึกชื่อจาก SKU ที่ตรงทะเบียน|ยืนยันและผูกคู่ SKU\/ข้อความใน Local/);
 });

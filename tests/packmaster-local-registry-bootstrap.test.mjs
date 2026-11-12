@@ -66,13 +66,31 @@ test('local user names win over the Git baseline while preserving baseline-only 
   assert.ok(merged.entries.length >= baseline.entries.length);
 });
 
-test('Git page loads the local registry baseline module before the app runs', () => {
+test('local baseline merge preserves v2 manual SKU aliases from the existing store', () => {
+  const local = matcherApi.validateAssignments({
+    ...matcherApi.newAssignments(),
+    version: 2,
+    entries: [{
+      platform: 'TIKTOK', identityType: 'catalog_row', sellerSku: null,
+      productId: 'synthetic-product', modelId: null, variantName: 'synthetic-variant',
+      shortName: 'Approved synthetic name',
+      manualSkuAliases: [{ sellerSku: 'SKU-ALIAS', productText: 'Synthetic product', variantText: 'Synthetic variant' }],
+      manualSkuRegistryProductName: 'Synthetic listing'
+    }]
+  });
+  const merged = bootstrap.mergeAssignmentBaseline(local, matcherApi.newAssignments(), matcherApi);
+  assert.equal(merged.version, 2);
+  assert.deepEqual(merged.entries[0].manualSkuAliases, local.entries[0].manualSkuAliases);
+  assert.equal(merged.entries[0].manualSkuRegistryProductName, 'Synthetic listing');
+});
+
+test('Git page uses read-only local startup inspection and does not auto-load a bundled baseline', () => {
   const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   assert.match(html, /packmaster-local-registry-bootstrap\.js/);
-  assert.match(html, /localRegistryBootstrapApi\.loadBaselines/);
-  assert.match(html, /marketplaceRegistryApi\.saveStore\(window\.localStorage, mergedRegistry\)/);
-  assert.match(html, /localRegistryBootstrapApi\.ensureRegistryAssignments\(/);
-  assert.match(html, /registryMatcherApi\.saveLocalAssignments\(window\.localStorage, completeAssignments\)/);
+  assert.match(html, /loadLocalStartupSnapshot\(window\.localStorage/);
+  assert.doesNotMatch(html, /localRegistryBootstrapApi\.loadBaselines/);
+  assert.doesNotMatch(html, /saveStore\(window\.localStorage, mergedRegistry\)/);
+  assert.doesNotMatch(html, /saveLocalAssignments\(window\.localStorage, completeAssignments\)/);
 });
 
 test('local bootstrap does not fabricate default names for unassigned rows, leaving exactly 85 verified entries', () => {
@@ -217,4 +235,146 @@ test('all 15 pre-existing TikTok seller SKU assignments match cleanly with regis
     assert.equal(result.reason, 'registry_exact_verified', `Row ${row.sellerSku} must have reason registry_exact_verified`);
     assert.ok(result.assignment.shortName, `Row ${row.sellerSku} must carry assigned shortName`);
   }
+});
+
+test('startup inspection preserves corrupt raw local data and reports recovery errors without writing', () => {
+  const corruptRegistryRaw = '{"schema":"damaged-local-registry"';
+  const corruptAssignmentsRaw = '{"schema":"damaged-local-assignments"';
+  const corruptRulesRaw = '{"local":"damaged-rules"';
+  const values = new Map([
+    [registryApi.STORAGE_KEY, corruptRegistryRaw],
+    [matcherApi.LOCAL_ASSIGNMENTS_KEY, corruptAssignmentsRaw],
+    ['skuMappingRules', corruptRulesRaw]
+  ]);
+  const writes = [];
+  const storage = {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => { writes.push([key, value]); values.set(key, value); }
+  };
+
+  const snapshot = bootstrap.loadLocalStartupSnapshot(storage, {
+    registryApi,
+    matcherApi,
+    sanitizeSkuRule: () => null
+  });
+
+  assert.match(snapshot.marketplaceRegistry.error, /Unexpected|JSON|position|end/i);
+  assert.match(snapshot.registryAssignmentsError, /อ่านไม่ได้|corrupt|invalid/i);
+  assert.match(snapshot.skuRulesError, /อ่านไม่ได้|corrupt|invalid/i);
+  assert.equal(snapshot.registryAssignments, null);
+  assert.equal(snapshot.skuRules, null);
+  assert.equal(snapshot.canPersistSkuRules, false);
+  assert.deepEqual(writes, []);
+  assert.equal(values.get(registryApi.STORAGE_KEY), corruptRegistryRaw);
+  assert.equal(values.get(matcherApi.LOCAL_ASSIGNMENTS_KEY), corruptAssignmentsRaw);
+  assert.equal(values.get('skuMappingRules'), corruptRulesRaw);
+});
+
+test('startup module or validator failure fails closed instead of producing writable empty state', () => {
+  const writes = [];
+  const storage = { getItem: () => '{broken', setItem: (...args) => writes.push(args) };
+  const snapshot = bootstrap.loadLocalStartupSnapshot(storage, {
+    registryApi: null,
+    matcherApi: null,
+    sanitizeSkuRule: null
+  });
+  assert.equal(snapshot.canPersistSkuRules, false);
+  assert.match(snapshot.skuRulesError, /ไม่พร้อม/);
+  assert.match(snapshot.registryAssignmentsError, /ไม่พร้อม/);
+  assert.deepEqual(writes, []);
+});
+
+test('startup snapshot preserves valid local names and keeps a new profile empty', () => {
+  const savedAssignments = matcherApi.validateAssignments({
+    ...matcherApi.newAssignments(),
+    entries: [{
+      platform: 'TIKTOK',
+      identityType: 'catalog_row',
+      sellerSku: null,
+      productId: 'local-product-1',
+      modelId: 'local-model-1',
+      variantName: 'ข้อความสินค้าแบบยาวที่เจ้าของยืนยันไว้',
+      shortName: 'ชื่อยาวที่เจ้าของยืนยันไว้'
+    }]
+  });
+  const values = new Map([
+    [matcherApi.LOCAL_ASSIGNMENTS_KEY, JSON.stringify(savedAssignments)],
+    ['skuMappingRules', JSON.stringify([{ keyword: 'synthetic', shortName: 'local', id: 'rule-1' }])]
+  ]);
+  const storage = {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: () => assert.fail('Startup must not write local storage')
+  };
+  const snapshot = bootstrap.loadLocalStartupSnapshot(storage, {
+    registryApi,
+    matcherApi,
+    sanitizeSkuRule: rule => rule
+  });
+
+  assert.equal(snapshot.registryAssignments.entries[0].shortName, 'ชื่อยาวที่เจ้าของยืนยันไว้');
+  assert.equal(snapshot.marketplaceRegistry.store.platforms.TIKTOK, undefined);
+  assert.equal(snapshot.marketplaceRegistry.store.platforms.SHOPEE, undefined);
+  assert.equal(snapshot.skuRules[0].shortName, 'local');
+  assert.equal(snapshot.registryAssignmentsError, '');
+  assert.equal(snapshot.skuRulesError, '');
+
+  const emptyStorage = { getItem: () => null, setItem: () => assert.fail('Startup must not write local storage') };
+  const empty = bootstrap.loadLocalStartupSnapshot(emptyStorage, { registryApi, matcherApi, sanitizeSkuRule: rule => rule });
+  assert.deepEqual(empty.registryAssignments.entries, []);
+  assert.deepEqual(empty.skuRules, []);
+  assert.equal(empty.marketplaceRegistry.store.platforms.TIKTOK, undefined);
+  assert.equal(empty.marketplaceRegistry.store.platforms.SHOPEE, undefined);
+});
+
+test('registry name filters combine platform, brand, status, search, and fifty-row pagination', () => {
+  const rows = Array.from({ length: 121 }, (_, index) => {
+    const brands = ['HOYA', 'HAKU', 'Excare', 'nono', 'unbranded'];
+    const brand = brands[index % brands.length];
+    return {
+      platform: index < 101 ? 'TIKTOK' : 'SHOPEE',
+      productId: `product-${index}`,
+      sellerSku: `sku-${index}`,
+      productName: `${brand} Catalog Item ${index}`,
+      assigned: index % 2 === 0
+    };
+  });
+
+  const filtered = bootstrap.filterRegistryNameRows(rows, {
+    platform: 'TIKTOK',
+    brand: 'HOYA',
+    query: 'catalog item',
+    status: 'unnamed',
+    statusMatch: (row, status) => status === 'unnamed' && !row.assigned
+  });
+  assert.ok(filtered.length > 0);
+  assert.ok(filtered.every(row => row.platform === 'TIKTOK' && row.productName.startsWith('HOYA') && !row.assigned));
+  assert.equal(bootstrap.getRegistryBrand({ title: 'Nono soft pack' }), 'nono');
+  assert.equal(bootstrap.getRegistryBrand({ productName: 'Generic Wipes' }), 'other');
+
+  const allTikTok = bootstrap.filterRegistryNameRows(rows, { platform: 'TIKTOK', query: 'catalog item' });
+  const first = bootstrap.paginateRegistryRows(allTikTok, 1, 50);
+  const second = bootstrap.paginateRegistryRows(allTikTok, 2, 50);
+  const last = bootstrap.paginateRegistryRows(allTikTok, 3, 50);
+  assert.equal(allTikTok.length, 101);
+  assert.equal(first.pageCount, 3);
+  assert.equal(first.rows.length, 50);
+  assert.equal(second.rows.length, 50);
+  assert.equal(last.rows.length, 1);
+  assert.equal(bootstrap.paginateRegistryRows(allTikTok, 9, 50).page, 3);
+});
+
+test('registry name UI exposes brand scope, active counts, and a clear-all action', () => {
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /data-pm-registry-brand-filters/);
+  assert.match(html, /data-pm-brand-chip=\{option.value\}/);
+  assert.match(html, /setRegistryBrandFilter\(option.value\)/);
+  assert.match(html, /HOYA_BABY/);
+  assert.match(html, /HAKU_BABY/);
+  assert.match(html, /EXCARE/);
+  assert.match(html, /NONO/);
+  assert.match(html, /HOYA_OTHER/);
+  assert.match(html, /ล้างตัวกรองทั้งหมด/);
+  assert.match(html, /brandScopedRegistryNamingRows\.filter\(/);
+  assert.match(html, /registryNameRowMatches\.get\(row\)/);
+  assert.match(html, /registryNamePageSize = 50/);
 });

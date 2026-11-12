@@ -121,4 +121,28 @@ const corruptLoad = registryApi.loadStore(storage);
 assert.match(corruptLoad.error, /JSON|property/i);
 assert.equal(memoryStorage.get(registryApi.STORAGE_KEY), '{invalid-json', 'corrupt stored data must remain untouched');
 
+const whitespaceOwnedStore = structuredClone(withTikTok);
+whitespaceOwnedStore.platforms.TIKTOK.source.shop = 'Safe   TT';
+const sameShopDifferentCapture = {
+  ...tiktok,
+  source: { ...tiktok.source, shop: ' safe tt ', captureDate: '2026-10-22' }
+};
+const sameOwnerReplacement = registryApi.replacePlatformRegistry(whitespaceOwnedStore, sameShopDifferentCapture);
+assert.equal(sameOwnerReplacement.platforms.TIKTOK.source.captureDate, '2026-10-22');
+assert.equal(sameOwnerReplacement.platforms.TIKTOK.source.shop, ' safe tt ');
+
+for (const captureDate of ['2026-10-20', '2026-10-23']) {
+  const beforeRejectedReplacement = structuredClone(withTikTok);
+  assert.throws(() => registryApi.replacePlatformRegistry(withTikTok, {
+    ...tiktok,
+    source: { ...tiktok.source, shop: 'synthetic-other-shop', captureDate }
+  }), /shop|owner|different/i, `a different shop must not replace an occupied platform for ${captureDate}`);
+  assert.deepEqual(withTikTok, beforeRejectedReplacement, 'rejected ownership conflicts must leave the original store unchanged');
+}
+
+const missingOwnerStore = structuredClone(withTikTok);
+missingOwnerStore.platforms.TIKTOK.source.shop = '   ';
+assert.throws(() => registryApi.replacePlatformRegistry(missingOwnerStore, tiktok), /shop|owner|source/i,
+  'a populated platform with an unidentifiable owner must not be replaceable');
+
 console.log('PackMaster marketplace registry validation, isolation, freshness, and storage tests passed');

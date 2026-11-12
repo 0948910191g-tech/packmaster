@@ -149,7 +149,7 @@
     return meta;
   };
 
-  const loadBatch = async (batchId) => {
+  const loadBatch = async (batchId, options = {}) => {
     if (!batchId) throw new Error('Batch id is required');
     const db = await openDb();
     const tx = db.transaction([META_STORE, ORDERS_STORE], 'readonly');
@@ -160,6 +160,15 @@
       requestToPromise(ordersRequest)
     ]);
     await transactionToPromise(tx);
+    if (options && options.requireOrders === true) {
+      if (!meta || typeof meta !== 'object' || Array.isArray(meta) || meta.id !== batchId) {
+        throw new Error(`Batch metadata is missing or invalid: ${batchId}`);
+      }
+      if (!orderRecord || typeof orderRecord !== 'object' || Array.isArray(orderRecord) ||
+          orderRecord.batchId !== batchId || !Array.isArray(orderRecord.orders)) {
+        throw new Error(`Batch order record is missing or invalid: ${batchId}`);
+      }
+    }
     return {
       meta: meta || null,
       orders: orderRecord && Array.isArray(orderRecord.orders) ? orderRecord.orders : []

@@ -8,7 +8,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
-// Freeze the Phase 2 Batch adapter byte-for-byte using its canonical Git blob SHA-1.
+// Freeze the Phase 2 Batch adapter byte-for-byte, including the audited Issue 06 optional strict-read extension.
 const batchSource = read('packmaster-batch.js').replace(/\r\n/g, '\n');
 const gitBlobSha = crypto.createHash('sha1')
   .update(`blob ${Buffer.byteLength(batchSource, 'utf8')}\0`)
@@ -16,8 +16,8 @@ const gitBlobSha = crypto.createHash('sha1')
   .digest('hex');
 assert.equal(
   gitBlobSha,
-  '941bddd557803aa27e58bd23372b9f51d6ca1605',
-  'packmaster-batch.js is frozen for Phase 3; use sidecars/derived state instead of modifying IndexedDB persistence'
+  '509b463c992d7b5bf82a32e93e4a33f4ca980d47',
+  'Only the audited Issue 06 strict-read extension is allowed; IndexedDB writes, schema, and DB version remain frozen'
 );
 assert.ok(batchSource.includes("const DB_VERSION = 1;"));
 

@@ -1,0 +1,65 @@
+{
+  "name": "packmaster-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PPG Packmaster Windows desktop app (offline-first)",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "desktop:prepare": "node desktop/scripts/prepare.mjs",
+    "desktop:start": "npm run desktop:prepare && electron .",
+    "desktop:build": "npm run desktop:prepare && electron-builder --win nsis --x64",
+    "desktop:smoke": "npm run desktop:prepare && electron . --smoke-test",
+    "desktop:store-recovery-smoke": "npm run desktop:prepare && node desktop/scripts/store-recovery-smoke.mjs"
+  },
+  "devDependencies": {
+    "@babel/standalone": "7.28.4",
+    "electron": "45.2.3",
+    "electron-builder": "26.18.0",
+    "html2canvas": "1.4.1",
+    "jspdf": "2.5.1",
+    "pdfjs-dist": "3.11.174",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "tailwindcss": "3.4.19"
+  },
+  "build": {
+    "appId": "com.ppg.packmaster.desktop",
+    "productName": "Packmaster Desktop",
+    "asar": true,
+    "asarUnpack": [
+      "desktop/app/**"
+    ],
+    "directories": {
+      "output": "desktop-dist"
+    },
+    "files": [
+      "package.json",
+      "desktop/main.cjs",
+      "desktop/preload.cjs",
+      "desktop/lib/**",
+      "desktop/app/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": false,
+      "artifactName": "Packmaster-Desktop-Setup-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "author": "PPG - Pinpetch Global",
+  "license": "UNLICENSED"
+}

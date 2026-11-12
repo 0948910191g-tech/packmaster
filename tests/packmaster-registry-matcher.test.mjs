@@ -71,6 +71,23 @@ test('Duplicate, incomplete and non-explicit identity never fall back to keyword
     identity.resolve(catalog, 'TIKTOK', {text:'A | V | DUP'}), 'Unsafe'), /exact unique/);
 });
 
+test('unique Seller SKU conflicts with a different exact catalog row and stays in Review', () => {
+  const sourceData = source('TIKTOK', ['SKU-A', 'SKU-B']);
+  sourceData.products[0].productName = sourceData.skuRows[0].productName = 'Exact Product A';
+  sourceData.skuRows[0].variantName = 'Five pack';
+  sourceData.products[1].productName = sourceData.skuRows[1].productName = 'Exact Product B';
+  sourceData.skuRows[1].variantName = 'Ten pack';
+  const catalog = identity.buildIndex(
+    registryApi.replacePlatformRegistry(registryApi.createEmptyStore(), sourceData), registryApi
+  );
+  const conflict = identity.resolve(catalog, 'TIKTOK', { text: 'Exact Product B | Ten pack | SKU-A' });
+  assert.equal(conflict.status, 'ambiguous');
+  assert.equal(conflict.reason, 'seller_sku_catalog_identity_conflict');
+  const valid = identity.resolve(catalog, 'TIKTOK', { text: 'Exact Product A | Five pack | SKU-A' });
+  assert.equal(valid.status, 'found');
+  assert.equal(valid.candidate.productId, 'p0');
+});
+
 test('Assignment becomes invalid when marketplace SKU identity moves to another listing', () => {
   const cat = index();
   const evidence = identity.resolve(cat, 'TIKTOK', {sellerSku:'SKU-1'});
@@ -90,6 +107,57 @@ test('Reject malformed, duplicate, empty or cross-platform assignments', () => {
   assert.throws(() => matcher.validateAssignments({...first,entries:[...first.entries,...first.entries]}),/Duplicate/);
   assert.throws(() => matcher.validateAssignments({...first,entries:[{...first.entries[0],shortName:''}]}),/Invalid/);
   assert.throws(() => matcher.makeAssignment('SHOPEE',evidence,'test-invalid-no-id'),/./);
+});
+
+test('Upsert rejects a persistent Seller SKU identity that moved and preserves the existing assignment', () => {
+  const sellerEvidence = (productId, modelId = null, variantName = null) => ({
+    status: 'found',
+    identityType: 'seller_sku',
+    sellerSku: 'SYNTHETIC-SHARED',
+    candidate: { platform: 'TIKTOK', productId, modelId, variantName }
+  });
+  const original = matcher.upsertAssignment(
+    matcher.newAssignments(), 'TIKTOK', sellerEvidence('product-a'), 'Synthetic A'
+  );
+  const originalRaw = structuredClone(original);
+  const originalEntry = original.entries[0];
+
+  assert.throws(
+    () => matcher.upsertAssignment(original, 'TIKTOK', sellerEvidence('product-b'), 'Synthetic B'),
+    /conflict|identity|review.*existing/i,
+    'the same persistent Seller SKU key must not be reassigned to another product silently'
+  );
+  assert.deepEqual(original, originalRaw);
+  assert.strictEqual(original.entries[0], originalEntry);
+
+  const renamed = matcher.upsertAssignment(original, 'TIKTOK', sellerEvidence('product-a'), 'Synthetic A renamed');
+  assert.equal(renamed.entries.length, 1);
+  assert.equal(renamed.entries[0].shortName, 'Synthetic A renamed');
+});
+
+test('Upsert rejects changed model or variant identity under the same Seller SKU key', () => {
+  const sellerEvidence = (modelId, variantName) => ({
+    status: 'found',
+    identityType: 'seller_sku',
+    sellerSku: 'SYNTHETIC-MODEL-KEY',
+    candidate: { platform: 'TIKTOK', productId: 'synthetic-product', modelId, variantName }
+  });
+
+  const modelAssignment = matcher.upsertAssignment(
+    matcher.newAssignments(), 'TIKTOK', sellerEvidence('model-a', 'Large'), 'Synthetic Model'
+  );
+  assert.throws(
+    () => matcher.upsertAssignment(modelAssignment, 'TIKTOK', sellerEvidence('model-b', 'Large'), 'Changed Model'),
+    /conflict|identity|review.*existing/i
+  );
+
+  const variantAssignment = matcher.upsertAssignment(
+    matcher.newAssignments(), 'TIKTOK', sellerEvidence(null, 'Small'), 'Synthetic Variant'
+  );
+  assert.throws(
+    () => matcher.upsertAssignment(variantAssignment, 'TIKTOK', sellerEvidence(null, 'Medium'), 'Changed Variant'),
+    /conflict|identity|review.*existing/i
+  );
 });
 
 test('Exact unique Shopee catalog row can use a catalog-row internal-name assignment', () => {
@@ -367,4 +435,109 @@ test('saveConfirmedAssignment throws when evidence.status !== found and shortNam
   assert.throws(() => {
     matcher.saveConfirmedAssignment(ambiguousAssignments, catalog, 'SHOPEE', unfoundEv, 'ผู้ใหญ่6');
   }, /Confirmed registry assignment requires productId|An exact unique registry identity/);
+});
+
+test('explicit local SKU alias pairs persist and resolve only while selected registry row remains unique', () => {
+  const sourceData = source('TIKTOK', ['HOYA Value Pack 5', 'HOYA Value Pack 5']);
+  sourceData.products[0].productId = 'listing-wholesale'; sourceData.skuRows[0].productId = 'listing-wholesale';
+  sourceData.products[0].productName = sourceData.skuRows[0].productName = 'HOYA Baby Wipes Wholesale';
+  sourceData.skuRows[0].variantName = '50 ห่อ';
+  sourceData.products[1].productId = 'listing-5-pack'; sourceData.skuRows[1].productId = 'listing-5-pack';
+  sourceData.products[1].productName = sourceData.skuRows[1].productName = 'HOYA Baby Wipes Value Pack';
+  sourceData.skuRows[1].modelId = 'model-5-pack';
+  sourceData.skuRows[1].variantName = '5 ห่อ 400 แผ่น';
+  const store = registryApi.replacePlatformRegistry(registryApi.createEmptyStore(), sourceData);
+  const catalog = identity.buildIndex(store, registryApi);
+  const pdfItem = { text: 'HOYA Baby Wipes Value Pack | 5 ห่อ 400 แผ่น | 5 ห่อ HOYA Baby Wipes Value Pack', sellerSku: '5 ห่อ HOYA Baby Wipes Value Pack' };
+  const pdfItemSecondSku = { text: 'HOYA Baby Wipes Value Pack | 5 ห่อ 400 แผ่น | HOYA Baby Wipes Value Pack 5 ห่อ', sellerSku: 'HOYA Baby Wipes Value Pack 5 ห่อ' };
+  const sameSkuOtherTitle = { text: 'HOYA Baby Wipes Wholesale | 50 ห่อ | 5 ห่อ HOYA Baby Wipes Value Pack', sellerSku: '5 ห่อ HOYA Baby Wipes Value Pack' };
+  const thirdItem = { text: 'HOYA Baby Wipes Value Pack | 10 ห่อ 800 แผ่น | 5 ห่อ HOYA Baby Wipes Value Pack', sellerSku: '5 ห่อ HOYA Baby Wipes Value Pack' };
+  const selected = { platform: 'TIKTOK', productId: 'listing-5-pack', productName: 'HOYA Baby Wipes Value Pack', modelId: 'model-5-pack', variantName: '5 ห่อ 400 แผ่น' };
+
+  assert.equal(identity.resolve(catalog, 'TIKTOK', pdfItem).reason, 'exact_title_fallback');
+  assert.throws(() => matcher.upsertManualSkuAlias(matcher.newAssignments(), catalog, 'TIKTOK', pdfItem,
+    { ...selected, productName: 'Different product title' }, 'Unsafe', identity), /title conflicts/i);
+  const first = matcher.upsertManualSkuAlias(matcher.newAssignments(), catalog, 'TIKTOK', pdfItem, selected, 'HOYA Value 5', identity);
+  assert.equal(matcher.match(catalog, 'TIKTOK', pdfItem, first, identity).status, 'matched');
+  assert.equal(matcher.match(catalog, 'TIKTOK', sameSkuOtherTitle, first, identity).status, 'unmatched');
+  assert.equal(matcher.match(catalog, 'TIKTOK', thirdItem, first, identity).status, 'unmatched');
+  const second = matcher.upsertManualSkuAlias(first, catalog, 'TIKTOK', pdfItemSecondSku, selected, 'HOYA Value 5', identity);
+  assert.equal(second.entries[0].manualSkuAliases.length, 2, 'a second exact PDF SKU preserves the first alias pair');
+  assert.equal(matcher.match(catalog, 'TIKTOK', pdfItemSecondSku, second, identity).rule.shortName, 'HOYA Value 5');
+  assert.equal(matcher.match(catalog, 'TIKTOK', { ...pdfItem, orderOnlyName: 'Order label' }, second, identity).rule.shortName, 'HOYA Value 5');
+
+  const otherSelected = { platform: 'TIKTOK', productId: 'listing-wholesale', productName: 'HOYA Baby Wipes Wholesale', modelId: null, variantName: '50 ห่อ' };
+  const otherPair = matcher.upsertManualSkuAlias(second, catalog, 'TIKTOK', sameSkuOtherTitle, otherSelected, 'HOYA Wholesale', identity);
+  assert.equal(otherPair.entries.length, 2, 'same explicit SKU can be paired to another exact title as a separate identity');
+  assert.equal(matcher.match(catalog, 'TIKTOK', sameSkuOtherTitle, otherPair, identity).rule.shortName, 'HOYA Wholesale');
+
+  const storage = new Map([[matcher.LOCAL_ASSIGNMENTS_KEY, JSON.stringify(otherPair)]]);
+  const reloaded = matcher.loadLocalAssignments({ getItem: key => storage.get(key) ?? null });
+  assert.equal(matcher.match(catalog, 'TIKTOK', pdfItem, reloaded, identity).rule.shortName, 'HOYA Value 5');
+  assert.equal(matcher.match(catalog, 'TIKTOK', pdfItemSecondSku, reloaded, identity).rule.shortName, 'HOYA Value 5');
+  assert.equal(matcher.match(catalog, 'TIKTOK', sameSkuOtherTitle, reloaded, identity).rule.shortName, 'HOYA Wholesale');
+  const renamed = matcher.upsertAssignment(reloaded, 'TIKTOK', {
+    status: 'found', identityType: 'catalog_row', sellerSku: null,
+    candidate: { platform: 'TIKTOK', productId: 'listing-5-pack', modelId: 'model-5-pack', variantName: '5 ห่อ 400 แผ่น' }
+  }, 'HOYA Value Five');
+  const reloadedAfterRename = matcher.validateAssignments(JSON.parse(JSON.stringify(renamed)));
+  assert.equal(reloadedAfterRename.entries.find(entry => entry.productId === 'listing-5-pack').manualSkuAliases.length, 2);
+  assert.equal(matcher.match(catalog, 'TIKTOK', pdfItem, reloadedAfterRename, identity).rule.shortName, 'HOYA Value Five');
+  assert.equal(matcher.match(catalog, 'TIKTOK', pdfItemSecondSku, reloadedAfterRename, identity).rule.shortName, 'HOYA Value Five');
+
+  const changed = identity.buildIndex(registryApi.replacePlatformRegistry(registryApi.createEmptyStore(), source('TIKTOK', ['HOYA Value Pack 5'])), registryApi);
+  assert.equal(matcher.match(changed, 'TIKTOK', pdfItem, reloaded, identity).status, 'ambiguous');
+  assert.equal(matcher.match(changed, 'TIKTOK', pdfItem, reloaded, identity).reason, 'registry_identity_changed');
+  const variantChangedStore = structuredClone(store);
+  variantChangedStore.platforms.TIKTOK.skuRows.find(row => row.productId === 'listing-5-pack').variantName = '3 ห่อ 240 แผ่น';
+  const variantChanged = identity.buildIndex(variantChangedStore, registryApi);
+  assert.equal(matcher.match(variantChanged, 'TIKTOK', pdfItem, reloaded, identity).reason, 'registry_identity_changed',
+    'a stable model/listing ID does not mask a changed variant');
+  const titleChangedStore = structuredClone(store);
+  titleChangedStore.platforms.TIKTOK.skuRows.find(row => row.productId === 'listing-5-pack').productName = 'HOYA Baby Wipes New Listing';
+  const titleChanged = identity.buildIndex(titleChangedStore, registryApi);
+  assert.equal(matcher.match(titleChanged, 'TIKTOK', pdfItem, reloaded, identity).reason, 'registry_identity_changed',
+    'a stable listing ID does not mask a changed registry product title');
+});
+
+test('manual SKU alias pair preserves numeric token boundaries and legacy v1 assignments stay readable', () => {
+  const catalog = index();
+  const selected = { platform: 'TIKTOK', productId: 'p0', modelId: null, variantName: null };
+  const spaced = { text: 'HOYA Value 1 2 | 5 ห่อ | SYNTHETIC-ALIAS', sellerSku: 'SYNTHETIC-ALIAS' };
+  const joined = { text: 'HOYA Value 12 | 5 ห่อ | SYNTHETIC-ALIAS', sellerSku: 'SYNTHETIC-ALIAS' };
+  // Catalog text is intentionally absent from this registry; selection is explicit and aliases remain exact pairs.
+  const first = matcher.upsertManualSkuAlias(matcher.newAssignments(), catalog, 'TIKTOK', spaced, selected, 'Synthetic value', identity);
+  assert.equal(matcher.match(catalog, 'TIKTOK', joined, first, identity).status, 'unmatched');
+  assert.equal(first.version, 2);
+  assert.throws(() => matcher.validateAssignments({ ...first, entries: [{ ...first.entries[0], manualSkuAliases: 'corrupt' }] }), /alias metadata/i);
+  assert.throws(() => matcher.validateAssignments({ ...first, entries: [{ ...first.entries[0], manualSkuAliases: [{ sellerSku: 'X', productText: 'Y', variantText: '', fuzzy: true }] }] }), /alias pair metadata/i);
+  assert.throws(() => matcher.validateAssignments({ ...first, entries: [{ ...first.entries[0], manualSkuUnexpected: true }] }), /alias metadata/i);
+  const corruptRaw = JSON.stringify({ ...first, entries: [{ ...first.entries[0], manualSkuAliases: 'damaged' }] });
+  const corruptStorage = { raw: corruptRaw, getItem() { return this.raw; }, setItem(_key, value) { this.raw = value; } };
+  assert.throws(() => matcher.loadLocalAssignments(corruptStorage), /alias metadata/i);
+  assert.equal(corruptStorage.raw, corruptRaw, 'loading malformed v2 aliases must not rewrite the original value');
+  assert.throws(() => matcher.saveLocalAssignments(corruptStorage, { ...first, entries: [{ ...first.entries[0], manualSkuAliases: 'damaged' }] }), /alias metadata/i);
+  assert.equal(corruptStorage.raw, corruptRaw, 'a rejected save preserves the existing assignment text');
+  const legacy = matcher.newAssignments();
+  assert.equal(matcher.validateAssignments(legacy).version, 1);
+});
+
+test('manual alias refuses conflicts, duplicates, unknown variants, exact SKUs and unsafe assignment schemas', () => {
+  const sourceData = source('TIKTOK', ['SHARED', 'SHARED']);
+  sourceData.products[0].productId = 'listing-a'; sourceData.skuRows[0].productId = 'listing-a';
+  sourceData.products[1].productId = 'listing-b'; sourceData.skuRows[1].productId = 'listing-b';
+  const catalog = identity.buildIndex(registryApi.replacePlatformRegistry(registryApi.createEmptyStore(), sourceData), registryApi);
+  const selected = { platform: 'TIKTOK', productId: 'listing-a', modelId: null, variantName: null };
+  const knownSkuItem = { text: 'Marketplace title 0 | Variant 0 | SHARED', sellerSku: 'SHARED' };
+  assert.throws(() => matcher.upsertManualSkuAlias(matcher.newAssignments(), catalog, 'TIKTOK', knownSkuItem, selected, 'Unsafe', identity), /already exists|known Seller SKU/i);
+  const unknownItem = { text: 'Marketplace title 0 | Variant 0 | UNKNOWN', sellerSku: 'UNKNOWN' };
+  assert.throws(() => matcher.upsertManualSkuAlias(matcher.newAssignments(), catalog, 'TIKTOK', unknownItem, { ...selected, productId: 'missing' }, 'Unsafe', identity), /current registry|unique/i);
+  const one = matcher.upsertManualSkuAlias(matcher.newAssignments(), catalog, 'TIKTOK', unknownItem, selected, 'Name A', identity);
+  assert.throws(() => matcher.upsertManualSkuAlias(one, catalog, 'TIKTOK', unknownItem, { ...selected, productId: 'listing-b' }, 'Name B', identity), /different registry row|already assigned/i);
+  assert.throws(() => matcher.validateAssignments({ ...one, version: 99 }), /Invalid registry SKU assignments/);
+
+  const moved = identity.buildIndex(registryApi.replacePlatformRegistry(registryApi.createEmptyStore(), source('TIKTOK', ['OTHER'])), registryApi);
+  const matched = matcher.match(moved, 'TIKTOK', unknownItem, one, identity);
+  assert.equal(matched.status, 'ambiguous');
+  assert.equal(matched.reason, 'registry_identity_changed');
 });

@@ -158,7 +158,7 @@ const requiredUiMarkers = [
   'สำรอง Workspace',
   'กู้คืน Workspace',
   'Replace Workspace',
-  'Registry Names'
+  'data-pm-desktop-restore-store-scope'
 ];
 
 for (const marker of requiredUiMarkers) {

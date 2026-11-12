@@ -26,6 +26,8 @@ test('marketplace registry stays local, platform-scoped, and separate from SKU m
   assert.match(importHandler[0], /validatePlatformRegistry\([^\n]+expectedPlatform\)/);
   assert.match(importHandler[0], /replacePlatformRegistry\(currentStore, importedRegistry\)/);
   assert.match(importHandler[0], /saveStore\(window\.localStorage, nextStore\)/);
+  assert.match(importHandler[0], /if \(!cloudMode && registryAssignmentsError\)/,
+    'a Local import must refuse to overwrite unsupported or corrupt assignment metadata');
   assert.doesNotMatch(importHandler[0], /setSkuRules|skuMappingRules/);
 
   assert.match(privacy, /separated by TikTok and Shopee/i);
