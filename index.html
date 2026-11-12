@@ -2794,6 +2794,15 @@
         };
       };
 
+      const getRegistryRowAssignment = (platform, row) => {
+        if (!row || !registryMatcherApi || !registryIdentityApi || !marketplaceCatalogIndex || !registryAssignments) return null;
+        const evidence = getRegistryRowEvidence(platform, row);
+        if (evidence.status !== 'found') return null;
+        const result = registryMatcherApi.match(marketplaceCatalogIndex, platform, {},
+          registryAssignments, { resolve: () => evidence }, preparedRegistryAssignments);
+        return result.status === 'matched' ? result.assignment : null;
+      };
+
       const hasDuplicateRegistrySku = (platform, row) => {
         const sku = registryMatcherApi?.normalizeSku(row?.sellerSku || '');
         return Boolean(sku && (marketplaceCatalogIndex?.[platform]?.sellerSkus?.get(sku) || []).length > 1);
@@ -2878,7 +2887,7 @@
           const evidence = registryIdentityApi.resolve(marketplaceCatalogIndex, order.platform, item);
           if (evidence.status !== 'found') {
             showToast('ข้อความจาก PDF ยังไม่ตรงทะเบียน กรุณาเลือกแถวสินค้าในช่องด้านบน แล้วยืนยันผูกข้อความ หรือใช้ชื่อเฉพาะ Order นี้', 'warning');
-            const chooser = document.getElementById('pm-review-registry-row');
+            const chooser = document.getElementById('pm-review-registry-search');
             chooser?.scrollIntoView({ block: 'center', behavior: 'smooth' });
             chooser?.focus();
             return;
@@ -4426,7 +4435,30 @@
                     {(quickMapState.row?.types || []).some(type => type === 'REVIEW_SKU' || type === 'UNMAPPED') && <>
                       <div data-pm-review-registry-chooser className="mt-3 rounded-xl border border-blue-200 bg-blue-50/60 p-3">
                         <p className="mb-2 text-xs font-semibold text-blue-900">ทะเบียนอาจตั้งชื่อครบแล้ว แต่ข้อความจาก PDF ยังจับคู่ไม่ได้ ให้เลือกสินค้าที่ตรงกับใบจริงด้านล่าง ไม่ต้องเพิ่มทะเบียนซ้ำ หาก Seller SKU ว่าง จะผูกเฉพาะคู่ข้อความสินค้าและตัวเลือกที่ยืนยันนี้ใน Local</p>
-                        <label htmlFor="pm-review-registry-row" className="text-xs font-black text-blue-950">เลือกแถวจากทะเบียนของ {quickMapRegistryPlatform || 'แพลตฟอร์มนี้'} เพื่อช่วยตรวจชื่อ</label>
+                        <label htmlFor="pm-review-registry-search" className="text-xs font-black text-blue-950">ค้นหาสินค้าในทะเบียน {quickMapRegistryPlatform || ''}</label>
+                        <input id="pm-review-registry-search" className="pm-input mt-2 w-full" placeholder="ค้นหาชื่อสินค้า ตัวเลือก หรือ SKU" value={quickMapState.registrySearch || ''} onChange={e => { const value = e.target.value; setQuickMapState(prev => ({ ...prev, registrySearch: value })); }} />
+                        <div className="mt-2 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white" role="group" aria-label="ผลการค้นหาสินค้า">
+                          {quickMapRegistryRows.filter(candidate => {
+                            const words = String(quickMapState.registrySearch || '').trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+                            const haystack = [candidate.productName, candidate.title, candidate.variantName, candidate.sellerSku, candidate.productId, candidate.itemId].join(' ').toLocaleLowerCase();
+                            return words.every(word => haystack.includes(word));
+                          }).map(candidate => {
+                            const rowKey = getQuickMapRegistryRowKey(quickMapRegistryPlatform, candidate);
+                            const selected = rowKey === quickMapState.selectedRegistryRowKey;
+                            const savedName = getRegistryRowAssignment(quickMapRegistryPlatform, candidate)?.shortName;
+                            return <button type="button" key={rowKey} aria-pressed={selected} className={`block w-full border-b border-slate-100 p-3 text-left hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 ${selected ? 'bg-blue-100 ring-2 ring-inset ring-blue-600' : ''}`} onClick={() => {
+                              const savedAssignment = getRegistryRowAssignment(quickMapRegistryPlatform, candidate);
+                              setQuickMapState(prev => ({ ...prev, selectedRegistryRowKey: rowKey, shortName: savedAssignment?.shortName || (prev.chooserFilledShortName ? '' : prev.shortName), chooserFilledShortName: Boolean(savedAssignment) }));
+                            }}>
+                              <span className="block text-sm font-bold text-slate-900 break-words">{candidate.productName || candidate.title || 'ไม่ระบุชื่อสินค้า'}</span>
+                              <span className="mt-1 block text-xs text-slate-700 break-words">ตัวเลือก: {candidate.variantName || 'ไม่ได้ระบุ'} · SKU: {candidate.sellerSku || 'ไม่มี'}</span>
+                              <span className="mt-1 block text-xs text-slate-700">ชื่อในคลัง: {savedName || 'ยังไม่ได้ตั้งชื่อ'}</span>
+                              <span className="mt-1 block text-xs text-slate-600">Product ID: {candidate.productId || candidate.itemId || '-'}</span>
+                            </button>;
+                          })}
+                          {!quickMapRegistryRows.some(candidate => String(quickMapState.registrySearch || '').trim().toLocaleLowerCase().split(/\s+/).filter(Boolean).every(word => [candidate.productName, candidate.title, candidate.variantName, candidate.sellerSku, candidate.productId, candidate.itemId].join(' ').toLocaleLowerCase().includes(word))) && <p className="p-3 text-sm text-slate-700">ไม่พบสินค้า ลองค้นด้วยคำอื่น</p>}
+                        </div>
+                        <label htmlFor="pm-review-registry-row" className="sr-only">เลือกแถวทะเบียน</label>
                         <select id="pm-review-registry-row" value={quickMapState.selectedRegistryRowKey || ''}
                           onChange={event => {
                             const selectedRegistryRowKey = event.target.value;
@@ -4441,7 +4473,7 @@
                               shortName: savedAssignment?.shortName || (prev.chooserFilledShortName ? '' : prev.shortName),
                               chooserFilledShortName: Boolean(savedAssignment)
                             }));
-                          }} className="pm-select mt-2 w-full">
+                          }} className="sr-only" tabIndex={-1} aria-hidden="true">
                           <option value="">ยังไม่ได้เลือกแถวทะเบียน</option>
                           {quickMapRegistryRows.map(candidate => {
                             const productId = candidate.productId || candidate.itemId || '';

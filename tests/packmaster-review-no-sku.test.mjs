@@ -35,11 +35,32 @@ test('actual Review handler enables, confirms and persists a no-SKU pair to Loca
   const context = { cloudMode: false, marketplaceRegistry: store, marketplaceRegistryApi: registry,
     registryMatcherApi: matcher, registryIdentityApi: identity, registryAssignmentsLoaded: true, registryAssignmentsError: '',
     registryAssignments: matcher.newAssignments(), getQuickMapRegistryRowKey: key,
-    quickMapState: { sourceText: item.text, itemIndex: 0, row: { order, types: ['UNMAPPED'] }, selectedRegistryRowKey: key('TIKTOK', selected), shortName: 'ม่วง5' },
+    quickMapRegistryPlatform: 'TIKTOK', quickMapRegistryRows: registry.getNameableRows(store.platforms.TIKTOK, 'TIKTOK'),
+    marketplaceCatalogIndex: identity.buildIndex(store, registry),
+    preparedRegistryAssignments: matcher.prepareAssignments(matcher.newAssignments()),
+    quickMapState: { sourceText: item.text, itemIndex: 0, row: { order, types: ['UNMAPPED'] }, selectedRegistryRowKey: '', shortName: 'ม่วง5' },
+    event: { target: { value: key('TIKTOK', selected) } },
     window: { localStorage: storage, confirm: () => true },
-    setQuickMapState() {}, showToast() {}, setRegistryAssignments(next) { context.registryAssignments = next; }
+    setQuickMapState(value) { context.quickMapState = typeof value === 'function' ? value(context.quickMapState) : value; },
+    showToast() {}, setRegistryAssignments(next) { context.registryAssignments = next; }
   };
   vm.createContext(context);
+  context.quickMapState.registrySearch = 'HOYA ม่วง';
+  const filterStart = html.indexOf('quickMapRegistryRows.filter(candidate => {', html.indexOf('aria-label="ผลการค้นหาสินค้า"'));
+  const filterEnd = html.indexOf(').map(candidate => {', filterStart);
+  assert.ok(filterStart >= 0 && filterEnd > filterStart);
+  const searchResults = vm.runInContext(html.slice(filterStart, filterEnd + 1), context);
+  assert.ok(searchResults.some(row => row.productId === selected.productId), 'search must find the selected HOYA product');
+  assert.ok(searchResults.length < context.quickMapRegistryRows.length, 'search must narrow the list');
+  const chooserStart = html.indexOf('aria-label="ผลการค้นหาสินค้า"');
+  const eventStart = html.indexOf('onClick={() => {', chooserStart) + 'onClick={() => {'.length;
+  const eventEnd = html.indexOf('}}>', eventStart);
+  assert.ok(eventEnd > eventStart);
+  context.candidate = selected;
+  context.rowKey = key('TIKTOK', selected);
+  vm.runInContext(html.slice(html.indexOf('const getRegistryRowEvidence ='), html.indexOf('const hasDuplicateRegistrySku =')) +
+    '\n' + html.slice(eventStart, eventEnd), context);
+  assert.equal(context.quickMapState.selectedRegistryRowKey, key('TIKTOK', selected));
   const state = html.slice(html.indexOf('const quickMapRegistryPlatform ='), html.indexOf('const sortBatchRows ='));
   vm.runInContext(state + '\nglobalThis.allowed = canPersistQuickMap;', context);
   assert.equal(context.allowed, true, 'no Seller SKU must not disable explicit catalog pair confirmation');
