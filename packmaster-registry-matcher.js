@@ -65,6 +65,7 @@
       }
       if (candidate.version === 2 && Array.isArray(entry?.manualSkuAliases) && entry.manualSkuAliases.some(pair =>
         !pair || typeof pair !== 'object' || Array.isArray(pair) ||
+        typeof pair.sellerSku !== 'string' ||
         Object.keys(pair).some(key => !['sellerSku', 'productText', 'variantText'].includes(key)))) {
         throw new Error('Invalid manual SKU alias pair metadata');
       }
@@ -88,7 +89,7 @@
           (modelId !== null && typeof modelId !== 'string') ||
           (candidate.version === 1 && (entry?.manualSkuAliases || entry?.manualSkuRegistryProductName || entry?.manualSkuAlias || entry?.manualSkuCatalogText)) ||
           (candidate.version === 2 && entry?.manualSkuAlias) ||
-          manualSkuAliases.some(pair => !pair.sellerSku || !pair.productText || !pair.variantText || !normalizeSku(pair.sellerSku) ||
+          manualSkuAliases.some(pair => !pair.productText || !pair.variantText || (pair.sellerSku && !normalizeSku(pair.sellerSku)) ||
             !normalizeCatalogPart(pair.productText) || (pair.variantText && !normalizeCatalogPart(pair.variantText)) ||
             (sellerSku && normalizeSku(pair.sellerSku) === sellerSku)) ||
           (manualSkuAliases.length && (candidate.version !== 2 || typeof entry.manualSkuRegistryProductName !== 'string' || !entry.manualSkuRegistryProductName.trim())) ||
@@ -118,7 +119,7 @@
     });
     for (const entry of entries.filter(item => item.manualSkuAliases?.length)) {
       if (entries.some(other => other !== entry && other.platform === entry.platform &&
-          (entry.manualSkuAliases || []).some(pair => normalizeSku(other.sellerSku) === normalizeSku(pair.sellerSku)))) {
+          (entry.manualSkuAliases || []).some(pair => normalizeSku(pair.sellerSku) && normalizeSku(other.sellerSku) === normalizeSku(pair.sellerSku)))) {
         throw new Error('Manual SKU alias conflicts with an assigned Seller SKU identity');
       }
     }
@@ -283,9 +284,9 @@
       variantName: selectedCandidate.variantName || null,
       productName: String(selectedCandidate.productName || selectedCandidate.title || '').trim()
     };
-    if (!PLATFORMS.has(platform) || !index?.[platform] || !normalizedSku || normalizedPair.length !== 2 || !normalizedPair[0] || !normalizedPair[1] ||
+    if (!PLATFORMS.has(platform) || !index?.[platform] || normalizedPair.length !== 2 || !normalizedPair[0] || !normalizedPair[1] ||
         !candidate?.productId || typeof shortName !== 'string' || !shortName.trim()) {
-      throw new Error('An explicit PDF Seller SKU, catalog product and variant, selected registry row, and internal name are required');
+      throw new Error('An explicit PDF catalog product and variant, selected registry row, and internal name are required');
     }
     const knownSkuRows = index[platform].sellerSkus.get(normalizedSku) || [];
     if (knownSkuRows.length) throw new Error('This PDF Seller SKU already exists in the registry; verify its existing identity before binding');
@@ -305,7 +306,7 @@
         (catalogEvidence.status === 'found' && !sameSelectedRow(catalogEvidence.candidate))) {
       throw new Error('The exact PDF product and variant conflict with the selected registry row; verify the source or use this name for this order only');
     }
-    const pair = { sellerSku: sourceSku, productText: catalogPair[0], variantText: catalogPair[1] };
+    const pair = { sellerSku: sourceSku || '', productText: catalogPair[0], variantText: catalogPair[1] };
     const sameManualTarget = (entry, target) => entry.platform === platform && entry.productId === target.productId &&
       (entry.modelId || null) === target.modelId && (entry.variantName || null) === target.variantName;
     const conflictingAlias = store.entries.find(entry => entry.platform === platform &&
@@ -377,8 +378,11 @@
 
     // A confirmed PDF alias takes precedence over title-only fallback.
     // The catalog target must still be unique and unchanged.
+    const catalogOnlyPair = evidence.identityType === 'catalog_row' &&
+      typeof identityApi.extractCatalogPair === 'function' &&
+      !identityApi.extractSellerSku(platform, item) && identityApi.extractCatalogPair(platform, item)?.[1];
     if ((evidence.status === 'not_found' && evidence.identityType === 'seller_sku') ||
-        (evidence.status === 'found' && ['exact_title_fallback', 'skeleton_title_fallback'].includes(evidence.reason))) {
+        (evidence.status === 'found' && ['exact_title_fallback', 'skeleton_title_fallback'].includes(evidence.reason)) || catalogOnlyPair) {
         const store = validateAssignments(assignments);
         const sourceSku = identityApi.extractSellerSku(platform, item);
         const sourcePair = identityApi.extractCatalogPair(platform, item);
@@ -404,13 +408,16 @@
           }
           return {
             status: 'matched', reason: 'registry_manual_alias_exact_verified',
-            identityType: 'manual_seller_sku_alias', sellerSku: normalizeSku(sourceSku), evidence,
-            assignment: { ...assignment }, rule: { keyword: normalizeSku(sourceSku), shortName: assignment.shortName }
+            identityType: sourceSku ? 'manual_seller_sku_alias' : 'manual_catalog_alias', sellerSku: normalizeSku(sourceSku) || null, evidence,
+            assignment: { ...assignment }, rule: { keyword: normalizeSku(sourceSku) || sourcePair.join(' | '), shortName: assignment.shortName }
           };
         }
       // A title-only fallback must not bypass a confirmed SKU+catalog-pair restriction.
       if (store.entries.some(entry => entry.platform === platform &&
-          (entry.manualSkuAliases || []).some(pair => normalizeSku(pair.sellerSku) === normalizeSku(sourceSku)))) {
+          (entry.manualSkuAliases || []).some(pair =>
+            (normalizeSku(sourceSku) && normalizeSku(pair.sellerSku) === normalizeSku(sourceSku)) ||
+            (!normalizeSku(pair.sellerSku) && (normalizeCatalogPart(pair.productText) === normalizeCatalogPart(sourcePair[0]) ||
+              (evidence.status === 'found' && sameTarget(entry, evidence.candidate, platform))))))) {
         return { status: 'unmatched', reason: 'manual_alias_catalog_pair_mismatch', evidence };
       }
     }

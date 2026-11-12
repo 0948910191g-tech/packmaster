@@ -2818,7 +2818,7 @@
             return;
           }
           if (!canPersistQuickMap || !registryMatcherApi || !registryIdentityApi || !registryAssignmentsLoaded || registryAssignmentsError) {
-            showToast('ต้องมี Seller SKU และข้อความสินค้า/ตัวเลือกที่ชัดเจน พร้อมทะเบียน Local ที่อ่านได้ก่อนบันทึกถาวร • ใช้ชื่อเฉพาะ Order นี้ได้', 'error');
+            showToast('ต้องมีข้อความสินค้า/ตัวเลือกที่ชัดเจน พร้อมทะเบียน Local ที่อ่านได้ก่อนบันทึกถาวร • ใช้ชื่อเฉพาะ Order นี้ได้', 'error');
             return;
           }
           const selected = quickMapSelectedRegistryRow;
@@ -2875,6 +2875,14 @@
           return;
         }
         {
+          const evidence = registryIdentityApi.resolve(marketplaceCatalogIndex, order.platform, item);
+          if (evidence.status !== 'found') {
+            showToast('ข้อความจาก PDF ยังไม่ตรงทะเบียน กรุณาเลือกแถวสินค้าในช่องด้านบน แล้วยืนยันผูกข้อความ หรือใช้ชื่อเฉพาะ Order นี้', 'warning');
+            const chooser = document.getElementById('pm-review-registry-row');
+            chooser?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            chooser?.focus();
+            return;
+          }
           try {
             await saveRegistryAssignment(order.platform, item, quickMapState.shortName);
             showToast('ผูก Seller SKU กับชื่อภายในแล้ว', 'success');
@@ -2942,13 +2950,15 @@
         : [];
       const quickMapSelectedRegistryRow = quickMapRegistryRows.find(row =>
         getQuickMapRegistryRowKey(quickMapRegistryPlatform, row) === quickMapState.selectedRegistryRowKey) || null;
-      const quickMapItem = (quickMapState.row?.order?.parsedItems || []).find(entry =>
-        String(entry.text || '').trim() === String(quickMapState.sourceText || '').trim());
+      const quickMapItem = Number.isInteger(quickMapState.itemIndex)
+        ? (quickMapState.row?.order?.parsedItems || [])[quickMapState.itemIndex]
+        : (quickMapState.row?.order?.parsedItems || []).find(entry =>
+          String(entry.text || '').trim() === String(quickMapState.sourceText || '').trim());
       const quickMapCatalogPair = quickMapItem && registryIdentityApi?.extractCatalogPair?.(quickMapRegistryPlatform, quickMapItem) || [];
-      const quickMapHasExplicitSkuAndCatalog = Boolean(quickMapItem && registryIdentityApi?.extractSellerSku?.(quickMapRegistryPlatform, quickMapItem) &&
+      const quickMapHasExplicitCatalog = Boolean(quickMapItem &&
         quickMapCatalogPair[0] && quickMapCatalogPair[1]);
       const canPersistQuickMap = !quickMapState.selectedRegistryRowKey ||
-        (!cloudMode && Boolean(quickMapSelectedRegistryRow) && quickMapHasExplicitSkuAndCatalog);
+        (!cloudMode && Boolean(quickMapSelectedRegistryRow) && quickMapHasExplicitCatalog);
 
       const sortBatchRows = (rows) => [...rows].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
 
@@ -4415,6 +4425,7 @@
 
                     {(quickMapState.row?.types || []).some(type => type === 'REVIEW_SKU' || type === 'UNMAPPED') && <>
                       <div data-pm-review-registry-chooser className="mt-3 rounded-xl border border-blue-200 bg-blue-50/60 p-3">
+                        <p className="mb-2 text-xs font-semibold text-blue-900">ทะเบียนอาจตั้งชื่อครบแล้ว แต่ข้อความจาก PDF ยังจับคู่ไม่ได้ ให้เลือกสินค้าที่ตรงกับใบจริงด้านล่าง ไม่ต้องเพิ่มทะเบียนซ้ำ หาก Seller SKU ว่าง จะผูกเฉพาะคู่ข้อความสินค้าและตัวเลือกที่ยืนยันนี้ใน Local</p>
                         <label htmlFor="pm-review-registry-row" className="text-xs font-black text-blue-950">เลือกแถวจากทะเบียนของ {quickMapRegistryPlatform || 'แพลตฟอร์มนี้'} เพื่อช่วยตรวจชื่อ</label>
                         <select id="pm-review-registry-row" value={quickMapState.selectedRegistryRowKey || ''}
                           onChange={event => {

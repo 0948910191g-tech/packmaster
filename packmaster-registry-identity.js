@@ -137,7 +137,7 @@
     const text = typeof item === 'string' ? item : item.text;
     if (platform === 'TIKTOK' && typeof text === 'string') {
       const pieces = text.split('|').map(piece => piece.trim());
-      if (pieces.length === 3 && pieces.every(Boolean)) return pieces.slice(0, 2);
+      if ((pieces.length === 2 || pieces.length === 3) && pieces[0] && pieces[1]) return pieces.slice(0, 2);
     }
     const catalogText = extractCatalogText(platform, item);
     return catalogText ? [catalogText.trim(), ''] : null;
