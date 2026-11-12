@@ -66,6 +66,7 @@
       if (candidate.version === 2 && Array.isArray(entry?.manualSkuAliases) && entry.manualSkuAliases.some(pair =>
         !pair || typeof pair !== 'object' || Array.isArray(pair) ||
         typeof pair.sellerSku !== 'string' ||
+        typeof pair.productText !== 'string' || typeof pair.variantText !== 'string' ||
         Object.keys(pair).some(key => !['sellerSku', 'productText', 'variantText'].includes(key)))) {
         throw new Error('Invalid manual SKU alias pair metadata');
       }
@@ -89,7 +90,7 @@
           (modelId !== null && typeof modelId !== 'string') ||
           (candidate.version === 1 && (entry?.manualSkuAliases || entry?.manualSkuRegistryProductName || entry?.manualSkuAlias || entry?.manualSkuCatalogText)) ||
           (candidate.version === 2 && entry?.manualSkuAlias) ||
-          manualSkuAliases.some(pair => !pair.productText || !pair.variantText || (pair.sellerSku && !normalizeSku(pair.sellerSku)) ||
+          manualSkuAliases.some(pair => !pair.productText || (!pair.variantText && entry.platform !== 'SHOPEE') || (pair.sellerSku && !normalizeSku(pair.sellerSku)) ||
             !normalizeCatalogPart(pair.productText) || (pair.variantText && !normalizeCatalogPart(pair.variantText)) ||
             (sellerSku && normalizeSku(pair.sellerSku) === sellerSku)) ||
           (manualSkuAliases.length && (candidate.version !== 2 || typeof entry.manualSkuRegistryProductName !== 'string' || !entry.manualSkuRegistryProductName.trim())) ||
@@ -279,12 +280,16 @@
     const normalizedPair = catalogPair?.map(normalizeCatalogPart) || [];
     const candidate = selectedCandidate && {
       platform,
-      productId: String(selectedCandidate.productId || '').trim(),
+      productId: String(selectedCandidate.productId || (platform === 'SHOPEE' && selectedCandidate.itemId) || '').trim(),
       modelId: selectedCandidate.modelId || null,
       variantName: selectedCandidate.variantName || null,
       productName: String(selectedCandidate.productName || selectedCandidate.title || '').trim()
     };
-    if (!PLATFORMS.has(platform) || !index?.[platform] || normalizedPair.length !== 2 || !normalizedPair[0] || !normalizedPair[1] ||
+    // Shopee's parser retains the complete product/variant text as one field.
+    // Confirm that exact field; never invent a variant or use a loose title match.
+    const hasExplicitCatalog = normalizedPair.length === 2 && normalizedPair[0] &&
+      (normalizedPair[1] || (platform === 'SHOPEE' && catalogPair[1] === ''));
+    if (!PLATFORMS.has(platform) || !index?.[platform] || !hasExplicitCatalog ||
         !candidate?.productId || typeof shortName !== 'string' || !shortName.trim()) {
       throw new Error('An explicit PDF catalog product and variant, selected registry row, and internal name are required');
     }
@@ -307,15 +312,17 @@
       throw new Error('The exact PDF product and variant conflict with the selected registry row; verify the source or use this name for this order only');
     }
     const pair = { sellerSku: sourceSku || '', productText: catalogPair[0], variantText: catalogPair[1] };
-    const sameManualTarget = (entry, target) => entry.platform === platform && entry.productId === target.productId &&
-      (entry.modelId || null) === target.modelId && (entry.variantName || null) === target.variantName;
+    const sameManualTarget = (entry, target) => sameTarget(entry, target, platform);
     const conflictingAlias = store.entries.find(entry => entry.platform === platform &&
       (entry.manualSkuAliases || []).some(existing => aliasKey(platform, existing) === aliasKey(platform, pair)) &&
       !sameManualTarget(entry, candidate));
     if (conflictingAlias) throw new Error('This exact PDF SKU and product/variant pair is already assigned to a different registry row');
     const existingTarget = store.entries.filter(entry => sameManualTarget(entry, candidate));
-    if (existingTarget.length > 1) throw new Error('More than one saved registry name targets this product and variant; review existing mappings first');
-    const base = existingTarget[0] || {
+    if (new Set(existingTarget.map(entry => entry.shortName)).size > 1) throw new Error('More than one saved registry name targets this product and variant; review existing mappings first');
+    // A model ID is the variant identity even when an older catalog assignment
+    // omitted its display name. Reuse that key instead of inserting a duplicate.
+    const base = existingTarget.find(entry => (entry.manualSkuAliases || []).some(existing => aliasKey(platform, existing) === aliasKey(platform, pair))) ||
+      existingTarget.find(entry => entry.identityType === 'catalog_row') || existingTarget[0] || {
       platform,
       identityType: 'catalog_row',
       sellerSku: null,
@@ -329,9 +336,10 @@
     }
     const existingAliases = base.manualSkuAliases || [];
     const samePair = existingAliases.some(existing => aliasKey(platform, existing) === aliasKey(platform, pair));
-    const incoming = { ...base, shortName: shortName.trim(), manualSkuAliases: samePair ? existingAliases : [...existingAliases, pair],
+    const incoming = { ...base, variantName: candidate.variantName, shortName: shortName.trim(), manualSkuAliases: samePair ? existingAliases : [...existingAliases, pair],
       manualSkuRegistryProductName: registryProductName };
-    const nextEntries = store.entries.filter(entry => entry !== existingTarget[0]);
+    const nextEntries = store.entries.filter(entry => entry !== base).map(entry =>
+      sameManualTarget(entry, candidate) ? { ...entry, shortName: shortName.trim() } : entry);
     nextEntries.push(incoming);
     return validateAssignments({ ...store, version: 2, entries: nextEntries });
   }
@@ -398,13 +406,15 @@
     // The catalog target must still be unique and unchanged.
     const catalogOnlyPair = evidence.identityType === 'catalog_row' &&
       typeof identityApi.extractCatalogPair === 'function' &&
-      !identityApi.extractSellerSku(platform, item) && identityApi.extractCatalogPair(platform, item)?.[1];
+      !identityApi.extractSellerSku(platform, item) &&
+      (identityApi.extractCatalogPair(platform, item)?.[1] ||
+        (platform === 'SHOPEE' && identityApi.extractCatalogPair(platform, item)?.[0]));
     if ((evidence.status === 'not_found' && evidence.identityType === 'seller_sku') ||
         (evidence.status === 'found' && ['exact_title_fallback', 'skeleton_title_fallback'].includes(evidence.reason)) || catalogOnlyPair) {
         const store = validateAssignments(assignments);
         const sourceSku = identityApi.extractSellerSku(platform, item);
         const sourcePair = identityApi.extractCatalogPair(platform, item);
-        if (!sourcePair?.[0] || !sourcePair?.[1]) return { status: 'unmatched', reason: 'manual_alias_catalog_pair_incomplete', evidence };
+        if (!sourcePair?.[0] || (!sourcePair?.[1] && !(platform === 'SHOPEE' && sourcePair?.[1] === ''))) return { status: 'unmatched', reason: 'manual_alias_catalog_pair_incomplete', evidence };
         const sourceAlias = { sellerSku: sourceSku, productText: sourcePair?.[0], variantText: sourcePair?.[1] };
         const matchingAliases = store.entries.filter(entry => entry.platform === platform &&
           (entry.manualSkuAliases || []).some(pair => aliasKey(platform, pair) === aliasKey(platform, sourceAlias)));
@@ -412,8 +422,7 @@
         if (matchingAliases.length === 1) {
           const assignment = matchingAliases[0];
           const currentRows = index[platform].registryRows || [];
-          const sameCurrentTarget = row => row.productId === assignment.productId &&
-            (row.modelId || null) === (assignment.modelId || null) &&
+          const sameCurrentTarget = row => sameTarget(assignment, row, platform) &&
             (row.variantName || null) === (assignment.variantName || null) &&
             String(row.productName || '').trim() === assignment.manualSkuRegistryProductName;
           if (currentRows.filter(sameCurrentTarget).length !== 1) {

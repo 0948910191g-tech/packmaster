@@ -3009,7 +3009,8 @@
           String(entry.text || '').trim() === String(quickMapState.sourceText || '').trim());
       const quickMapCatalogPair = quickMapItem && registryIdentityApi?.extractCatalogPair?.(quickMapRegistryPlatform, quickMapItem) || [];
       const quickMapHasExplicitCatalog = Boolean(quickMapItem &&
-        quickMapCatalogPair[0] && quickMapCatalogPair[1]);
+        quickMapCatalogPair[0] && (quickMapCatalogPair[1] ||
+          (quickMapRegistryPlatform === 'SHOPEE' && quickMapCatalogPair[1] === '')));
       const canPersistQuickMap = !quickMapState.selectedRegistryRowKey ||
         (!cloudMode && Boolean(quickMapSelectedRegistryRow) && quickMapHasExplicitCatalog);
 
