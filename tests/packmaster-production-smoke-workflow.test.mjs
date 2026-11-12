@@ -29,7 +29,9 @@ assert.ok(workflow.includes("grep -Fq 'data-pm-review-original-pdf' <<< \"$html\
 assert.ok(workflow.includes("grep -Fq 'data-pm-review-confirm-sku' <<< \"$html\""), 'production smoke must verify SKU confirmation control is deployed');
 assert.ok(workflow.includes("grep -Fq 'data-pm-review-confirm-qty' <<< \"$html\""), 'production smoke must verify Qty confirmation control is deployed');
 assert.ok(workflow.includes("grep -Fq 'data-pm-review-qty-override' <<< \"$html\""), 'production smoke must verify per-order Qty correction is deployed');
-assert.ok(workflow.includes("grep -Fq 'บันทึกชื่อในทะเบียน' <<< \"$html\""), 'production smoke must verify registry naming action is deployed');
+assert.ok(workflow.includes("grep -Fq 'บันทึกชื่อจาก SKU ที่ตรงทะเบียน' <<< \"$html\""), 'production smoke must verify current registry naming action');
+assert.ok(workflow.includes("grep -Fq 'ยืนยันและผูกคู่ SKU/ข้อความใน Local' <<< \"$html\""), 'production smoke must verify explicit manual SKU pairing');
+assert.ok(workflow.includes("grep -Fq 'data-pm-brand-chip' <<< \"$html\""), 'production smoke must verify current brand filter');
 assert.equal(workflow.includes("grep -Fq 'data-pm-review-preview=\"full\"' <<< \"$html\""), false, 'production smoke must not rely on obsolete single full-preview marker');
 assert.equal(workflow.includes("printf '%s' \"$html\" | grep -Fq"), false, 'do not pipe printf into grep -q under pipefail');
 

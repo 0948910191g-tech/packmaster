@@ -42,7 +42,9 @@ jobs:
               && grep -Fq 'data-pm-review-confirm-sku' <<< "$html" \
               && grep -Fq 'data-pm-review-confirm-qty' <<< "$html" \
               && grep -Fq 'data-pm-review-qty-override' <<< "$html" \
-              && grep -Fq 'บันทึกชื่อในทะเบียน' <<< "$html"; then
+              && grep -Fq 'บันทึกชื่อจาก SKU ที่ตรงทะเบียน' <<< "$html" \
+              && grep -Fq 'ยืนยันและผูกคู่ SKU/ข้อความใน Local' <<< "$html" \
+              && grep -Fq 'data-pm-brand-chip' <<< "$html"; then
               echo "Production smoke passed"
               exit 0
             fi
