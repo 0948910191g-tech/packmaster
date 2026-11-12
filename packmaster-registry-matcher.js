@@ -342,6 +342,24 @@
     }
     if (!PLATFORMS.has(platform)) return { status: 'unmatched', reason: 'invalid_platform' };
     let evidence = identityApi.resolve(index, platform, item);
+    const localPair = identityApi.extractCatalogPair?.(platform, item);
+    const localSku = identityApi.extractSellerSku?.(platform, item);
+    if (localPair?.[0] && typeof localPair?.[1] === 'string') {
+      const localMatches = (index?.[platform]?.localProducts || []).filter(row =>
+        normalizeCatalogPart(row.productText) === normalizeCatalogPart(localPair[0]) &&
+        normalizeCatalogPart(row.variantText) === normalizeCatalogPart(localPair[1]) &&
+        normalizeSku(row.sellerSku) === normalizeSku(localSku));
+      if (localMatches.length > 1 || (localMatches.length === 1 && evidence.status !== 'not_found')) {
+        return { status: 'ambiguous', reason: 'local_catalog_conflict', evidence };
+      }
+      if (localMatches.length === 1) {
+        const row = localMatches[0];
+        return { status: 'matched', reason: 'local_product_exact_verified', identityType: 'local_product',
+          sellerSku: normalizeSku(localSku) || null, evidence,
+          assignment: { localProductId: row.id, shortName: row.shortName },
+          rule: { keyword: localPair.join(' | '), shortName: row.shortName } };
+      }
+    }
     if (evidence.status === 'ambiguous') {
       return {
         status: 'ambiguous',

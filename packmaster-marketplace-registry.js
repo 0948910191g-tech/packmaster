@@ -20,6 +20,8 @@
   const isValidDate = (value) => typeof value === 'string' && !Number.isNaN(Date.parse(value));
   const idFieldFor = (platform) => platform === 'TIKTOK' ? 'productId' : 'itemId';
   const nameFieldFor = (platform) => platform === 'TIKTOK' ? 'productName' : 'title';
+  const normalizeLocalPart = value => String(value || '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
+  const localProductKey = row => JSON.stringify([row.platform, normalizeLocalPart(row.productText), normalizeLocalPart(row.variantText), normalizeLocalPart(row.sellerSku)]);
 
   const createEmptyStore = (now = new Date()) => {
     const date = now instanceof Date ? now : new Date(now);
@@ -148,12 +150,30 @@
     if (candidate.version !== VERSION) throw new Error(`Unsupported marketplace registry store version: expected ${VERSION}`);
     if (!isValidDate(candidate.updatedAt)) throw new Error('Marketplace registry store updatedAt must be a valid date');
     if (!isPlainObject(candidate.platforms)) throw new Error('Marketplace registry store platforms must be an object');
+    if (candidate.localProducts !== undefined) {
+      if (!Array.isArray(candidate.localProducts) || candidate.localProducts.length > 10000) throw new Error('Invalid Local products');
+      const ids = new Set();
+      const keys = new Set();
+      for (const row of candidate.localProducts) {
+        if (!isPlainObject(row) || !hasText(row.id) || !row.id.startsWith('local-') || !PLATFORMS.includes(row.platform) ||
+            !hasText(row.productText) || typeof row.variantText !== 'string' || typeof row.sellerSku !== 'string' || !hasText(row.shortName) ||
+            Object.keys(row).some(key => !['id', 'platform', 'productText', 'variantText', 'sellerSku', 'shortName'].includes(key))) throw new Error('Invalid Local product');
+        const key = localProductKey(row);
+        if (ids.has(row.id) || keys.has(key)) throw new Error('Duplicate Local product');
+        ids.add(row.id); keys.add(key);
+      }
+    }
     for (const platform of Object.keys(candidate.platforms)) {
       if (!PLATFORMS.includes(platform)) throw new Error(`Unsupported marketplace registry platform: ${platform}`);
       const registry = validatePlatformRegistry(candidate.platforms[platform], platform);
       if (registry.platform !== platform) throw new Error('Marketplace registry platform key mismatch');
     }
     return cloneJson(candidate);
+  };
+
+  const addLocalProduct = (candidate, product) => {
+    const store = validateStore(candidate);
+    return validateStore({ ...store, localProducts: [...(store.localProducts || []), product] });
   };
 
   const replacePlatformRegistry = (currentStore, sourceRegistry, now = new Date()) => {
@@ -258,6 +278,7 @@
     loadStore,
     saveStore,
     getNameableRows,
+    addLocalProduct,
     getSummary
   };
 });

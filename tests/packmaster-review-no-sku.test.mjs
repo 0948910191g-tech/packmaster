@@ -64,7 +64,7 @@ test('actual Review handler enables, confirms and persists a no-SKU pair to Loca
   const state = html.slice(html.indexOf('const quickMapRegistryPlatform ='), html.indexOf('const sortBatchRows ='));
   vm.runInContext(state + '\nglobalThis.allowed = canPersistQuickMap;', context);
   assert.equal(context.allowed, true, 'no Seller SKU must not disable explicit catalog pair confirmation');
-  const handler = html.slice(html.indexOf('const handleSaveQuickMapping ='), html.indexOf('const handleLinkNewRegistrySku ='));
+  const handler = html.slice(html.indexOf('const advanceReviewItem ='), html.indexOf('const handleLinkNewRegistrySku ='));
   await vm.runInContext(handler + '\nhandleSaveQuickMapping();', context);
   const saved = matcher.loadLocalAssignments(storage);
   assert.equal(matcher.match(identity.buildIndex(store, registry), 'TIKTOK', item, saved, identity).rule?.shortName, 'ม่วง5');

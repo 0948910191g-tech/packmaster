@@ -2739,6 +2739,7 @@
           if (cloudMode) await cloud.saveRegistryAssignments(next);
           else registryMatcherApi.saveLocalAssignments(window.localStorage, next);
           setRegistryAssignments(next);
+          return next;
         } catch (error) {
           if (error.status === 409) {
             setRegistryAssignmentsError('ชื่อภายในตามทะเบียนถูกแก้จากอีกเครื่อง กรุณาโหลด Cloud ใหม่');
@@ -2811,6 +2812,18 @@
       const saveRegistryRowAssignment = async (platform, row, internalName) =>
         persistRegistryAssignmentEvidence(platform, getRegistryRowEvidence(platform, row), internalName);
 
+      const advanceReviewItem = (order, completedIndex, resolveItem) => {
+        const items = Array.isArray(order?.parsedItems) ? order.parsedItems : [];
+        const nextIndex = items.findIndex((item, index) => index !== completedIndex &&
+          !reviewOverridesApi?.getManualSkuOverride(order, item.text, index) && resolveItem(item).status !== 'matched');
+        if (nextIndex < 0) {
+          setQuickMapState({ open: false, row: null, keyword: '', shortName: '' });
+          return;
+        }
+        setQuickMapState(prev => ({ ...prev, itemIndex: nextIndex, sourceText: String(items[nextIndex].text || '').trim(),
+          selectedRegistryRowKey: '', registrySearch: '', keyword: '', shortName: '', chooserFilledShortName: false, suggestions: [] }));
+      };
+
       const handleSaveQuickMapping = async () => {
         const order = quickMapState.row?.order;
         const item = Number.isInteger(quickMapState.itemIndex)
@@ -2877,7 +2890,7 @@
             registryMatcherApi.saveLocalAssignments(window.localStorage, next);
             setRegistryAssignments(next);
             showToast('บันทึกคู่ Seller SKU PDF + ข้อความสินค้า/ตัวเลือกกับแถวทะเบียนที่เลือกแล้ว (Local)', 'success');
-            setQuickMapState({ open: false, row: null, keyword: '', shortName: '' });
+            advanceReviewItem(order, quickMapState.itemIndex, nextItem => registryMatcherApi.match(latestIndex, order.platform, nextItem, next, registryIdentityApi));
           } catch (error) {
             showToast('ยังบันทึกชื่อถาวรไม่ได้: ' + error.message + ' • ใช้ชื่อเฉพาะ Order นี้ได้หลังตรวจใบจริง', 'error');
           }
@@ -2893,21 +2906,42 @@
             return;
           }
           try {
-            await saveRegistryAssignment(order.platform, item, quickMapState.shortName);
+            const next = await saveRegistryAssignment(order.platform, item, quickMapState.shortName);
             showToast('ผูก Seller SKU กับชื่อภายในแล้ว', 'success');
-            setQuickMapState({ open: false, row: null, keyword: '', shortName: '' });
+            advanceReviewItem(order, quickMapState.itemIndex, nextItem => registryMatcherApi.match(marketplaceCatalogIndex, order.platform, nextItem, next, registryIdentityApi));
           } catch (error) {
             showToast('ยังบันทึกชื่อถาวรไม่ได้: ' + error.message + ' • เลือกแถวทะเบียนและยืนยันคู่ SKU/ข้อความจาก PDF หรือใช้ชื่อเฉพาะ Order นี้', 'error');
           }
           return;
         }
-        try {
-          await saveRegistryAssignment(order.platform, item, quickMapState.shortName);
-          showToast('ผูก Seller SKU กับชื่อภายในแล้ว', 'success');
-          setQuickMapState({ open: false, row: null, keyword: '', shortName: '' });
-        } catch (error) {
-          showToast('ยังบันทึกชื่อถาวรไม่ได้: ' + error.message + ' • ถ้าเป็นรายการเฉพาะใบ ให้เลือกใช้กับ Order นี้', 'error');
+      };
+
+      const handleCreateLocalProduct = () => {
+        const order = quickMapState.row?.order;
+        const item = order?.parsedItems?.[quickMapState.itemIndex];
+        const pair = registryIdentityApi?.extractCatalogPair(order?.platform, item);
+        const name = String(quickMapState.shortName || '').trim();
+        if (cloudMode || marketplaceRegistryLoadError || registryAssignmentsError || !registryAssignmentsLoaded || marketplaceRegistryBusy || workspaceBusy || !order || !pair?.[0] || typeof pair?.[1] !== 'string' || !name) {
+          showToast('ต้องมีข้อความสินค้าและชื่อภายในที่ชัดเจนใน Local ก่อนสร้างสินค้า', 'error'); return;
         }
+        try {
+          const latest = marketplaceRegistryApi.loadStore(window.localStorage);
+          if (latest.error || JSON.stringify(latest.store) !== JSON.stringify(marketplaceRegistry)) throw new Error('ทะเบียนเปลี่ยนจากอีกหน้าต่าง กรุณาโหลดข้อมูลใหม่');
+          const index = registryIdentityApi.buildIndex(latest.store, marketplaceRegistryApi);
+          const evidence = registryIdentityApi.resolve(index, order.platform, item);
+          const existingMatch = registryMatcherApi.match(index, order.platform, item, registryAssignments, registryIdentityApi);
+          if (existingMatch.status === 'matched' || existingMatch.status === 'ambiguous') throw new Error('รายการนี้มีชื่อหรือข้อมูลขัดแย้งอยู่แล้ว กรุณาตรวจทะเบียนเดิมก่อนสร้าง');
+          if (evidence.status !== 'not_found') throw new Error('พบหรือไม่สามารถแยกสินค้าในทะเบียนได้ชัดเจน กรุณาเลือกทะเบียนเดิมและตรวจใบจริง');
+          const sku = registryIdentityApi.extractSellerSku(order.platform, item) || '';
+          if (!window.confirm(`สร้างสินค้า Local จากรายการที่เลือก?\n\nสินค้า: ${pair[0]}\nตัวเลือก: ${pair[1] || '(ไม่มีตัวเลือกในใบ)'}\nSeller SKU: ${sku || '(ไม่มี)'}\nชื่อในคลัง: ${name}\n\nรายการในอนาคตต้องมีข้อความและตัวเลือกตรงกัน`)) return;
+          const product = { id: `local-${crypto.randomUUID()}`, platform: order.platform, productText: pair[0], variantText: pair[1], sellerSku: sku, shortName: name };
+          const next = marketplaceRegistryApi.addLocalProduct(latest.store, product);
+          marketplaceRegistryApi.saveStore(window.localStorage, next);
+          setMarketplaceRegistry(next);
+          const updatedIndex = registryIdentityApi.buildIndex(next, marketplaceRegistryApi);
+          advanceReviewItem(order, quickMapState.itemIndex, nextItem => registryMatcherApi.match(updatedIndex, order.platform, nextItem, registryAssignments, registryIdentityApi));
+          showToast('สร้างสินค้า Local และบันทึกชื่อแล้ว', 'success');
+        } catch (error) { showToast('สร้างสินค้าไม่สำเร็จ: ' + error.message, 'error'); }
       };
 
       const handleLinkNewRegistrySku = async () => {
@@ -2957,6 +2991,16 @@
       const quickMapRegistryRows = marketplaceRegistryApi && quickMapRegistryPlatform
         ? marketplaceRegistryApi.getNameableRows(marketplaceRegistry?.platforms?.[quickMapRegistryPlatform], quickMapRegistryPlatform)
         : [];
+      const quickMapSuggestionTokens = String(quickMapState.sourceText || '').toLocaleLowerCase().split(/[^\p{L}\p{N}]+/u).filter(token => token.length >= 3);
+      const quickMapSuggestions = quickMapRegistryRows.map(row => {
+        const text = [row.productName, row.title, row.variantName, row.sellerSku].join(' ').toLocaleLowerCase();
+        const terms = [...new Set(quickMapSuggestionTokens.filter(token => text.includes(token)))];
+        const packCounts = value => [...String(value || '').toLocaleLowerCase().matchAll(/(\d+)\s*(?:ห่อ|แพ็ค|packs?)/gu)].map(match => match[1]);
+        const sourceCounts = packCounts(quickMapState.sourceText);
+        const candidateCounts = packCounts(text);
+        const packConflict = sourceCounts.length && candidateCounts.length && !sourceCounts.some(count => candidateCounts.includes(count));
+        return { row, terms, packConflict };
+      }).filter(result => result.terms.length).sort((a, b) => b.terms.length - a.terms.length).slice(0, 3);
       const quickMapSelectedRegistryRow = quickMapRegistryRows.find(row =>
         getQuickMapRegistryRowKey(quickMapRegistryPlatform, row) === quickMapState.selectedRegistryRowKey) || null;
       const quickMapItem = Number.isInteger(quickMapState.itemIndex)
@@ -4411,6 +4455,18 @@
                   </div>
                   <div className="min-w-0 max-h-[76vh] overflow-y-auto pr-1">
                     <div className="rounded-xl border border-blue-100 bg-blue-50/55 p-3"><div className="text-[9px] uppercase tracking-[.12em] font-black text-blue-500">Order</div><div className="mt-1 font-mono text-xs font-black text-blue-950 break-all">{quickMapState.row?.order?.tracking || quickMapState.row?.order?.orderId || 'Exception'}</div><div data-pm-source-reference className="mt-2 text-[10px] font-bold text-blue-700/70">Source: {quickMapState.row?.order?.sourceFileName || '-'}{quickMapState.row?.order?.sourcePage ? ` • หน้า ${quickMapState.row.order.sourcePage}` : ''}</div></div>
+                    <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+                      <div className="text-sm font-bold text-slate-900">สินค้า {quickMapState.row?.order?.parsedItems?.length || 0} รายการ · จำนวนรวม {(quickMapState.row?.order?.parsedItems || []).reduce((sum, item, index) => sum + Number(reviewOverridesApi ? reviewOverridesApi.getEffectiveItemQty(quickMapState.row.order, item, index) : item.qty || 0), 0)} ชิ้น</div>
+                      <div className="mt-2 space-y-2">{(quickMapState.row?.order?.parsedItems || []).map((item, index) => {
+                        const override = reviewOverridesApi?.getManualSkuOverride(quickMapState.row.order, item.text, index);
+                        const match = getMatchResult(item, quickMapState.row.order.platform);
+                        const name = override?.shortName || (match.status === 'matched' ? match.rule?.shortName : '');
+                        return <button type="button" key={index} aria-pressed={quickMapState.itemIndex === index} className={`block w-full rounded-lg border p-3 text-left ${quickMapState.itemIndex === index ? 'border-blue-600 bg-blue-50' : 'border-slate-200'}`} onClick={() => setQuickMapState(prev => ({ ...prev, sourceText: String(item.text || '').trim(), itemIndex: index, selectedRegistryRowKey: '', registrySearch: '', shortName: '', chooserFilledShortName: false, suggestions: [] }))}>
+                          <span className="block text-xs font-bold text-slate-900 break-words">{item.text || `รายการ ${index + 1}`}</span>
+                          <span className="mt-1 block text-xs text-slate-700">จำนวน {reviewOverridesApi ? reviewOverridesApi.getEffectiveItemQty(quickMapState.row.order, item, index) : item.qty} · {name || 'ยังไม่ตั้งชื่อ'}</span>
+                        </button>;
+                      })}</div>
+                    </div>
                     {quickMapState.sourceText && <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3"><div className="text-[9px] font-black uppercase tracking-[.1em] text-slate-400">ข้อความสินค้าจากใบจริง</div><div className="mt-1 text-xs font-bold leading-5 text-slate-700 break-words">{reviewKeywordSuggestionsApi?.formatReviewDisplayText ? reviewKeywordSuggestionsApi.formatReviewDisplayText(quickMapState.sourceText) : quickMapState.sourceText}</div></div>}
 
                     {marketplaceCatalogIndex?.[quickMapState.row?.order?.platform]?.captureDate && (
@@ -4435,6 +4491,10 @@
                     {(quickMapState.row?.types || []).some(type => type === 'REVIEW_SKU' || type === 'UNMAPPED') && <>
                       <div data-pm-review-registry-chooser className="mt-3 rounded-xl border border-blue-200 bg-blue-50/60 p-3">
                         <p className="mb-2 text-xs font-semibold text-blue-900">ทะเบียนอาจตั้งชื่อครบแล้ว แต่ข้อความจาก PDF ยังจับคู่ไม่ได้ ให้เลือกสินค้าที่ตรงกับใบจริงด้านล่าง ไม่ต้องเพิ่มทะเบียนซ้ำ หาก Seller SKU ว่าง จะผูกเฉพาะคู่ข้อความสินค้าและตัวเลือกที่ยืนยันนี้ใน Local</p>
+                        {quickMapSuggestions.length > 0 && <div className="mb-3"><div className="text-sm font-bold text-blue-950">ทะเบียนที่อาจเกี่ยวข้อง</div><p className="text-xs text-blue-900">คำคล้ายกันเท่านั้น กรุณาตรวจขนาดแพ็กและตัวเลือกกับใบจริงก่อนเลือก</p>{quickMapSuggestions.map(({ row, terms, packConflict }) => <button type="button" key={getQuickMapRegistryRowKey(quickMapRegistryPlatform, row)} className="mt-2 block w-full rounded-lg border border-blue-200 bg-white p-3 text-left text-xs" onClick={() => {
+                          const savedAssignment = getRegistryRowAssignment(quickMapRegistryPlatform, row);
+                          setQuickMapState(prev => ({ ...prev, selectedRegistryRowKey: getQuickMapRegistryRowKey(quickMapRegistryPlatform, row), shortName: savedAssignment?.shortName || (prev.chooserFilledShortName ? '' : prev.shortName), chooserFilledShortName: Boolean(savedAssignment) }));
+                        }}><span className="block font-bold">{row.productName || row.title}</span><span className="block">ตัวเลือก: {row.variantName || 'ไม่ได้ระบุ'} · SKU: {row.sellerSku || 'ไม่มี'}</span><span className="block">คำที่ตรง: {terms.slice(0, 4).join(', ')}</span>{packConflict && <span className="block font-bold text-amber-800">จำนวนแพ็กอาจไม่ตรง กรุณาตรวจใบจริง</span>}</button>)}</div>}
                         <label htmlFor="pm-review-registry-search" className="text-xs font-black text-blue-950">ค้นหาสินค้าในทะเบียน {quickMapRegistryPlatform || ''}</label>
                         <input id="pm-review-registry-search" className="pm-input mt-2 w-full" placeholder="ค้นหาชื่อสินค้า ตัวเลือก หรือ SKU" value={quickMapState.registrySearch || ''} onChange={e => { const value = e.target.value; setQuickMapState(prev => ({ ...prev, registrySearch: value })); }} />
                         <div className="mt-2 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white" role="group" aria-label="ผลการค้นหาสินค้า">
@@ -4504,6 +4564,7 @@
                       </div>}
                       <div className="mt-3"><label htmlFor="pm-quick-map-internal-name" className="pm-label">ชื่อภายใน / ผลลัพธ์ที่จะพิมพ์</label><input id="pm-quick-map-internal-name" autoFocus list="pm-internal-name-options" value={quickMapState.shortName} onChange={(e)=>setQuickMapState(prev=>({ ...prev, shortName:e.target.value, chooserFilledShortName:false }))} placeholder="ระบุชื่อภายในที่ตรวจสอบแล้ว" className="pm-input text-base font-black" /><datalist id="pm-internal-name-options">{[...new Set((registryAssignments?.entries || []).map(entry => entry.shortName))].map(name=><option key={name} value={name} />)}</datalist></div>
                       <div className="mt-3 grid sm:grid-cols-2 gap-2"><button onClick={handleSaveQuickMapping} disabled={!canPersistQuickMap || registryAssignmentsBusy || !quickMapState.shortName.trim()} className="pm-secondary-btn justify-center">{quickMapState.selectedRegistryRowKey ? 'ยืนยันและผูกคู่ SKU/ข้อความใน Local' : 'บันทึกชื่อจาก SKU ที่ตรงทะเบียน'}</button><button onClick={handleApplyQuickOrderName} disabled={!quickMapState.shortName.trim()} className="pm-primary-btn justify-center">ใช้ชื่อเฉพาะ Order นี้</button></div>
+                      {!cloudMode && <button type="button" className="pm-secondary-btn mt-2 w-full justify-center" onClick={handleCreateLocalProduct} disabled={!quickMapState.shortName.trim() || Boolean(quickMapState.selectedRegistryRowKey) || Boolean(registryAssignmentsError) || !registryAssignmentsLoaded || marketplaceRegistryBusy || workspaceBusy}>สร้างสินค้าใหม่ใน Local จากรายการนี้</button>}
                       <p className="mt-2 text-[11px] font-semibold text-slate-500">การผูกจากแถวที่เลือกต้องยืนยันในหน้าต่างถัดไป และจะใช้กับออเดอร์อนาคตที่ Seller SKU PDF กับข้อความสินค้า/ตัวเลือกตรงกันเท่านั้น หากข้อมูลขัดแย้ง ระบบคง Review ไว้ • Cloud ใช้การผูกนี้ไม่ได้ • ใช้ชื่อเฉพาะ Order นี้ได้หลังตรวจใบจริง</p>
                     </>}
 
@@ -4871,6 +4932,11 @@
                       {['TIKTOK','SHOPEE'].map(platform => { const item = marketplaceRegistrySummary?.[platform]; return <div key={platform} className="pm-card p-4"><div className="flex items-center justify-between"><div className="text-xs font-black uppercase tracking-wider text-slate-500">{platform === 'TIKTOK' ? 'TikTok' : 'Shopee'}</div><span className={`text-[11px] font-black px-2 py-1 rounded-full ${item?.captureDate ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{item?.captureDate ? `นำเข้า ${item.captureDate}` : 'ยังไม่มีข้อมูล'}</span></div><div className="grid grid-cols-3 gap-2 mt-3"><div className="pm-mini-stat"><span>สินค้า</span><strong>{item?.productCount || 0}</strong></div><div className="pm-mini-stat"><span>แถว SKU/ตัวเลือก</span><strong>{item?.skuRowCount || 0}</strong></div><div className="pm-mini-stat"><span>แถวไม่มี Seller SKU</span><strong>{item?.sellerSkuMissingCount || 0}</strong></div></div><div className="text-xs font-semibold text-slate-400 mt-2">ร้าน: {item?.shop || 'ยังไม่ได้นำเข้า'} • สินค้าที่ไม่มี SKU ทุกตัวเลือก: {item?.productsWithoutAnySellerSkuCount || 0}</div></div>; })}
                     </div>
 
+                    {!cloudMode && (marketplaceRegistry?.localProducts || []).length > 0 && <details className="pm-card p-4 mb-4">
+                      <summary className="cursor-pointer text-sm font-bold text-slate-900">สินค้าที่สร้างใน Local ({marketplaceRegistry.localProducts.length})</summary>
+                      <p className="mt-2 text-xs text-slate-700">รายการเหล่านี้อยู่ในเครื่องนี้และรวมอยู่ใน Workspace Backup</p>
+                      <div className="mt-2 max-h-64 overflow-y-auto">{marketplaceRegistry.localProducts.map(product => <div key={product.id} className="border-t border-slate-200 py-2 text-xs text-slate-700"><div className="font-bold text-slate-900 break-words">{product.productText}</div><div>ตัวเลือก: {product.variantText || 'ไม่มีในใบ'} · SKU: {product.sellerSku || 'ไม่มี'} · ชื่อในคลัง: {product.shortName} · {product.platform}</div></div>)}</div>
+                    </details>}
                     <div className="grid xl:grid-cols-2 gap-3 mb-4">
                       {['TIKTOK','SHOPEE'].map(platform => <div key={platform} className="pm-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"><div><div className="text-sm font-black text-slate-900">นำเข้า {platform === 'TIKTOK' ? 'TikTok' : 'Shopee'}</div><div className="text-xs font-semibold text-slate-500 mt-1">เลือกไฟล์ Registry JSON ของแพลตฟอร์มนี้ • แทนเฉพาะทะเบียนแพลตฟอร์มเดียวกัน</div></div><label className={`pm-primary-btn cursor-pointer shrink-0 ${marketplaceRegistryBusy ? 'opacity-50 pointer-events-none' : ''}`}><PMIcon name="upload"/> เลือกไฟล์ JSON<input type="file" accept=".json,application/json" disabled={marketplaceRegistryBusy} className="hidden" onChange={event => handleMarketplaceRegistryImport(event, platform)}/></label></div>)}
                     </div>

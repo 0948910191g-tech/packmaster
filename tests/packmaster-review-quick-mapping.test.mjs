@@ -88,7 +88,7 @@ assert.equal(calls.assignmentWrites, 0, 'explicit chooser selection remains orde
 
 const persistentEnd = html.indexOf('const handleLinkNewRegistrySku', persistentStart);
 assert.ok(persistentEnd > persistentStart, 'persistent handler must have a clear source boundary');
-const actualPersistentHandler = html.slice(persistentStart, persistentEnd);
+const actualPersistentHandler = html.slice(html.indexOf('const advanceReviewItem ='), persistentEnd);
 const blockedSaveCalls = { assignments: 0, toasts: [] };
 const blockedSaveSandbox = {
   canPersistQuickMap: false, cloudMode: false,

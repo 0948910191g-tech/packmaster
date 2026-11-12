@@ -92,7 +92,8 @@
           modelId: row.modelId || null,
           variantName: row.variantName || null
         })),
-        captureDate: data?.source?.captureDate || null
+        captureDate: data?.source?.captureDate || null,
+        localProducts: (store.localProducts || []).filter(row => row.platform === platform)
       };
     }
     return index;
