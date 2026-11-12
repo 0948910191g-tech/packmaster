@@ -378,7 +378,7 @@
     // A confirmed PDF alias takes precedence over title-only fallback.
     // The catalog target must still be unique and unchanged.
     if ((evidence.status === 'not_found' && evidence.identityType === 'seller_sku') ||
-        (evidence.status === 'found' && evidence.reason === 'exact_title_fallback')) {
+        (evidence.status === 'found' && ['exact_title_fallback', 'skeleton_title_fallback'].includes(evidence.reason))) {
         const store = validateAssignments(assignments);
         const sourceSku = identityApi.extractSellerSku(platform, item);
         const sourcePair = identityApi.extractCatalogPair(platform, item);

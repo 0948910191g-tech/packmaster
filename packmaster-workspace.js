@@ -73,7 +73,7 @@
     if (candidate.settings.registryAssignments != null) {
       if (!isPlainObject(candidate.settings.registryAssignments) ||
           candidate.settings.registryAssignments.schema !== 'packmaster-registry-sku-assignments' ||
-          candidate.settings.registryAssignments.version !== 1 ||
+          ![1, 2].includes(candidate.settings.registryAssignments.version) ||
           !Array.isArray(candidate.settings.registryAssignments.entries)) {
         throw new Error('settings.registryAssignments must be a valid registry assignments object');
       }
@@ -82,6 +82,8 @@
         : null;
       if (matcherValidator) {
         matcherValidator(candidate.settings.registryAssignments);
+      } else if (candidate.settings.registryAssignments.version === 2) {
+        throw new Error('Registry assignment validator is required for version 2 aliases');
       }
     }
 
