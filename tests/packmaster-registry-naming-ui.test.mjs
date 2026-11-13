@@ -154,6 +154,9 @@ test('saveRegistryAssignment updates registryAssignments and subsequent getMatch
     cloudMode: false,
     registryMatcherApi: matcher,
     registryIdentityApi: identityApi,
+    crossTabApi: require('../packmaster-cross-tab.js'),
+    marketplaceRegistryApi: registryApi,
+    marketplaceRegistry: registryApi.createEmptyStore(),
     marketplaceCatalogIndex: catalogIndex,
     registryAssignmentsLoaded: true,
     registryAssignmentsError: '',
@@ -167,7 +170,7 @@ test('saveRegistryAssignment updates registryAssignments and subsequent getMatch
     skuRules: []
   };
   vm.createContext(context);
-  vm.runInContext(html.slice(startSave, endSave) + '\nglobalThis.saveRegistryAssignment = saveRegistryAssignment;', context);
+  vm.runInContext(html.slice(html.indexOf('const rereadLocalNamingState ='), endSave) + '\nglobalThis.saveRegistryAssignment = saveRegistryAssignment;', context);
   vm.runInContext(html.slice(startMatch, endMatch) + '\nglobalThis.getMatchResult = getMatchResult;', context);
 
   // Item with modified Seller SKU resolved by title

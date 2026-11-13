@@ -36,7 +36,7 @@ for(const [accept,stale] of [[false,false],[true,false],[true,true]]) test(`Revi
  r.saveStore(storage,store);m.saveLocalAssignments(storage,names);
  const key=(p,x)=>JSON.stringify([p,String(x.productId||x.itemId||''),x.modelId||null,x.variantName||null]);
  const messages=[];
- const context={cloudMode:false,marketplaceRegistry:store,marketplaceRegistryApi:r,registryMatcherApi:m,registryIdentityApi:i,
+ const context={cloudMode:false,marketplaceRegistry:store,marketplaceRegistryApi:r,crossTabApi:require('../packmaster-cross-tab.js'),registryMatcherApi:m,registryIdentityApi:i,
  registryAssignmentsLoaded:true,registryAssignmentsError:'',registryAssignments:names,getQuickMapRegistryRowKey:key,
  marketplaceCatalogIndex:index,canPersistQuickMap:true,quickMapSelectedRegistryRow:row,
  quickMapState:{itemIndex:0,shortName:'5แถม5',selectedRegistryRowKey:key('SHOPEE',row),row:{order:{platform:'SHOPEE',parsedItems:[item]}}},
@@ -45,7 +45,7 @@ for(const [accept,stale] of [[false,false],[true,false],[true,true]]) test(`Revi
    return messages.length===1||accept;}},
  setRegistryAssignments(){},advanceReviewItem(){},showToast(message){context.message=message;}};
  vm.createContext(context);
- await vm.runInContext(html.slice(html.indexOf('const handleSaveQuickMapping ='),html.indexOf('const handleCreateLocalProduct ='))+'\nhandleSaveQuickMapping();',context);
+ await vm.runInContext(html.slice(html.indexOf('const rereadLocalNamingState ='),html.indexOf('const persistRegistryAssignmentEvidence ='))+html.slice(html.indexOf('const handleSaveQuickMapping ='),html.indexOf('const handleCreateLocalProduct ='))+'\nhandleSaveQuickMapping();',context);
  assert.equal(messages.length,2,'must explain existing names and ask separately');
  assert.ok(messages[1].includes('เด้งม่วง5 ชม5')&&messages[1].includes('5แถม5'));
  const saved=m.loadLocalAssignments(storage);

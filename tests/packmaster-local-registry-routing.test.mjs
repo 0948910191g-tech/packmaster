@@ -41,9 +41,9 @@ test('Local assignment handler persists verified SKU before updating state', asy
   const storage = {getItem:k=>data.get(k) ?? null,setItem:(k,v)=>data.set(k,v)};
   let state=matcher.newAssignments();
   const identity = {resolve:()=>({status:'found',sellerSku:'SKU-1',candidate:{platform:'TIKTOK',productId:'p1',modelId:null}})};
-  const c={registryMatcherApi:matcher,registryIdentityApi:identity,marketplaceCatalogIndex:{},registryAssignmentsLoaded:true,registryAssignmentsError:'',registryAssignmentsBusy:false,registryAssignments:state,cloudMode:false,window:{localStorage:storage},setRegistryAssignmentsBusy(){},setRegistryAssignments:v=>state=v};
+  const c={crossTabApi:require('../packmaster-cross-tab.js'),marketplaceRegistryApi:require('../packmaster-marketplace-registry.js'),marketplaceRegistry:require('../packmaster-marketplace-registry.js').createEmptyStore(),registryMatcherApi:matcher,registryIdentityApi:identity,marketplaceCatalogIndex:{},registryAssignmentsLoaded:true,registryAssignmentsError:'',registryAssignmentsBusy:false,registryAssignments:state,cloudMode:false,window:{localStorage:storage},setRegistryAssignmentsBusy(){},setRegistryAssignments:v=>state=v};
   vm.createContext(c);
-  vm.runInContext(html.slice(start,end)+'\nglobalThis.save=saveRegistryAssignment;',c);
+  vm.runInContext(html.slice(html.indexOf('const rereadLocalNamingState ='),end)+'\nglobalThis.save=saveRegistryAssignment;',c);
   await c.save('TIKTOK',{sellerSku:'SKU-1'},'สินค้า A');
   assert.equal(state.entries[0].shortName,'สินค้า A');
   assert.deepEqual(matcher.loadLocalAssignments(storage),state);

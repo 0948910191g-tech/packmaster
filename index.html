@@ -21,6 +21,7 @@
   <script src="./packmaster-sku-normalization.js"></script>
   <script src="./packmaster-registry-identity.js"></script>
   <script src="./packmaster-registry-matcher.js"></script>
+  <script src="./packmaster-cross-tab.js"></script>
   <script src="./packmaster-local-registry-bootstrap.js"></script>
   <script src="./packmaster-cloud-client.js"></script>
   <script src="./packmaster-cloud-mapping-controller.js"></script>
@@ -476,7 +477,7 @@
     const { useState, useEffect, useCallback, useMemo, useRef } = React;
 
     const Toast = ({ message, type, onClose }) => {
-      useEffect(() => { const timer = setTimeout(() => onClose(), 3000); return () => clearTimeout(timer); }, [onClose]);
+      useEffect(() => { const timer = setTimeout(() => onClose(), type === 'success' ? 3000 : 10000); return () => clearTimeout(timer); }, [onClose]);
       return (
         <div className={`fixed top-6 right-6 z-[99999] flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-xl border animate-in slide-in-from-right-8 duration-300 ${type === 'success' ? 'bg-white border-green-100 text-green-700' : 'bg-white border-red-100 text-red-600'}`}>
           <span className="text-xl">{type === 'success' ? '✅' : '❌'}</span>
@@ -1434,7 +1435,11 @@
       // Cloud adapter is opt-in; the existing local workspace stays unchanged until cloud setup is verified.
       const cloud = window.PackMasterCloud || null;
       const cloudMode = Boolean(cloud?.cloudBatchApi && typeof cloud.getDocument === 'function' && typeof cloud.saveDocument === 'function');
-      const batchApi = cloudMode ? cloud.cloudBatchApi : window.PackMasterBatch;
+      const crossTabApi = window.PackMasterCrossTab;
+      // Local batch saves re-read the stored batch first and refuse if another tab saved it.
+      // Memoized: the guard's version memory must survive re-renders.
+      const batchApi = useMemo(() => cloudMode ? cloud.cloudBatchApi
+        : (crossTabApi ? crossTabApi.createBatchVersionGuard(window.PackMasterBatch) : window.PackMasterBatch), [cloudMode]);
       const batchTransitionApi = window.PackMasterBatchTransition;
       const reprintSnapshotApi = window.PackMasterReprintSnapshot;
       const workspaceApi = window.PackMasterWorkspace;
@@ -1754,11 +1759,25 @@
         setBatchSourceSummaries(Object.fromEntries(entries));
       }, [visibleBatches, activeBatchId, orders, batchSourceFilesApi]);
 
+      // Text this tab last wrote for the SKU rules; a different stored text means another tab changed them.
+      const skuMappingRulesRawRef = useRef(null);
       useEffect(() => {
         // Legacy Keyword Dictionary stays local-only for the old non-Cloud pilot.
         // It is never read or written by the Cloud Matcher.
         if (cloudMode || skuRulesLoadError) return;
-        try { localStorage.setItem('skuMappingRules', JSON.stringify(skuRules)); }
+        try {
+          const nextRaw = JSON.stringify(skuRules);
+          // Re-read before writing: do not overwrite rules another tab has changed.
+          const decision = crossTabApi.decideRawWrite({
+            storedRaw: localStorage.getItem('skuMappingRules'), knownRaw: skuMappingRulesRawRef.current, nextRaw
+          });
+          if (decision.action === 'stale') {
+            showToast('ยังไม่ได้บันทึกกฎ SKU เพราะข้อมูลถูกแก้จากอีกแท็บ • กรุณาโหลดหน้านี้ใหม่', 'warning');
+            return;
+          }
+          if (decision.action === 'write') localStorage.setItem('skuMappingRules', nextRaw);
+          skuMappingRulesRawRef.current = nextRaw;
+        }
         catch (error) { console.error('Local SKU rules save failed', error); }
       }, [skuRules, cloudMode, skuRulesLoadError, localStartupSnapshot]);
       useEffect(() => { localStorage.setItem('thermalMode', JSON.stringify(thermalMode)); }, [thermalMode]);
@@ -1798,6 +1817,11 @@
       }, []);
 
       const showToast = (message, type = 'success') => setToast({ show: true, message, type });
+      // Another tab changed names, registry or SKU rules: warn before this tab saves again.
+      useEffect(() => crossTabApi?.watchLocalDataChanges(window,
+        [registryMatcherApi?.LOCAL_ASSIGNMENTS_KEY, marketplaceRegistryApi?.STORAGE_KEY, 'skuMappingRules'].filter(Boolean),
+        () => { if (!cloudMode) showToast('ข้อมูลถูกแก้จากอีกแท็บ • กรุณาโหลดหน้านี้ใหม่ก่อนบันทึกต่อ', 'warning'); }
+      ), [cloudMode]);
       const exportUnsavedCloudMapping = () => {
         const blob = new Blob([JSON.stringify(registryAssignments, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -2310,6 +2334,7 @@
                   }
                 } catch (saveErr) {
                   console.error('Save upload batch failed', saveErr);
+                  if (saveErr.code === crossTabApi?.STALE_WRITE_CODE) showToast(saveErr.message, 'error');
                 }
               }
             }
@@ -2712,6 +2737,14 @@
         setQuickMapState({ open: false, row: null, keyword: '', shortName: '' });
       };
 
+      // The single re-read-before-write guard for local names + registry. Reads the stored data again and
+      // throws if another tab changed it since this tab loaded (or since the given snapshot).
+      const rereadLocalNamingState = ({ assignments = registryAssignments, registry = marketplaceRegistry, message } = {}) =>
+        crossTabApi.readLocalNamingState({
+          storage: window.localStorage, matcherApi: registryMatcherApi, registryApi: marketplaceRegistryApi,
+          expectedAssignments: assignments, expectedRegistry: registry, message
+        });
+
       const persistRegistryAssignmentEvidence = async (platform, evidence, internalName) => {
         if (!registryMatcherApi || !registryIdentityApi ||
             !marketplaceCatalogIndex || !registryAssignmentsLoaded ||
@@ -2724,20 +2757,28 @@
             ? 'รายการนี้ยังระบุตัวเลือกในทะเบียนได้ไม่ชัดเจน'
             : 'ไม่พบแถวทะเบียนที่ระบุตัวได้แบบแน่นอน');
         }
-        let next;
-        try {
-          next = registryMatcherApi.saveConfirmedAssignment(
-            registryAssignments, marketplaceCatalogIndex, platform, evidence, internalName);
-        } catch (err) {
-          if (err?.message === 'Confirmed registry assignment requires productId' || err?.message?.includes('requires productId')) {
-            throw new Error('ไม่พบแถวทะเบียนที่ระบุตัวได้แบบแน่นอน');
+        const confirmAssignment = assignments => {
+          try {
+            return registryMatcherApi.saveConfirmedAssignment(
+              assignments, marketplaceCatalogIndex, platform, evidence, internalName);
+          } catch (err) {
+            if (err?.message === 'Confirmed registry assignment requires productId' || err?.message?.includes('requires productId')) {
+              throw new Error('ไม่พบแถวทะเบียนที่ระบุตัวได้แบบแน่นอน');
+            }
+            throw err;
           }
-          throw err;
-        }
+        };
         setRegistryAssignmentsBusy(true);
         try {
-          if (cloudMode) await cloud.saveRegistryAssignments(next);
-          else registryMatcherApi.saveLocalAssignments(window.localStorage, next);
+          let next;
+          if (cloudMode) {
+            next = confirmAssignment(registryAssignments);
+            await cloud.saveRegistryAssignments(next);
+          } else {
+            // Build the new assignments from the latest stored data, never from this tab's memory.
+            next = confirmAssignment(rereadLocalNamingState().assignments);
+            registryMatcherApi.saveLocalAssignments(window.localStorage, next);
+          }
           setRegistryAssignments(next);
           return next;
         } catch (error) {
@@ -2860,16 +2901,9 @@
           );
           if (!confirmed) return;
           try {
-            const latestAssignments = registryMatcherApi.loadLocalAssignments(window.localStorage);
-            if (JSON.stringify(latestAssignments) !== JSON.stringify(registryMatcherApi.validateAssignments(registryAssignments))) {
-              throw new Error('ข้อมูลชื่อถาวรถูกแก้จากอีกหน้าต่างแล้ว กรุณาโหลดข้อมูลใหม่และตรวจรายการก่อนบันทึก');
-            }
-            const latestRegistry = marketplaceRegistryApi.loadStore(window.localStorage);
-            if (latestRegistry.error || !latestRegistry.store ||
-                JSON.stringify(marketplaceRegistryApi.validateStore(latestRegistry.store)) !==
-                  JSON.stringify(marketplaceRegistryApi.validateStore(marketplaceRegistry))) {
-              throw new Error('ทะเบียน Local เปลี่ยนหรืออ่านไม่ครบ กรุณาโหลดทะเบียนใหม่และเลือกแถวอีกครั้ง');
-            }
+            const latestState = rereadLocalNamingState();
+            const latestAssignments = latestState.assignments;
+            const latestRegistry = { store: latestState.store };
             const latestSelectedRow = marketplaceRegistryApi.getNameableRows(
               latestRegistry.store.platforms[order.platform], order.platform).find(row =>
                 getQuickMapRegistryRowKey(order.platform, row) === quickMapState.selectedRegistryRowKey) || null;
@@ -2897,11 +2931,9 @@
                 if (conflict.code !== 'registry_name_conflict' || !Array.isArray(conflict.conflictingEntries)) throw conflict;
                 const previousNames = [...new Set(conflict.conflictingEntries.map(entry => entry.shortName))];
                 if (!window.confirm(`พบชื่อภายในต่างกันสำหรับสินค้าและตัวเลือกเดียวกัน\n\n${selectedLabel}\n\nชื่อเดิม:\n${previousNames.map(name => '• ' + name).join('\n')}\n\nยืนยันใช้ชื่อ “${String(quickMapState.shortName || '').trim()}” แทนชื่อทั้งสองชุดสำหรับสินค้าตัวเลือกนี้ และผูกข้อความ PDF ที่เลือก?\nสินค้าและตัวเลือกอื่นจะไม่ถูกแก้ไข`)) return;
-                const confirmedRegistry = marketplaceRegistryApi.loadStore(window.localStorage);
-                if (JSON.stringify(registryMatcherApi.loadLocalAssignments(window.localStorage)) !== JSON.stringify(latestAssignments) ||
-                    confirmedRegistry.error || JSON.stringify(confirmedRegistry.store) !== JSON.stringify(latestRegistry.store)) {
-                  throw new Error('ข้อมูลเปลี่ยนระหว่างยืนยัน กรุณาโหลดใหม่และตรวจชื่ออีกครั้ง');
-                }
+                // The confirm dialog blocks, so another tab may have written in the meantime: re-check.
+                rereadLocalNamingState({ assignments: latestAssignments, registry: latestRegistry.store,
+                  message: 'ข้อมูลเปลี่ยนระหว่างยืนยัน กรุณาโหลดใหม่และตรวจชื่ออีกครั้ง' });
                 next = registryMatcherApi.upsertManualSkuAlias(
                   latestAssignments, latestIndex, order.platform, item, latestSelectedRow,
                   quickMapState.shortName, registryIdentityApi, { confirmedConflictEntries: conflict.conflictingEntries });
@@ -2945,25 +2977,17 @@
           showToast('ต้องมีข้อความสินค้าและชื่อภายในที่ชัดเจนใน Local ก่อนสร้างสินค้า', 'error'); return;
         }
         try {
-          const latest = marketplaceRegistryApi.loadStore(window.localStorage);
-          if (latest.error || JSON.stringify(latest.store) !== JSON.stringify(marketplaceRegistry)) throw new Error('ทะเบียนเปลี่ยนจากอีกหน้าต่าง กรุณาโหลดข้อมูลใหม่');
+          const latest = rereadLocalNamingState();
           const index = registryIdentityApi.buildIndex(latest.store, marketplaceRegistryApi);
           const evidence = registryIdentityApi.resolve(index, order.platform, item);
-          const existingMatch = registryMatcherApi.match(index, order.platform, item, registryAssignments, registryIdentityApi);
+          const existingMatch = registryMatcherApi.match(index, order.platform, item, latest.assignments, registryIdentityApi);
           if (existingMatch.status === 'matched' || existingMatch.status === 'ambiguous') throw new Error('รายการนี้มีชื่อหรือข้อมูลขัดแย้งอยู่แล้ว กรุณาตรวจทะเบียนเดิมก่อนสร้าง');
           if (evidence.status !== 'not_found') throw new Error('พบหรือไม่สามารถแยกสินค้าในทะเบียนได้ชัดเจน กรุณาเลือกทะเบียนเดิมและตรวจใบจริง');
           const sku = registryIdentityApi.extractSellerSku(order.platform, item) || '';
           if (!window.confirm(`สร้างสินค้า Local จากรายการที่เลือก?\n\nสินค้า: ${pair[0]}\nตัวเลือก: ${pair[1] || '(ไม่มีตัวเลือกในใบ)'}\nSeller SKU: ${sku || '(ไม่มี)'}\nชื่อในคลัง: ${name}\n\nรายการในอนาคตต้องมีข้อความและตัวเลือกตรงกัน`)) return;
-          const confirmedRegistry = marketplaceRegistryApi.loadStore(window.localStorage);
-          if (confirmedRegistry.error || JSON.stringify(confirmedRegistry.store) !== JSON.stringify(latest.store)) {
-            throw new Error('ทะเบียนเปลี่ยนระหว่างยืนยัน กรุณาโหลดข้อมูลใหม่ก่อนสร้างสินค้า');
-          }
-          let confirmedAssignments;
-          try { confirmedAssignments = registryMatcherApi.loadLocalAssignments(window.localStorage); }
-          catch { throw new Error('ข้อมูลชื่อถาวรอ่านไม่ได้ กรุณาตรวจข้อมูลก่อนสร้างสินค้า'); }
-          if (JSON.stringify(confirmedAssignments) !== JSON.stringify(registryMatcherApi.validateAssignments(registryAssignments))) {
-            throw new Error('ข้อมูลชื่อถาวรเปลี่ยน กรุณาโหลดข้อมูลใหม่ก่อนสร้างสินค้า');
-          }
+          // The confirm dialog blocks, so another tab may have written in the meantime: re-check.
+          rereadLocalNamingState({ assignments: latest.assignments, registry: latest.store,
+            message: 'ทะเบียนเปลี่ยนระหว่างยืนยัน กรุณาโหลดข้อมูลใหม่ก่อนสร้างสินค้า' });
           const product = { id: `local-${crypto.randomUUID()}`, platform: order.platform, productText: pair[0], variantText: pair[1], sellerSku: sku, shortName: name };
           const next = marketplaceRegistryApi.addLocalProduct(latest.store, product);
           marketplaceRegistryApi.saveStore(window.localStorage, next);
@@ -3634,7 +3658,7 @@
           } catch (err) {
             console.error('Auto-save batch failed', err);
             if (cloudMode) setCloudBatchError(err.message || 'Cloud Batch auto-save failed');
-            showToast('Auto-save Batch ไม่สำเร็จ กรุณาอย่าเพิ่งสลับงาน', 'error');
+            showToast(err.code === crossTabApi?.STALE_WRITE_CODE ? err.message : 'Auto-save Batch ไม่สำเร็จ กรุณาอย่าเพิ่งสลับงาน', 'error');
           }
         }, 600);
 
@@ -3666,7 +3690,7 @@
         setMarketplaceRegistryBusy(true);
         try {
           if (!cloudMode && registryAssignmentsError) {
-            throw new Error('ข้อมูลชื่อทะเบียน Local อ่านไม่ครบ จึงไม่เปลี่ยนทะเบียนหรือเขียนทับ assignments เดิม');
+            throw new Error('ข้อมูลชื่อทะเบียน Local อ่านไม่ครบ จึงยังไม่นำเข้าทะเบียน กรุณากู้คืนข้อมูลจาก Backup ก่อน แล้วจึงนำเข้าใหม่');
           }
           if (!marketplaceRegistryApi) throw new Error('โมดูลทะเบียน Marketplace ยังไม่พร้อม');
           const importedRegistry = marketplaceRegistryApi.validatePlatformRegistry(JSON.parse(await file.text()), expectedPlatform);
@@ -3684,6 +3708,8 @@
             if (!cloudRegistryLoaded) throw new Error('Cloud Registry has not finished loading');
             await cloud.saveRegistry(expectedPlatform, importedRegistry);
           } else {
+            // A rebuild of an unreadable registry has nothing reliable to compare against; skip the stale check there.
+            if (!marketplaceRegistryLoadError) rereadLocalNamingState();
             marketplaceRegistryApi.saveStore(window.localStorage, nextStore);
             const completedAssignments = localRegistryBootstrapApi.ensureRegistryAssignments(
               nextStore,
@@ -3903,6 +3929,10 @@
             localStorageEntries: previousLocalStorageEntries,
             onPrepared: prepared => { recoveryId = prepared.id; },
             replace: async () => {
+          // Refuse before any write if local names/registry changed since this restore started (keeps rollback accurate).
+          if (!cloudMode && !previousRegistryAssignmentsError && !previousMarketplaceRegistryLoadError) {
+            rereadLocalNamingState({ assignments: previousRegistryAssignments, registry: previousMarketplaceRegistry });
+          }
           replacementStarted = true;
           await workspaceApi.replaceWorkspaceBatches(backup, batchApi);
           if (duplicateApi) duplicateApi.replaceFingerprintStore(backup.settings.duplicateFingerprints || {});
@@ -3934,6 +3964,8 @@
           }
 
           window.localStorage.setItem('skuMappingRules', JSON.stringify(restoredRules));
+          // Record what the restore wrote, so this tab's later edits are not treated as another tab's change.
+          skuMappingRulesRawRef.current = window.localStorage.getItem('skuMappingRules');
           setSkuRules(restoredRules);
           setSkuRulesLoadError('');
           if (typeof backup.settings.thermalMode === 'boolean') {
@@ -3987,6 +4019,7 @@
               setSkuRulesLoadError(previousSkuRulesLoadError);
               setThermalMode(previousThermalMode);
               window.PackMasterDesktopRecovery.restoreLocalStorageEntries(window.localStorage, previousLocalStorageEntries);
+              skuMappingRulesRawRef.current = window.localStorage.getItem('skuMappingRules');
               rollbackSucceeded = true;
             } catch (rollbackErr) {
               console.error('Workspace rollback failed', rollbackErr);

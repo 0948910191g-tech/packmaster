@@ -32,7 +32,7 @@ test('actual Review handler enables, confirms and persists a no-SKU pair to Loca
   const data = new Map();
   const storage = { getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value) };
   registry.saveStore(storage, store);
-  const context = { cloudMode: false, marketplaceRegistry: store, marketplaceRegistryApi: registry,
+  const context = { cloudMode: false, marketplaceRegistry: store, marketplaceRegistryApi: registry, crossTabApi: require('../packmaster-cross-tab.js'),
     registryMatcherApi: matcher, registryIdentityApi: identity, registryAssignmentsLoaded: true, registryAssignmentsError: '',
     registryAssignments: matcher.newAssignments(), getQuickMapRegistryRowKey: key,
     quickMapRegistryPlatform: 'TIKTOK', quickMapRegistryRows: registry.getNameableRows(store.platforms.TIKTOK, 'TIKTOK'),
@@ -65,7 +65,7 @@ test('actual Review handler enables, confirms and persists a no-SKU pair to Loca
   vm.runInContext(state + '\nglobalThis.allowed = canPersistQuickMap;', context);
   assert.equal(context.allowed, true, 'no Seller SKU must not disable explicit catalog pair confirmation');
   const handler = html.slice(html.indexOf('const advanceReviewItem ='), html.indexOf('const handleLinkNewRegistrySku ='));
-  await vm.runInContext(handler + '\nhandleSaveQuickMapping();', context);
+  await vm.runInContext(html.slice(html.indexOf('const rereadLocalNamingState ='), html.indexOf('const persistRegistryAssignmentEvidence =')) + handler + '\nhandleSaveQuickMapping();', context);
   const saved = matcher.loadLocalAssignments(storage);
   assert.equal(matcher.match(identity.buildIndex(store, registry), 'TIKTOK', item, saved, identity).rule?.shortName, 'ม่วง5');
   const outputSource = html.slice(html.indexOf('const LiveMappedOrders = useMemo(() => orders.map(o => {'), html.indexOf('const historicalSnapshot = useMemo'));

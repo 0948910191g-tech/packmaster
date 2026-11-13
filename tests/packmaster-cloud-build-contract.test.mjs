@@ -39,7 +39,7 @@ test('Cloud build self-hosts all frontend runtime dependencies', async () => {
 
 test('Cloud mode separates central Mapping, Batch, Registry and Archive from local storage', async () => {
   const app = await source('../index.html');
-  assert.match(app, /cloudMode \? cloud\.cloudBatchApi : window\.PackMasterBatch/);
+  assert.match(app, /cloudMode \? cloud\.cloudBatchApi\s*: \(crossTabApi \? crossTabApi\.createBatchVersionGuard\(window\.PackMasterBatch\) : window\.PackMasterBatch\)/);
   assert.match(app, /if \(cloudMode\) return \[\]; \/\/ Never prime central mapping/);
   assert.match(app, /cloud\.getRegistryAssignments\(\)/);
   assert.match(app, /cloud\.saveRegistryAssignments\(next\)/);

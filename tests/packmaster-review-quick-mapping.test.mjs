@@ -89,6 +89,7 @@ assert.equal(calls.assignmentWrites, 0, 'explicit chooser selection remains orde
 const persistentEnd = html.indexOf('const handleLinkNewRegistrySku', persistentStart);
 assert.ok(persistentEnd > persistentStart, 'persistent handler must have a clear source boundary');
 const actualPersistentHandler = html.slice(html.indexOf('const advanceReviewItem ='), persistentEnd);
+const rereadHelper = html.slice(html.indexOf('const rereadLocalNamingState ='), html.indexOf('const persistRegistryAssignmentEvidence ='));
 const blockedSaveCalls = { assignments: 0, toasts: [] };
 const blockedSaveSandbox = {
   canPersistQuickMap: false, cloudMode: false,
@@ -137,7 +138,7 @@ const sourceFields = {
   quickMapRegistryPlatform: 'TIKTOK', quickMapSelectedRegistryRow: selectedRow,
   canPersistQuickMap: true, cloudMode: false, registryAssignmentsLoaded: true, registryAssignmentsError: '',
   registryAssignments: matcherApi.newAssignments(), marketplaceCatalogIndex: registryIndex, marketplaceRegistry: registry,
-  registryMatcherApi: matcherApi, registryIdentityApi: identityApi, marketplaceRegistryApi,
+  registryMatcherApi: matcherApi, registryIdentityApi: identityApi, marketplaceRegistryApi, crossTabApi: require('../packmaster-cross-tab.js'),
   getQuickMapRegistryRowKey(platform, row) { return JSON.stringify([platform, String(row?.productId || row?.itemId || ''), row?.modelId || null, row?.variantName || null]); },
   window: { localStorage, confirm(message) { sourceFields.confirmations.push(message); return true; } },
   confirmations: [], toasts: [],
@@ -146,7 +147,7 @@ const sourceFields = {
   setQuickMapState() {}, saveRegistryAssignment: async () => { throw new Error('unknown SKU must use selected alias path'); }
 };
 const handlerContext = vm.createContext(sourceFields);
-await vm.runInContext(`${actualPersistentHandler}\nhandleSaveQuickMapping();`, handlerContext);
+await vm.runInContext(`${rereadHelper}${actualPersistentHandler}\nhandleSaveQuickMapping();`, handlerContext);
 const aliasSku2 = { ...pdfItem, text: 'HOYA Baby Wipes Value Pack | 5 ห่อ 400 แผ่น | HOYA Baby Wipes Value Pack 5 ห่อ', sellerSku: 'HOYA Baby Wipes Value Pack 5 ห่อ' };
 sourceFields.quickMapState.sourceText = aliasSku2.text;
 sourceFields.quickMapState.row.order.parsedItems = [aliasSku2];
@@ -199,7 +200,7 @@ const raceSandbox = {
   registryMatcherApi: { ...matcherApi, saveLocalAssignments() { raceCalls.writes += 1; } },
   showToast(message) { raceCalls.toasts.push(message); }
 };
-await vm.runInNewContext(`${actualPersistentHandler}\nhandleSaveQuickMapping();`, raceSandbox);
+await vm.runInNewContext(`${rereadHelper}${actualPersistentHandler}\nhandleSaveQuickMapping();`, raceSandbox);
 assert.equal(raceCalls.confirmCount, 1);
 assert.equal(raceCalls.writes, 0, 'a concurrent assignment change must never be overwritten');
 assert.match(raceCalls.toasts[0], /อีกหน้าต่าง/);

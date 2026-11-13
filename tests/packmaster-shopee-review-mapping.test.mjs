@@ -31,7 +31,7 @@ test(`Shopee Review saves and rematches ${label} after reload`, async () => {
   matcher.saveLocalAssignments(storage,names);
   const item = { text: sourceText, qty: 1 };
   const order = { id: 'synthetic-gloves', platform: 'SHOPEE', parsedItems: [item] };
-  const context = { cloudMode:false, marketplaceRegistry:base, marketplaceRegistryApi:registry,
+  const context = { cloudMode:false, crossTabApi:require('../packmaster-cross-tab.js'), marketplaceRegistry:base, marketplaceRegistryApi:registry,
     registryMatcherApi:matcher, registryIdentityApi:identity, registryAssignmentsLoaded:true, registryAssignmentsError:'',
     registryAssignments:names, getQuickMapRegistryRowKey:key,
     marketplaceCatalogIndex:identity.buildIndex(base, registry),
@@ -45,7 +45,7 @@ test(`Shopee Review saves and rematches ${label} after reload`, async () => {
   const state = html.slice(html.indexOf('const quickMapRegistryPlatform ='), html.indexOf('const sortBatchRows ='));
   vm.runInContext(state + '\nglobalThis.allowed = canPersistQuickMap;', context);
   assert.equal(context.allowed, true, 'Shopee full PDF text must allow explicit row confirmation without inventing a separate variant');
-  const handlers = html.slice(html.indexOf('const advanceReviewItem ='), html.indexOf('const handleLinkNewRegistrySku ='));
+  const handlers = html.slice(html.indexOf('const rereadLocalNamingState ='), html.indexOf('const persistRegistryAssignmentEvidence =')) + html.slice(html.indexOf('const advanceReviewItem ='), html.indexOf('const handleLinkNewRegistrySku ='));
   await vm.runInContext(handlers + '\nhandleSaveQuickMapping();', context);
   assert.match(context.message, /บันทึกคู่/);
   const reloaded = bootstrap.loadLocalStartupSnapshot(storage, {registryApi:registry, matcherApi:matcher, sanitizeSkuRule:rule=>rule});
@@ -86,11 +86,12 @@ test('Shopee newly created Local Wash Gloves survives startup baseline merge and
     marketplaceRegistryBusy:false,workspaceBusy:false,marketplaceRegistry:base,registryAssignments:matcher.newAssignments(),
     quickMapState:{itemIndex:0,shortName:'QA ถุงมือ3',row:{order:{platform:'SHOPEE',parsedItems:[item]}}},
     registryIdentityApi:identity,marketplaceRegistryApi:registry,registryMatcherApi:matcher,
+    crossTabApi:require('../packmaster-cross-tab.js'),
     window:{localStorage:storage,confirm:()=>true},crypto:{randomUUID:()=> 'synthetic-glove'},
     showToast(message){context.message=message;},setMarketplaceRegistry(next){context.marketplaceRegistry=next;},advanceReviewItem(){}
   };
   vm.createContext(context);
-  vm.runInContext(html.slice(html.indexOf('const handleCreateLocalProduct ='),html.indexOf('const handleLinkNewRegistrySku ='))+'\nhandleCreateLocalProduct();',context);
+  vm.runInContext(html.slice(html.indexOf('const rereadLocalNamingState ='),html.indexOf('const persistRegistryAssignmentEvidence ='))+html.slice(html.indexOf('const handleCreateLocalProduct ='),html.indexOf('const handleLinkNewRegistrySku ='))+'\nhandleCreateLocalProduct();',context);
   assert.match(context.message,/สร้างสินค้า Local/);
   const reloaded = registry.loadStore(storage).store;
   const merged = bootstrap.mergeRegistryBaseline(reloaded,base,registry);

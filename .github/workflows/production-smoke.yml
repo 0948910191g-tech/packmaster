@@ -23,6 +23,7 @@ jobs:
             if grep -Fq 'PackMaster Pilot' <<< "$html" \
               && grep -Fq 'href="./registry-sync.html"' <<< "$html" \
               && grep -Fq './packmaster-registry-identity.js' <<< "$html" \
+              && grep -Fq './packmaster-cross-tab.js' <<< "$html" \
               && grep -Fq 'data-pm-registry-cloud-sync' <<< "$html" \
               && grep -Fq 'data-pm-registry-evidence' <<< "$html" \
               && grep -Fq './packmaster-storage-health.js' <<< "$html" \

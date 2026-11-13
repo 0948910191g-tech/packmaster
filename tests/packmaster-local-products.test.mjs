@@ -30,13 +30,13 @@ test('Local product persists through registry and backup without fabricating mar
 
 test('Review creates once in Local and refuses the same identity after it is mapped', () => {
   const html = fs.readFileSync('index.html', 'utf8');
-  const handlers = html.slice(html.indexOf('const handleCreateLocalProduct ='), html.indexOf('const handleLinkNewRegistrySku ='));
+  const handlers = html.slice(html.indexOf('const rereadLocalNamingState ='), html.indexOf('const persistRegistryAssignmentEvidence =')) + html.slice(html.indexOf('const handleCreateLocalProduct ='), html.indexOf('const handleLinkNewRegistrySku ='));
   const base = require('../data/packmaster-marketplace-registry.json');
   const memory = new Map();
   const storage = { getItem: k => memory.get(k) ?? null, setItem: (k,v) => memory.set(k,v) };
   registry.saveStore(storage, base);
   const item = { text: 'Synthetic Fresh Wipes | 3 packs', sellerSku:null };
-  const context = {cloudMode:false, marketplaceRegistryLoadError:'', registryAssignmentsError:'', registryAssignmentsLoaded:true,
+  const context = {cloudMode:false, crossTabApi:require('../packmaster-cross-tab.js'), marketplaceRegistryLoadError:'', registryAssignmentsError:'', registryAssignmentsLoaded:true,
     marketplaceRegistryBusy:false, workspaceBusy:false, marketplaceRegistry:base, registryAssignments:matcher.newAssignments(),
     quickMapState:{itemIndex:0, shortName:'QA NEW',row:{order:{platform:'TIKTOK',parsedItems:[item]}}},
     registryIdentityApi:identity, marketplaceRegistryApi:registry, registryMatcherApi:matcher,
@@ -75,14 +75,14 @@ test('a Local product with no variant uses only the complete exact source text',
 
 for (const change of ['registry', 'assignments']) test(`Local creation preserves concurrent ${change} changes during confirmation`, () => {
   const html = fs.readFileSync('index.html', 'utf8');
-  const handlers = html.slice(html.indexOf('const handleCreateLocalProduct ='), html.indexOf('const handleLinkNewRegistrySku ='));
+  const handlers = html.slice(html.indexOf('const rereadLocalNamingState ='), html.indexOf('const persistRegistryAssignmentEvidence =')) + html.slice(html.indexOf('const handleCreateLocalProduct ='), html.indexOf('const handleLinkNewRegistrySku ='));
   const base = require('../data/packmaster-marketplace-registry.json');
   const memory = new Map();
   const storage = {getItem:k=>memory.get(k)??null,setItem:(k,v)=>memory.set(k,v)};
   registry.saveStore(storage, base);
   matcher.saveLocalAssignments(storage, matcher.newAssignments());
   let changedStore;
-  const context = {cloudMode:false,marketplaceRegistryLoadError:'',registryAssignmentsError:'',registryAssignmentsLoaded:true,
+  const context = {cloudMode:false,crossTabApi:require('../packmaster-cross-tab.js'),marketplaceRegistryLoadError:'',registryAssignmentsError:'',registryAssignmentsLoaded:true,
     marketplaceRegistryBusy:false,workspaceBusy:false,marketplaceRegistry:base,registryAssignments:matcher.newAssignments(),
     quickMapState:{itemIndex:0,shortName:'New',row:{order:{platform:'SHOPEE',parsedItems:[{text:'Synthetic new item'}]}}},
     registryIdentityApi:identity,marketplaceRegistryApi:registry,registryMatcherApi:matcher,
