@@ -32,6 +32,7 @@
   <script src="./packmaster-sku-integrity.js"></script>
   <script src="./packmaster-review-keyword-suggestions.js"></script>
   <script src="./packmaster-review-overrides.js"></script>
+  <script src="./packmaster-manual-items.js"></script>
   <script src="./packmaster-batch-source-files.js"></script>
   <script src="./packmaster-print-scope.js"></script>
   <script src="./packmaster-archive.js"></script>
@@ -1454,6 +1455,7 @@
       const skuIntegrityApi = window.PackMasterSkuIntegrity;
       const reviewKeywordSuggestionsApi = window.PackMasterReviewKeywordSuggestions;
       const reviewOverridesApi = window.PackMasterReviewOverrides;
+      const manualItemsApi = window.PackMasterManualItems;
       const batchSourceFilesApi = window.PackMasterBatchSourceFiles;
       const printScopeApi = window.PackMasterPrintScope;
       const archiveApi = window.PackMasterArchive;
@@ -1500,6 +1502,13 @@
       const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
       const [exceptionMode, setExceptionMode] = useState(false);
       const [quickMapState, setQuickMapState] = useState({ open: false, row: null, keyword: '', shortName: '' });
+      const [manualItemsState, setManualItemsState] = useState({ open: false, order: null, rows: [], qtyMismatchConfirmed: false, saving: false, invalid: null, error: '' });
+      const manualItemsDialogRef = useRef(null);
+      const manualItemsOpenerRef = useRef(null);
+      const manualRowSeqRef = useRef(0);
+      const manualPendingFocusRef = useRef(null);
+      const manualSavingRef = useRef(false);
+      const manualCloseRef = useRef(null);
       const quickMapDialogRef = useRef(null);
       const quickMapOpenerRef = useRef(null);
       useEffect(() => {
@@ -1555,6 +1564,9 @@
       const [skuPageSize, setSkuPageSize] = useState(20);
       const [skuSort, setSkuSort] = useState('keyword');
       const [orders, setOrders] = useState([]);
+      // Latest committed orders, read after awaits so a save never acts on a stale closure.
+      const ordersRef = useRef(orders);
+      ordersRef.current = orders;
       const [skuRules, setSkuRules] = useState(() => {
         if (cloudMode) return []; // Never prime central mapping from this browser's local rules.
         return localStartupSnapshot?.skuRules || [];
@@ -2640,6 +2652,10 @@
 
       const handleFixSkuException = (row) => {
         if (!row || !row.order) return;
+        if (manualItemsApi && manualItemsApi.isUnreadableOrder(row.order)) {
+          openManualItemsEditor(row.order);
+          return;
+        }
         const types = row.types || [];
         if (!types.some(type => type === 'REVIEW_SKU' || type === 'UNMAPPED')) {
           openExceptionInTable(row);
@@ -2717,6 +2733,155 @@
         );
         showToast('บันทึก Qty ที่แก้และยืนยันแล้ว', 'success');
       };
+
+      const manualRegistryNames = useMemo(() => new Set((registryAssignments?.entries || [])
+        .map(entry => String(entry.shortName || '').trim())
+        .filter(Boolean)), [registryAssignments]);
+      const manualSummary = manualItemsApi && manualItemsState.order
+        ? manualItemsApi.summarizeManualQty(manualItemsState.rows, manualItemsState.order.declaredTotalQty)
+        : null;
+      const nextManualRowUid = () => { manualRowSeqRef.current += 1; return `m${manualRowSeqRef.current}`; };
+      const emptyManualRow = () => ({ uid: nextManualRowUid(), text: '', qty: '1', shortName: '' });
+      const manualDialogClosed = { open: false, order: null, rows: [], qtyMismatchConfirmed: false, saving: false, invalid: null, error: '' };
+      const hasTypedManualRows = (rows) => (rows || []).some(entry => String(entry.text || '').trim() || String(entry.shortName || '').trim());
+      const closeManualItems = () => {
+        if (manualSavingRef.current) return;
+        if (hasTypedManualRows(manualItemsState.rows) && !window.confirm('ยกเลิกโดยไม่บันทึกรายการที่กรอกไว้? ข้อมูลที่กรอกจะหายไป')) return;
+        setManualItemsState(manualDialogClosed);
+      };
+      manualCloseRef.current = closeManualItems;
+      const openManualItemsEditor = (order) => {
+        manualItemsOpenerRef.current = document.activeElement;
+        setManualItemsState({ ...manualDialogClosed, open: true, order, rows: [emptyManualRow()] });
+      };
+      const invalidFor = (uid, field) => Boolean(manualItemsState.invalid
+        && manualItemsState.invalid.uid === uid && manualItemsState.invalid.field === field);
+      const updateManualRow = (uid, field, value) => setManualItemsState(prev => ({
+        ...prev,
+        qtyMismatchConfirmed: field === 'qty' ? false : prev.qtyMismatchConfirmed,
+        invalid: null,
+        error: '',
+        rows: prev.rows.map(entry => (entry.uid === uid ? { ...entry, [field]: value } : entry))
+      }));
+      const addManualRow = () => {
+        const row = emptyManualRow();
+        manualPendingFocusRef.current = row.uid;
+        setManualItemsState(prev => ({ ...prev, rows: [...prev.rows, row], qtyMismatchConfirmed: false, invalid: null, error: '' }));
+      };
+      const removeManualRow = (uid) => setManualItemsState(prev => {
+        if (prev.rows.length <= 1) return prev;
+        const rows = prev.rows.filter(entry => entry.uid !== uid);
+        manualPendingFocusRef.current = rows[0].uid;
+        return { ...prev, rows, qtyMismatchConfirmed: false, invalid: null, error: '' };
+      });
+
+      const handleSaveManualItems = async () => {
+        const target = manualItemsState.order;
+        if (!target || !manualItemsApi || !reviewOverridesApi || manualSavingRef.current) return;
+        const rows = manualItemsState.rows;
+        const planOptions = { qtyMismatchConfirmed: manualItemsState.qtyMismatchConfirmed };
+        const latestTarget = () => ordersRef.current.find(order => order.id === target.id);
+        const reportFailure = (plan) => {
+          if (plan.reason === 'stale') {
+            showToast(plan.error, 'error');
+            setManualItemsState(manualDialogClosed);
+            return;
+          }
+          const invalid = plan.reason === 'invalid'
+            ? { uid: rows[plan.rowIndex]?.uid, field: plan.field }
+            : { uid: '', field: 'qtyConfirm' };
+          setManualItemsState(prev => ({ ...prev, invalid, error: plan.error }));
+          showToast(plan.error, 'error');
+        };
+
+        manualSavingRef.current = true;
+        setManualItemsState(prev => ({ ...prev, saving: true, invalid: null, error: '' }));
+        try {
+          const firstPlan = manualItemsApi.planManualItemsSave(latestTarget(), rows, planOptions);
+          if (!firstPlan.ok) {
+            reportFailure(firstPlan);
+            return;
+          }
+          if (!await resetActiveBatchCompletion()) return;
+          // Re-check after the await: the order may have been changed or removed while the batch reset saved.
+          const savedAt = new Date();
+          const plan = manualItemsApi.planManualItemsSave(latestTarget(), rows, { ...planOptions, now: savedAt });
+          if (!plan.ok) {
+            reportFailure(plan);
+            return;
+          }
+          let next = plan.order;
+          next = reviewOverridesApi.confirmReview(next, 'sku', savedAt);
+          next = reviewOverridesApi.confirmReview(next, 'qty', savedAt);
+          setOrders(prev => prev.map(order => (order.id === target.id && manualItemsApi.isUnreadableOrder(order) ? next : order)));
+          setManualItemsState(manualDialogClosed);
+          showToast(`เพิ่มรายการ ${plan.order.parsedItems.length} รายการแล้ว และยืนยัน SKU/Qty`, 'success');
+        } finally {
+          manualSavingRef.current = false;
+          setManualItemsState(prev => (prev.open ? { ...prev, saving: false } : prev));
+        }
+      };
+
+      useEffect(() => {
+        if (!manualItemsState.open) return;
+        const dialog = manualItemsDialogRef.current;
+        if (!dialog) return;
+        const siblings = Array.from(dialog.parentElement?.children || []).filter(child => child !== dialog);
+        const previousInert = siblings.map(child => [child, child.inert]);
+        siblings.forEach(child => { child.inert = true; });
+        const focusable = () => Array.from(dialog.querySelectorAll(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )).filter(element => element.getClientRects().length > 0);
+        const onKeyDown = event => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            manualCloseRef.current?.();
+            return;
+          }
+          if (event.key !== 'Tab') return;
+          const items = focusable();
+          if (!items.length) {
+            event.preventDefault();
+            dialog.focus();
+            return;
+          }
+          const first = items[0];
+          const last = items[items.length - 1];
+          if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+            event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+            event.preventDefault();
+            first.focus();
+          }
+        };
+        document.addEventListener('keydown', onKeyDown, true);
+        const focusInside = () => {
+          const target = dialog.querySelector('input[data-pm-manual-item-text]') || focusable()[0] || dialog;
+          target.focus();
+        };
+        requestAnimationFrame(focusInside);
+        return () => {
+          document.removeEventListener('keydown', onKeyDown, true);
+          previousInert.forEach(([element, wasInert]) => { element.inert = wasInert; });
+          const opener = manualItemsOpenerRef.current;
+          if (opener?.isConnected) requestAnimationFrame(() => opener.focus());
+        };
+      }, [manualItemsState.open]);
+
+      useEffect(() => {
+        const invalid = manualItemsState.invalid;
+        if (!invalid) return;
+        const id = invalid.field === 'qtyConfirm' ? 'pm-manual-qty-confirm' : `pm-manual-${invalid.field}-${invalid.uid}`;
+        document.getElementById(id)?.focus();
+      }, [manualItemsState.invalid]);
+
+      useEffect(() => {
+        const uid = manualPendingFocusRef.current;
+        if (!uid) return;
+        manualPendingFocusRef.current = null;
+        document.getElementById(`pm-manual-text-${uid}`)?.focus();
+      }, [manualItemsState.rows]);
 
       const handleApplyQuickOrderName = async () => {
         const shortName = String(quickMapState.shortName || '').trim();
@@ -4507,6 +4672,60 @@
                   <button type="button" className="pm-primary-btn" onClick={() => window.location.reload()}>โหลด Cloud ใหม่</button>
                   {cloudBatchError && <button type="button" className="pm-secondary-btn text-blue-700 font-bold" onClick={() => setCloudBatchError('')}>ปิดข้อความและทำงานต่อ</button>}
                   {cloudMode && cloud && typeof cloud.logout === 'function' && <button type="button" className="pm-ghost-btn text-slate-500" onClick={() => cloud.logout().then(() => window.location.reload()).catch(() => window.location.reload())}>สลับเป็น Local Workspace</button>}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {manualItemsState.open && manualItemsState.order && (
+            <div ref={manualItemsDialogRef} data-pm-manual-items className="pm-quick-map-backdrop no-print" role="dialog" aria-modal="true" aria-labelledby="pm-manual-items-title">
+              <div className="pm-quick-map-panel !max-w-3xl !w-[min(760px,96vw)]">
+                <div className="flex items-start justify-between gap-3">
+                  <div><div className="pm-section-kicker">Order อ่านรายการไม่ได้</div><h3 id="pm-manual-items-title" tabIndex={-1} className="text-lg font-black text-slate-900 mt-1">เพิ่มรายการสินค้าเอง</h3><p className="text-xs font-semibold text-slate-400 mt-1">เทียบกับใบจริงแล้วกรอกรายการและจำนวน • ข้อมูลลูกค้าไม่ถูกแก้ไข</p></div>
+                  <button type="button" onClick={closeManualItems} disabled={manualItemsState.saving} className="pm-icon-btn" title="ปิด" aria-label="ปิด">×</button>
+                </div>
+                <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50/55 p-3 text-xs font-bold text-blue-900">
+                  Order: {manualItemsState.order.tracking || manualItemsState.order.orderId || 'ไม่มีเลข'} • Source: {manualItemsState.order.sourceFileName || '-'}{manualItemsState.order.sourcePage ? ` • หน้า ${manualItemsState.order.sourcePage}` : ''}
+                </div>
+                {manualItemsState.order.pdfImage && <img src={manualItemsState.order.pdfImage} alt="ใบออเดอร์ต้นฉบับ" className="mt-3 max-h-64 w-auto mx-auto rounded-lg border border-slate-200 bg-white" />}
+                {manualSummary && manualSummary.declaredTotalQty !== null && (
+                  <div data-pm-manual-qty-summary className={`mt-3 rounded-xl border p-3 text-xs font-black ${manualSummary.mismatch ? 'border-red-200 bg-red-50 text-red-800' : 'border-emerald-200 bg-emerald-50 text-emerald-900'}`}>
+                    ยอดรวมในใบ {manualSummary.declaredTotalQty} ชิ้น • รวม Qty ที่กรอก {manualSummary.total} ชิ้น{manualSummary.complete ? '' : ' (ยังกรอกไม่ครบ)'}
+                  </div>
+                )}
+                <div className="mt-4 space-y-2">
+                  {manualItemsState.rows.map((entry, rowIndex) => (
+                    <div key={entry.uid} data-pm-manual-item-row className="rounded-xl border border-slate-200 bg-white p-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_96px_minmax(0,1fr)_auto] md:items-end">
+                      <div>
+                        <label htmlFor={`pm-manual-text-${entry.uid}`} className="pm-label">ชื่อสินค้าตามใบ</label>
+                        <input id={`pm-manual-text-${entry.uid}`} data-pm-manual-item-text autoComplete="off" value={entry.text} onChange={(e)=>updateManualRow(entry.uid, 'text', e.target.value)} aria-invalid={invalidFor(entry.uid, 'text') || undefined} aria-describedby={invalidFor(entry.uid, 'text') ? 'pm-manual-error' : undefined} placeholder="ข้อความสินค้าตามใบจริง" className="pm-input" />
+                      </div>
+                      <div>
+                        <label htmlFor={`pm-manual-qty-${entry.uid}`} className="pm-label">Qty</label>
+                        <input id={`pm-manual-qty-${entry.uid}`} data-pm-manual-item-qty type="number" min="1" step="1" inputMode="numeric" value={entry.qty} onChange={(e)=>updateManualRow(entry.uid, 'qty', e.target.value)} aria-invalid={invalidFor(entry.uid, 'qty') || undefined} aria-describedby={invalidFor(entry.uid, 'qty') ? 'pm-manual-error' : undefined} className="pm-input text-center font-black" />
+                      </div>
+                      <div>
+                        <label htmlFor={`pm-manual-name-${entry.uid}`} className="pm-label">ชื่อภายใน (เว้นว่างได้)</label>
+                        <input id={`pm-manual-name-${entry.uid}`} data-pm-manual-item-name list="pm-manual-item-name-options" autoComplete="off" value={entry.shortName} onChange={(e)=>updateManualRow(entry.uid, 'shortName', e.target.value)} aria-describedby={entry.shortName.trim() && !manualRegistryNames.has(entry.shortName.trim()) ? `pm-manual-name-warning-${entry.uid}` : undefined} placeholder="ชื่อภายในที่ตรวจสอบแล้ว" className="pm-input" />
+                        {entry.shortName.trim() && !manualRegistryNames.has(entry.shortName.trim()) && <p id={`pm-manual-name-warning-${entry.uid}`} data-pm-manual-item-name-warning className="mt-1 text-[10px] font-bold text-amber-700">ยังไม่มีชื่อนี้ในทะเบียนชื่อภายใน — ใช้ได้ แต่มีผลกับ Order นี้เท่านั้น</p>}
+                      </div>
+                      <button type="button" onClick={()=>removeManualRow(entry.uid)} disabled={manualItemsState.rows.length <= 1 || manualItemsState.saving} className="pm-secondary-btn !py-2 !px-3" aria-label={`ลบรายการที่ ${rowIndex + 1}`}>ลบ</button>
+                    </div>
+                  ))}
+                </div>
+                <datalist id="pm-manual-item-name-options">{[...manualRegistryNames].map(name => <option key={name} value={name} />)}</datalist>
+                <button type="button" onClick={addManualRow} disabled={manualItemsState.saving} className="pm-secondary-btn w-full justify-center mt-3">+ เพิ่มอีกรายการ</button>
+                {manualSummary && manualSummary.mismatch && (
+                  <label htmlFor="pm-manual-qty-confirm" className="mt-3 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3 cursor-pointer">
+                    <input id="pm-manual-qty-confirm" type="checkbox" className="mt-0.5 w-4 h-4" checked={manualItemsState.qtyMismatchConfirmed} onChange={(e)=>setManualItemsState(prev=>({ ...prev, qtyMismatchConfirmed: e.target.checked, invalid: null, error: '' }))} aria-invalid={manualItemsState.invalid?.field === 'qtyConfirm' || undefined} aria-describedby="pm-manual-error" />
+                    <span className="text-xs font-black text-red-900">จำนวนไม่ตรงกับยอดรวมในใบ ยืนยันแล้ว</span>
+                  </label>
+                )}
+                {manualItemsState.error && <p id="pm-manual-error" role="alert" className="mt-3 text-xs font-black text-red-700">{manualItemsState.error}</p>}
+                <p className="mt-3 text-[11px] font-semibold text-slate-500">กดบันทึกแปลว่าตรวจ SKU และ Qty กับใบจริงแล้ว รายการที่ยังไม่มีชื่อภายในจะยังเป็น "ยังไม่ตั้งชื่อ" จนกว่าจะตั้งชื่อใน Review</p>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button type="button" onClick={closeManualItems} disabled={manualItemsState.saving} className="pm-secondary-btn !py-2 !px-4">ยกเลิก</button>
+                  <button type="button" data-pm-manual-items-save onClick={handleSaveManualItems} disabled={manualItemsState.saving} aria-busy={manualItemsState.saving || undefined} className="pm-primary-btn !py-2 !px-4">{manualItemsState.saving ? 'กำลังบันทึก…' : 'บันทึกรายการและยืนยัน'}</button>
                 </div>
               </div>
             </div>
