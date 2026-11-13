@@ -172,6 +172,61 @@
           }
         });
         card.appendChild(button);
+
+        if (pending && pending.backup) {
+          const exportBtn = document.createElement('button');
+          exportBtn.type = 'button';
+          exportBtn.setAttribute('data-pm-desktop-recovery-export', '');
+          exportBtn.textContent = 'ดาวน์โหลดไฟล์ Backup';
+          Object.assign(exportBtn.style, { padding: '12px 18px', border: '1px solid #cbd5e1', borderRadius: '10px',
+            background: '#fff', color: '#1e293b', font: '700 15px system-ui', cursor: 'pointer' });
+          exportBtn.addEventListener('click', () => {
+            try {
+              const json = JSON.stringify(pending.backup, null, 2);
+              if (typeof Blob !== 'undefined' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+                const blob = new Blob([json], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `packmaster-recovery-${pending.id || 'snapshot'}.json`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 0);
+              }
+            } catch (e) {
+              if (typeof globalThis.alert === 'function') globalThis.alert('ไม่สามารถดาวน์โหลดไฟล์ได้: ' + (e.message || e));
+            }
+          });
+          card.appendChild(exportBtn);
+        }
+
+        const skipBtn = document.createElement('button');
+        skipBtn.type = 'button';
+        skipBtn.setAttribute('data-pm-desktop-recovery-skip', '');
+        skipBtn.textContent = 'ข้าม / ละทิ้ง snapshot นี้';
+        Object.assign(skipBtn.style, { padding: '12px 18px', border: '1px solid #ef4444', borderRadius: '10px',
+          background: '#fff', color: '#ef4444', font: '700 15px system-ui', cursor: 'pointer' });
+        skipBtn.addEventListener('click', async () => {
+          const confirmed = typeof globalThis.confirm === 'function'
+            ? globalThis.confirm('คุณแน่ใจหรือไม่ว่าต้องการละทิ้ง recovery snapshot นี้? ข้อมูลที่บันทึกไว้จะไม่สามารถกู้คืนได้')
+            : true;
+          if (!confirmed) return;
+          try {
+            if (pending && pending.id && recovery && typeof recovery.complete === 'function') {
+              await recovery.complete({ id: pending.id });
+            }
+          } catch (_) {}
+          try {
+            if (recovery && typeof recovery.discard === 'function') {
+              await recovery.discard();
+            }
+          } catch (_) {}
+          state = 'ready';
+          overlay.remove();
+          resolveReady();
+        });
+        card.appendChild(skipBtn);
       }
       if (state === 'recovering') message.textContent = 'กำลังกู้คืน Batch และการตั้งค่าที่บันทึกไว้…';
       overlay.appendChild(card);

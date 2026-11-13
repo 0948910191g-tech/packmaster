@@ -52,6 +52,7 @@ function registerRecoveryIpc({ ipcMain, win, profilePath, storeId, origin, fsOps
   register('get-pending', () => journal.getPending());
   register('prepare', payload => journal.prepare(payload));
   register('complete', payload => journal.complete(payload));
+  register('discard', () => journal.discard());
 }
 
 module.exports = { registerRecoveryIpc };

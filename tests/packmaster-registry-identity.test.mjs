@@ -188,40 +188,31 @@ test('Ticket 02: exact title fallback for unmatched seller SKU resolves 1:1 and 
   const store = registryApi.replacePlatformRegistry(registryApi.createEmptyStore(), source);
   const index = identity.buildIndex(store, registryApi);
 
-  // 1. Unique 1:1 title fallback returns catalog_row identity
-  const uniqueFallback = identity.resolve(index, 'TIKTOK', {
+  // 1. Ticket 13: Unmatched Seller SKU never steals a row that already has another Seller SKU or lacks variant evidence
+  const uniqueFailClosed = identity.resolve(index, 'TIKTOK', {
     text: 'HOYA Single Unique | Default | MODIFIED-LABEL-SKU-999',
     sellerSku: 'MODIFIED-LABEL-SKU-999'
   });
-  assert.equal(uniqueFallback.status, 'found');
-  assert.equal(uniqueFallback.identityType, 'catalog_row');
-  assert.equal(uniqueFallback.sellerSku, 'MODIFIED-LABEL-SKU-999');
-  assert.equal(uniqueFallback.candidate.productId, 'product-1');
-  assert.equal(uniqueFallback.candidate.sellerSku, 'UNIQUE-SKU-1');
-  assert.equal(uniqueFallback.reason, 'exact_title_fallback');
+  assert.equal(uniqueFailClosed.status, 'not_found');
+  assert.equal(uniqueFailClosed.reason, 'seller_sku_not_found');
 
-  // 1b. Unique 1:1 title fallback when candidate has non-unique seller SKU
-  const catalogRowFallback = identity.resolve(index, 'TIKTOK', {
+  // 1b. Candidate with shared SKU also fails closed
+  const catalogRowFailClosed = identity.resolve(index, 'TIKTOK', {
     text: 'HOYA Dup SKU Alpha | Default | MODIFIED-LABEL-SKU-888',
     sellerSku: 'MODIFIED-LABEL-SKU-888'
   });
-  assert.equal(catalogRowFallback.status, 'found');
-  assert.equal(catalogRowFallback.identityType, 'catalog_row');
-  assert.equal(catalogRowFallback.sellerSku, 'MODIFIED-LABEL-SKU-888');
-  assert.equal(catalogRowFallback.candidate.productId, 'product-2');
-  assert.equal(catalogRowFallback.reason, 'exact_title_fallback');
+  assert.equal(catalogRowFailClosed.status, 'not_found');
+  assert.equal(catalogRowFailClosed.reason, 'seller_sku_not_found');
 
-  // 1c. Unique title fallback works with explicit productName property cross-platform
-  const explicitPropFallback = identity.resolve(index, 'TIKTOK', {
+  // 1c. Explicit productName property without variant also fails closed
+  const explicitPropFailClosed = identity.resolve(index, 'TIKTOK', {
     productName: 'HOYA Single Unique',
     sellerSku: 'MODIFIED-LABEL-SKU-777'
   });
-  assert.equal(explicitPropFallback.status, 'found');
-  assert.equal(explicitPropFallback.identityType, 'catalog_row');
-  assert.equal(explicitPropFallback.candidate.productId, 'product-1');
-  assert.equal(explicitPropFallback.reason, 'exact_title_fallback');
+  assert.equal(explicitPropFailClosed.status, 'not_found');
+  assert.equal(explicitPropFailClosed.reason, 'seller_sku_not_found');
 
-  // 1d. Cross-platform: Shopee with structured productName also falls back safely
+  // 1d. Cross-platform: Shopee with structured productName also fails closed on unknown SKU
   const shopeeSource = {
     ...source,
     platform: 'SHOPEE',
@@ -230,14 +221,12 @@ test('Ticket 02: exact title fallback for unmatched seller SKU resolves 1:1 and 
   };
   const shopeeStore = registryApi.replacePlatformRegistry(registryApi.createEmptyStore(), shopeeSource);
   const shopeeIndex = identity.buildIndex(shopeeStore, registryApi);
-  const shopeeStructuredFallback = identity.resolve(shopeeIndex, 'SHOPEE', {
+  const shopeeStructuredFailClosed = identity.resolve(shopeeIndex, 'SHOPEE', {
     productName: 'HOYA Single Unique',
     sellerSku: 'UNMATCHED-SHOPEE-SKU'
   });
-  assert.equal(shopeeStructuredFallback.status, 'found');
-  assert.equal(shopeeStructuredFallback.identityType, 'catalog_row');
-  assert.equal(shopeeStructuredFallback.candidate.productId, 'product-1');
-  assert.equal(shopeeStructuredFallback.reason, 'exact_title_fallback');
+  assert.equal(shopeeStructuredFailClosed.status, 'not_found');
+  assert.equal(shopeeStructuredFailClosed.reason, 'seller_sku_not_found');
 
   // Un-piped plain text on Shopee must NOT trigger title fallback and must fail closed
   const shopeePlainTextFailClosed = identity.resolve(shopeeIndex, 'SHOPEE', {
@@ -313,19 +302,24 @@ test('Ticket 02: real PDF batch fixture items (pages 14, 17, 20) resolve to HOYA
     }
   ];
 
+  // Ticket 13: Unmatched SKU without manual alias fails closed to not_found and unmatched
   for (const item of pdfFixtures) {
     const evidence = identity.resolve(index, 'TIKTOK', item);
-    assert.equal(evidence.status, 'found', `p${item.page} status must be found`);
-    assert.equal(evidence.candidate.productId, '1736126922142418758');
-    assert.equal(evidence.reason, 'exact_title_fallback');
-    assert.equal(evidence.sellerSku, item.sellerSku);
+    assert.equal(evidence.status, 'not_found', `p${item.page} status must be not_found`);
+    assert.equal(evidence.reason, 'seller_sku_not_found');
 
     const matchResult = matcher.match(index, 'TIKTOK', item, completeAssignments, identity, prepared);
-    assert.equal(matchResult.status, 'matched', `p${item.page} match status must be matched`);
+    assert.equal(matchResult.status, 'unmatched', `p${item.page} match status must be unmatched`);
+    assert.equal(matchResult.reason, 'seller_sku_not_found');
+  }
+
+  // Once user saves manual alias, it matches cleanly
+  completeAssignments = matcher.upsertManualSkuAlias(completeAssignments, index, 'TIKTOK', pdfFixtures[0], valuePackRow, 'HOYA Value Pack 5', identity);
+  const preparedWithAlias = matcher.prepareAssignments(completeAssignments);
+  for (const item of pdfFixtures) {
+    const matchResult = matcher.match(index, 'TIKTOK', item, completeAssignments, identity, preparedWithAlias);
+    assert.equal(matchResult.status, 'matched', `p${item.page} match status must be matched with alias`);
     assert.equal(matchResult.rule?.shortName, 'HOYA Value Pack 5');
-    assert.ok(
-      matchResult.reason === 'registry_exact_verified' || matchResult.reason === 'registry_catalog_exact_verified',
-      `p${item.page} match reason must be verified`
-    );
+    assert.equal(matchResult.reason, 'registry_manual_alias_exact_verified');
   }
 });

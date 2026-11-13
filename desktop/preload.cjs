@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('packmasterDesktop', Object.freeze({
   recovery: Object.freeze({
     getPending: invoke('packmaster:recovery:get-pending'),
     prepare: invoke('packmaster:recovery:prepare'),
-    complete: invoke('packmaster:recovery:complete')
+    complete: invoke('packmaster:recovery:complete'),
+    discard: invoke('packmaster:recovery:discard')
   })
 }));

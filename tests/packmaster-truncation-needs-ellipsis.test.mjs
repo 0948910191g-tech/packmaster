@@ -74,11 +74,9 @@ test('ticket 14: a plain name prefix with no ellipsis and no variant is never ma
   assert.equal(resolveShopee('Synthetic Mop Head Super Absorbent Long').status, 'not_found');
 });
 
-test('ticket 14: the bare product name is an exact catalog text, not a truncation (control)', () => {
+test('ticket 14 / ticket 13: bare product name on a variant row fails closed without variant', () => {
   const evidence = resolveShopee('Synthetic Cup Set Family Pack');
-  assert.equal(evidence.status, 'found');
-  assert.equal(evidence.reason, undefined);
-  assert.equal(evidence.candidate.productId, '4001');
+  assert.equal(evidence.status, 'not_found');
 });
 
 test('ticket 14: a name prefix followed by a variant that is not registered is not matched', () => {

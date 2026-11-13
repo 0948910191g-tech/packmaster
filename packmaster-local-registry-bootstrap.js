@@ -129,7 +129,7 @@
     return sellerSku || variantName || productName;
   }
 
-  function ensureRegistryAssignments(registryCandidate, assignmentsCandidate, registryApi, matcherApi, identityApi, baselineCandidate) {
+  function ensureRegistryAssignments(registryCandidate, assignmentsCandidate, registryApi, matcherApi, identityApi, baselineCandidate, options = {}) {
     if (!registryApi || !matcherApi || !identityApi) {
       throw new Error('Registry APIs are required');
     }
@@ -202,7 +202,7 @@
         if (entry.identityType === 'catalog_row') {
           const entryKey = matcherApi.assignmentKey(entry);
           const info = rowMap.get(entryKey);
-          if (!isSyntheticAssignmentEntry(entry, info)) {
+          if (options?.preserveUserEntries || !isSyntheticAssignmentEntry(entry, info)) {
             verifiedCatalogKeys.add(entryKey);
           }
         }
@@ -220,6 +220,8 @@
 
     // Filter assignments.entries to purge legacy synthetic auto-generated entries
     const filteredEntries = assignments.entries.filter(entry => {
+      if (options?.preserveUserEntries) return true;
+      if (Array.isArray(entry.manualSkuAliases) && entry.manualSkuAliases.length > 0) return true;
       const key = matcherApi.assignmentKey(entry);
       if (baselineKeys.has(key)) return true;
       if (promotedKeys.has(key)) return true;
@@ -245,7 +247,7 @@
         }
       }
       if (!shortName) continue;
-      assignments = matcherApi.upsertAssignment(assignments, record.platform, record.evidence, shortName);
+      assignments = matcherApi.upsertAssignment(assignments, record.platform, record.evidence, shortName, { resolveConflict: true });
     }
     return matcherApi.validateAssignments(assignments);
   }

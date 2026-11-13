@@ -17,6 +17,9 @@
   <script src="./packmaster-batch-transition.js"></script>
   <script src="./packmaster-reprint-snapshot.js"></script>
   <script src="./packmaster-workspace.js"></script>
+  <script src="./packmaster-restore-safety.js"></script>
+  <script src="./packmaster-restore-preview.js"></script>
+  <script src="./packmaster-restore-runner.js"></script>
   <script src="./packmaster-marketplace-registry.js"></script>
   <script src="./packmaster-sku-normalization.js"></script>
   <script src="./packmaster-registry-identity.js"></script>
@@ -1459,6 +1462,9 @@
       const batchTransitionApi = window.PackMasterBatchTransition;
       const reprintSnapshotApi = window.PackMasterReprintSnapshot;
       const workspaceApi = window.PackMasterWorkspace;
+      const restoreSafetyApi = window.PackMasterRestoreSafety;
+      const restorePreviewApi = window.PackMasterRestorePreview;
+      const restoreRunnerApi = window.PackMasterRestoreRunner;
       const marketplaceRegistryApi = window.PackMasterMarketplaceRegistry;
       const registryIdentityApi = window.PackMasterRegistryIdentity;
       const registryMatcherApi = window.PackMasterRegistryMatcher;
@@ -1736,6 +1742,7 @@
       const [restoreFileName, setRestoreFileName] = useState('');
       const [reprintSnapshotVersion, setReprintSnapshotVersion] = useState(0);
       const [workspaceBusy, setWorkspaceBusy] = useState(false);
+      const [backupExcludeImages, setBackupExcludeImages] = useState(false);
       const [storeSwitching, setStoreSwitching] = useState(false);
       const storeSwitchingRef = useRef(false);
 
@@ -2207,7 +2214,9 @@
 
                               textWithoutQty = textWithoutQty.replace(/^\s*\d+([.)\]]|\s+)(?=[^\d]|$)/, '').trim();
 
-                              parsedItems.push({ text: textWithoutQty, qty: itemQty });
+                              if (textWithoutQty && Number.isInteger(itemQty) && itemQty >= 1) {
+                                  parsedItems.push({ text: textWithoutQty, qty: itemQty });
+                              }
 
                               remainingText = remainingText.substring(match[0].length).trim();
                               currentItemNum++;
@@ -2258,7 +2267,9 @@
                               }
                           }
 
-                          parsedItems.push({ text: textWithoutQty, qty: itemQty });
+                          if (textWithoutQty && Number.isInteger(itemQty) && itemQty >= 1) {
+                              parsedItems.push({ text: textWithoutQty, qty: itemQty });
+                          }
                           currentItemNum++;
                       }
                   }
@@ -2283,7 +2294,13 @@
                       }
                   }
 
-                  parsedItems.push({ text: textWithoutQty, qty: itemQty });
+                  if (textWithoutQty && Number.isInteger(itemQty) && itemQty >= 1) {
+                      parsedItems.push({ text: textWithoutQty, qty: itemQty });
+                  }
+              }
+
+              if (parsedItems.length === 0) {
+                  parserWarning = true;
               }
 
               const trackingMatch = fullText.match(/(TH\d{10,}|JT\d{10,}|SPX[A-Z0-9]+|KER[A-Z0-9]+|KA[A-Z0-9]+|66\d{10,}|82\d{10,}|\b\d{12}\b)/i);
@@ -2993,7 +3010,7 @@
             registryAssignmentsError || registryAssignmentsBusy) {
           throw new Error('Registry SKU mapping is not ready');
         }
-        const canProceed = evidence?.status === 'found' || (evidence?.status === 'not_found' && (evidence?.sellerSku || internalName));
+        const canProceed = evidence?.status === 'found';
         if (!canProceed) {
           throw new Error(evidence?.status === 'ambiguous'
             ? 'รายการนี้ยังระบุตัวเลือกในทะเบียนได้ไม่ชัดเจน'
@@ -3078,11 +3095,25 @@
         };
       };
 
-      const getRegistryRowSavedNames = (platform, row) => [...new Set((registryAssignments?.entries || [])
-        .filter(entry => row && entry.platform === platform && entry.productId === String(row.productId || row.itemId || '') &&
-          (entry.modelId || null) === (row.modelId || null) &&
-          (row.modelId || (entry.variantName || null) === (row.variantName || null)))
-        .map(entry => entry.shortName))];
+      const getRegistryRowSavedNames = (platform, row) => {
+        if (!row || !registryAssignments?.entries) return [];
+        const normSku = registryMatcherApi?.normalizeSku(row.sellerSku || '');
+        const isUniqueSku = normSku && (marketplaceCatalogIndex?.[platform]?.sellerSkus?.get(normSku) || []).length === 1;
+        return [...new Set(registryAssignments.entries
+          .filter(entry => {
+            if (entry.platform !== platform) return false;
+            const matchesTarget = entry.productId === String(row.productId || row.itemId || '') &&
+              (entry.modelId || null) === (row.modelId || null) &&
+              (row.modelId || (entry.variantName || null) === (row.variantName || null));
+            if (matchesTarget) return true;
+            if (isUniqueSku && entry.identityType === 'seller_sku' && registryMatcherApi?.normalizeSku(entry.sellerSku) === normSku) {
+              return true;
+            }
+            return false;
+          })
+          .map(entry => entry.shortName)
+          .filter(Boolean))];
+      };
 
       const getRegistryRowAssignment = (platform, row) => {
         if (!row || !registryMatcherApi || !registryIdentityApi || !marketplaceCatalogIndex || !registryAssignments) return null;
@@ -3100,6 +3131,31 @@
 
       const saveRegistryRowAssignment = async (platform, row, internalName) =>
         persistRegistryAssignmentEvidence(platform, getRegistryRowEvidence(platform, row), internalName);
+
+      const handleSaveRegistryRowName = async (platform, row, saveEvidence, draft) => {
+        if (!row || !draft?.trim() || registryAssignmentsBusy) return;
+        const savedNames = getRegistryRowSavedNames(platform, row);
+        const rowMatch = registryNameRowMatches.get(row) || null;
+        const hasConflict = rowMatch?.reason === 'registry_name_conflict_or_stale' || savedNames.length > 1;
+        if (hasConflict) {
+          const selectedLabel = `${row.productName || row.title || 'สินค้าไม่ระบุชื่อ'} • Product ${row.productId || row.itemId}${row.modelId ? ` • Model ${row.modelId}` : ''}${row.variantName ? ` • ${row.variantName}` : ''}`;
+          const confirmed = window.confirm(
+            `พบชื่อภายในต่างกันสำหรับสินค้าและตัวเลือกเดียวกัน\n\n${selectedLabel}\n\n` +
+            `ชื่อเดิม:\n${savedNames.map(name => '• ' + name).join('\n')}\n\n` +
+            `ยืนยันใช้ชื่อ “${String(draft || '').trim()}” แทนชื่อทั้งหมดสำหรับสินค้าตัวเลือกนี้?\nสินค้าและตัวเลือกอื่นจะไม่ถูกแก้ไข`
+          );
+          if (!confirmed) return;
+        }
+        if (!cloudMode) {
+          rereadLocalNamingState({
+            assignments: registryAssignments,
+            registry: marketplaceRegistry,
+            message: 'ข้อมูลเปลี่ยนระหว่างยืนยัน กรุณาโหลดใหม่และตรวจชื่ออีกครั้ง'
+          });
+        }
+        await persistRegistryAssignmentEvidence(platform, saveEvidence, draft);
+        showToast(cloudMode ? 'บันทึกชื่อภายในจากทะเบียนกลางแล้ว' : 'บันทึกชื่อภายในในเครื่องแล้ว', 'success');
+      };
 
       const advanceReviewItem = (order, completedIndex, resolveItem) => {
         const items = Array.isArray(order?.parsedItems) ? order.parsedItems : [];
@@ -3138,8 +3194,28 @@
           const selectedLabel = selected
             ? `${selected.productName || selected.title || 'สินค้าไม่ระบุชื่อ'} • Product ${selected.productId || selected.itemId}${selected.modelId ? ` • Model ${selected.modelId}` : ''}${selected.variantName ? ` • ${selected.variantName}` : ''}`
             : 'ไม่พบแถวทะเบียนที่เลือก';
+          const currentEvidence = marketplaceCatalogIndex
+            ? registryIdentityApi.resolve(marketplaceCatalogIndex, order.platform, item)
+            : null;
+          const currentSkuRows = (marketplaceCatalogIndex && sku)
+            ? (marketplaceCatalogIndex[order.platform]?.sellerSkus?.get(registryMatcherApi.normalizeSku(sku)) || [])
+            : [];
+          const isDuplicateSku = currentSkuRows.length > 1 || Boolean(currentEvidence?.reason?.includes('duplicate_seller_sku'));
+          let warningNote = '';
+          if (currentEvidence?.status === 'ambiguous' || isDuplicateSku) {
+            warningNote = '\n⚠️ คำเตือน: รายการนี้มีความกำกวมหรือ Seller SKU ซ้ำในระบบ (Ambiguous / Duplicate SKU) คุณกำลังเลือกผูกกับแถวนี้โดยตรง';
+          } else if (currentSkuRows.length > 0 && selected) {
+            const matchesSelected = currentSkuRows.some(row =>
+              String(row.productId || row.itemId || '') === String(selected.productId || selected.itemId || '') &&
+              (row.modelId || null) === (selected.modelId || null) &&
+              (row.variantName || null) === (selected.variantName || null)
+            );
+            if (!matchesSelected) {
+              warningNote = '\n⚠️ คำเตือน: Seller SKU ใน PDF ชี้ไปยังรายการอื่นในทะเบียน คุณกำลังเลือกผูกกับแถวนี้โดยตรง';
+            }
+          }
           const confirmed = selected && window.confirm(
-            `ยืนยันผูกชื่อถาวรใน Local สำหรับออเดอร์ในอนาคตที่มี Seller SKU PDF และข้อความสินค้า/ตัวเลือกตรงกันเท่านั้น?\n\nSeller SKU จาก PDF: ${sku || '(ไม่มี SKU ชัดเจน)'}\nสินค้า/ตัวเลือกจาก PDF: ${catalogPair.join(' • ') || '(ไม่มีคู่ข้อความชัดเจน)'}\nแถวทะเบียนที่เลือก: ${selectedLabel}\nชื่อภายใน: ${String(quickMapState.shortName || '').trim()}\n\nหาก SKU หรือข้อความสินค้า/ตัวเลือกเปลี่ยน ระบบจะไม่ใช้ชื่อนี้`
+            `ยืนยันผูกชื่อถาวรใน Local สำหรับออเดอร์ในอนาคตที่มี Seller SKU PDF และข้อความสินค้า/ตัวเลือกตรงกันเท่านั้น?\n\nSeller SKU จาก PDF: ${sku || '(ไม่มี SKU ชัดเจน)'}\nสินค้า/ตัวเลือกจาก PDF: ${catalogPair.join(' • ') || '(ไม่มีคู่ข้อความชัดเจน)'}\nแถวทะเบียนที่เลือก: ${selectedLabel}\nชื่อภายใน: ${String(quickMapState.shortName || '').trim()}${warningNote ? '\n' + warningNote : ''}\n\nหาก SKU หรือข้อความสินค้า/ตัวเลือกเปลี่ยน ระบบจะไม่ใช้ชื่อนี้`
           );
           if (!confirmed) return;
           try {
@@ -3156,29 +3232,64 @@
             const sourceSkuRows = latestIndex[order.platform]?.sellerSkus?.get(registryMatcherApi.normalizeSku(sourceSellerSku)) || [];
             let next;
             // Title-only fallback is not an exact PDF Seller SKU identity; it must use an explicit alias pair.
-            if (latestEvidence.status === 'found' && sourceSkuRows.length === 1) {
-              const candidate = latestEvidence.candidate;
-              const sameSelected = candidate.productId === String(latestSelectedRow.productId || latestSelectedRow.itemId || '') &&
-                (candidate.modelId || null) === (latestSelectedRow.modelId || null) &&
-                ((candidate.modelId || null) !== null || (candidate.variantName || null) === (latestSelectedRow.variantName || null));
-              if (!sameSelected) throw new Error('SKU ในทะเบียนระบุคนละสินค้า/ตัวเลือกกับแถวที่เลือก กรุณาตรวจรายการ');
+            const isDirectSingleSkuMatch = latestEvidence.status === 'found' && sourceSkuRows.length === 1 &&
+              latestEvidence.candidate.productId === String(latestSelectedRow.productId || latestSelectedRow.itemId || '') &&
+              (latestEvidence.candidate.modelId || null) === (latestSelectedRow.modelId || null) &&
+              ((latestEvidence.candidate.modelId || null) !== null || (latestEvidence.candidate.variantName || null) === (latestSelectedRow.variantName || null));
+
+            if (isDirectSingleSkuMatch) {
               next = registryMatcherApi.upsertAssignment(latestAssignments, order.platform, latestEvidence, quickMapState.shortName);
             } else {
-              if (latestEvidence.status === 'ambiguous') throw new Error('Seller SKU ซ้ำหรือมีหลักฐานขัดแย้ง กรุณาตรวจในทะเบียนก่อน');
-              try {
-                next = registryMatcherApi.upsertManualSkuAlias(
-                  latestAssignments, latestIndex, order.platform, item, latestSelectedRow,
-                  quickMapState.shortName, registryIdentityApi);
-              } catch (conflict) {
-                if (conflict.code !== 'registry_name_conflict' || !Array.isArray(conflict.conflictingEntries)) throw conflict;
-                const previousNames = [...new Set(conflict.conflictingEntries.map(entry => entry.shortName))];
-                if (!window.confirm(`พบชื่อภายในต่างกันสำหรับสินค้าและตัวเลือกเดียวกัน\n\n${selectedLabel}\n\nชื่อเดิม:\n${previousNames.map(name => '• ' + name).join('\n')}\n\nยืนยันใช้ชื่อ “${String(quickMapState.shortName || '').trim()}” แทนชื่อทั้งสองชุดสำหรับสินค้าตัวเลือกนี้ และผูกข้อความ PDF ที่เลือก?\nสินค้าและตัวเลือกอื่นจะไม่ถูกแก้ไข`)) return;
-                // The confirm dialog blocks, so another tab may have written in the meantime: re-check.
-                rereadLocalNamingState({ assignments: latestAssignments, registry: latestRegistry.store,
-                  message: 'ข้อมูลเปลี่ยนระหว่างยืนยัน กรุณาโหลดใหม่และตรวจชื่ออีกครั้ง' });
-                next = registryMatcherApi.upsertManualSkuAlias(
-                  latestAssignments, latestIndex, order.platform, item, latestSelectedRow,
-                  quickMapState.shortName, registryIdentityApi, { confirmedConflictEntries: conflict.conflictingEntries });
+              let confirmedConflictEntries = undefined;
+              let confirmedRegistryProductName = undefined;
+              for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                  next = registryMatcherApi.upsertManualSkuAlias(
+                    latestAssignments, latestIndex, order.platform, item, latestSelectedRow,
+                    quickMapState.shortName, registryIdentityApi, {
+                      confirmedExplicitTarget: true,
+                      confirmedConflictEntries,
+                      confirmedRegistryProductName
+                    }
+                  );
+                  break;
+                } catch (aliasErr) {
+                  if (aliasErr.code === 'registry_name_conflict' && Array.isArray(aliasErr.conflictingEntries)) {
+                    const previousNames = [...new Set(aliasErr.conflictingEntries.map(entry => entry.shortName))];
+                    const confirmConflict = window.confirm(
+                      `พบชื่อภายในต่างกันสำหรับสินค้าและตัวเลือกเดียวกัน\n\n${selectedLabel}\n\n` +
+                      `ชื่อเดิม:\n${previousNames.map(name => '• ' + name).join('\n')}\n\n` +
+                      `ยืนยันใช้ชื่อ “${String(quickMapState.shortName || '').trim()}” แทนชื่อทั้งสองชุดสำหรับสินค้าตัวเลือกนี้ และผูกข้อความ PDF ที่เลือก?\nสินค้าและตัวเลือกอื่นจะไม่ถูกแก้ไข`
+                    );
+                    if (!confirmConflict) return;
+                    rereadLocalNamingState({
+                      assignments: latestAssignments,
+                      registry: latestRegistry.store,
+                      message: 'ข้อมูลเปลี่ยนระหว่างยืนยัน กรุณาโหลดใหม่และตรวจชื่ออีกครั้ง'
+                    });
+                    confirmedConflictEntries = aliasErr.conflictingEntries;
+                    continue;
+                  }
+                  if (aliasErr.code === 'registry_alias_title_changed') {
+                    const prevTitle = aliasErr.previousProductNames?.[0] || 'ชื่อเดิม';
+                    const newTitle = aliasErr.currentProductName;
+                    const confirmTitle = window.confirm(
+                      `ชื่อสินค้าในทะเบียนมีการแก้ไขตั้งแต่บันทึก alias ไว้เดิม\n\n` +
+                      `ชื่อเดิมใน alias: ${prevTitle}\n` +
+                      `ชื่อปัจจุบันในทะเบียน: ${newTitle}\n\n` +
+                      `ยืนยันผูก alias นี้ต่อกับชื่อปัจจุบันในทะเบียนหรือไม่?`
+                    );
+                    if (!confirmTitle) return;
+                    rereadLocalNamingState({
+                      assignments: latestAssignments,
+                      registry: latestRegistry.store,
+                      message: 'ข้อมูลเปลี่ยนระหว่างยืนยัน กรุณาโหลดใหม่และตรวจชื่ออีกครั้ง'
+                    });
+                    confirmedRegistryProductName = newTitle;
+                    continue;
+                  }
+                  throw aliasErr;
+                }
               }
             }
             registryMatcherApi.saveLocalAssignments(window.localStorage, next);
@@ -3198,6 +3309,26 @@
             chooser?.scrollIntoView({ block: 'center', behavior: 'smooth' });
             chooser?.focus();
             return;
+          }
+          const candidateRow = evidence.candidate;
+          const savedNames = getRegistryRowSavedNames(order.platform, candidateRow);
+          const currentMatch = registryMatcherApi.match(marketplaceCatalogIndex, order.platform, item, registryAssignments, registryIdentityApi);
+          const hasConflict = currentMatch?.reason === 'registry_name_conflict_or_stale' || savedNames.length > 1;
+          if (hasConflict) {
+            const selectedLabel = `${candidateRow.productName || candidateRow.title || 'สินค้าไม่ระบุชื่อ'} • Product ${candidateRow.productId || candidateRow.itemId}${candidateRow.modelId ? ` • Model ${candidateRow.modelId}` : ''}${candidateRow.variantName ? ` • ${candidateRow.variantName}` : ''}`;
+            const confirmed = window.confirm(
+              `พบชื่อภายในต่างกันสำหรับสินค้าและตัวเลือกเดียวกัน\n\n${selectedLabel}\n\n` +
+              `ชื่อเดิม:\n${savedNames.map(name => '• ' + name).join('\n')}\n\n` +
+              `ยืนยันใช้ชื่อ “${String(quickMapState.shortName || '').trim()}” แทนชื่อทั้งหมดสำหรับสินค้าตัวเลือกนี้?\nสินค้าและตัวเลือกอื่นจะไม่ถูกแก้ไข`
+            );
+            if (!confirmed) return;
+            if (!cloudMode) {
+              rereadLocalNamingState({
+                assignments: registryAssignments,
+                registry: marketplaceRegistry,
+                message: 'ข้อมูลเปลี่ยนระหว่างยืนยัน กรุณาโหลดใหม่และตรวจชื่ออีกครั้ง'
+              });
+            }
           }
           try {
             const next = await saveRegistryAssignment(order.platform, item, quickMapState.shortName);
@@ -4150,18 +4281,44 @@
             if (!cloudRegistryLoaded) throw new Error('Cloud Registry has not finished loading');
             await cloud.saveRegistry(expectedPlatform, importedRegistry);
           } else {
-            // A rebuild of an unreadable registry has nothing reliable to compare against; skip the stale check there.
-            if (!marketplaceRegistryLoadError) rereadLocalNamingState();
-            marketplaceRegistryApi.saveStore(window.localStorage, nextStore);
+            const rawPrevStore = window.localStorage.getItem(marketplaceRegistryApi.STORAGE_KEY);
+            const rawPrevAssignments = window.localStorage.getItem(registryMatcherApi.LOCAL_ASSIGNMENTS_KEY);
+            const rollbackLocalStorage = () => {
+              try {
+                if (rawPrevStore === null) window.localStorage.removeItem(marketplaceRegistryApi.STORAGE_KEY);
+                else window.localStorage.setItem(marketplaceRegistryApi.STORAGE_KEY, rawPrevStore);
+              } catch (_) {}
+              try {
+                if (rawPrevAssignments === null) window.localStorage.removeItem(registryMatcherApi.LOCAL_ASSIGNMENTS_KEY);
+                else window.localStorage.setItem(registryMatcherApi.LOCAL_ASSIGNMENTS_KEY, rawPrevAssignments);
+              } catch (_) {}
+            };
+
+            let freshAssignments;
+            if (!marketplaceRegistryLoadError) {
+              const latestState = rereadLocalNamingState();
+              freshAssignments = latestState.assignments;
+            } else {
+              freshAssignments = registryMatcherApi.loadLocalAssignments(window.localStorage);
+            }
+
             const completedAssignments = localRegistryBootstrapApi.ensureRegistryAssignments(
               nextStore,
-              registryAssignments || registryMatcherApi.newAssignments(),
+              freshAssignments || registryMatcherApi.newAssignments(),
               marketplaceRegistryApi,
               registryMatcherApi,
               registryIdentityApi,
-              baselineAssignmentsRef.current
+              baselineAssignmentsRef.current,
+              { preserveUserEntries: true }
             );
-            registryMatcherApi.saveLocalAssignments(window.localStorage, completedAssignments);
+
+            try {
+              marketplaceRegistryApi.saveStore(window.localStorage, nextStore);
+              registryMatcherApi.saveLocalAssignments(window.localStorage, completedAssignments);
+            } catch (writeErr) {
+              rollbackLocalStorage();
+              throw writeErr;
+            }
             setRegistryAssignments(completedAssignments);
             setRegistryAssignmentsLoaded(true);
           }
@@ -4180,11 +4337,7 @@
         }
       };
       const handleWorkspaceBackup = async () => {
-        if (skuRulesLoadError || registryAssignmentsError || marketplaceRegistryLoadError) {
-          showToast('ยังสำรอง Workspace ไม่ได้ เพราะข้อมูล Local บางส่วนอ่านไม่ครบ กรุณากู้คืนจาก Backup ที่ตรวจสอบแล้วก่อน', 'error');
-          return;
-        }
-        if (!workspaceApi || !batchApi) {
+        if (!workspaceApi || !batchApi || !restoreSafetyApi || !restorePreviewApi || !restoreRunnerApi) {
           showToast('โมดูล Workspace Backup ยังไม่พร้อม', 'error');
           return;
         }
@@ -4202,16 +4355,56 @@
 
           const desktopContext = window.packmasterDesktop && typeof window.packmasterDesktop.getContext === 'function'
             ? await window.packmasterDesktop.getContext() : null;
+          // A local key that cannot be read is left out (null) and named in a warning, instead of blocking the backup.
+          const backupLocalKeys = restoreSafetyApi.readBackupLocalKeys(window.localStorage);
+          const missingParts = [];
+          const safeSkuRules = skuRulesLoadError ? (missingParts.push('SKU Rules'), []) : skuRules;
+          const safeRegistryAssignments = registryAssignmentsError ? (missingParts.push('ทะเบียนชื่อที่ผูก'), null) : (registryAssignments || null);
+          if (marketplaceRegistryLoadError) missingParts.push('Marketplace Registry');
+
+          let safeDuplicateFingerprints = {};
+          if (duplicateApi) {
+            try {
+              safeDuplicateFingerprints = duplicateApi.exportFingerprintStore();
+            } catch (err) {
+              console.warn('Export duplicate fingerprints failed', err);
+              missingParts.push('Duplicate History');
+            }
+          }
+          let safeArchiveState = {};
+          if (archiveApi) {
+            try {
+              safeArchiveState = archiveApi.exportArchiveStore();
+            } catch (err) {
+              console.warn('Export archive state failed', err);
+              missingParts.push('Archive');
+            }
+          }
+          let safeReprintSnapshots = {};
+          if (reprintSnapshotApi) {
+            try {
+              safeReprintSnapshots = reprintSnapshotApi.exportStore();
+            } catch (err) {
+              console.warn('Export reprint snapshots failed', err);
+              missingParts.push('Reprint Snapshots');
+            }
+          }
+
+          const includeImages = !backupExcludeImages;
           const payload = await workspaceApi.collectBackupPayload({
             batchApi,
-            skuRules,
+            skuRules: safeSkuRules,
+            includeImages: !backupExcludeImages,
             settings: {
               thermalMode,
-              duplicateFingerprints: duplicateApi ? duplicateApi.exportFingerprintStore() : {},
-              archiveState: archiveApi ? archiveApi.exportArchiveStore() : {},
+              // duplicateFingerprints: duplicateApi ? duplicateApi.exportFingerprintStore() : {}
+              duplicateFingerprints: safeDuplicateFingerprints,
+              // archiveState: archiveApi ? archiveApi.exportArchiveStore() : {}
+              archiveState: safeArchiveState,
               marketplaceRegistry: marketplaceRegistryLoadError ? null : marketplaceRegistry,
-              reprintSnapshots: reprintSnapshotApi ? reprintSnapshotApi.exportStore() : {},
-              registryAssignments: registryAssignments || null,
+              reprintSnapshots: safeReprintSnapshots,
+              registryAssignments: safeRegistryAssignments,
+              ...backupLocalKeys.values,
               ...(desktopContext ? { desktopStore: { id: desktopContext.id, label: desktopContext.label } } : {})
             },
             appVersion: document.title
@@ -4222,13 +4415,19 @@
           const url = URL.createObjectURL(blob);
           const link = document.createElement('a');
           const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16);
+          const noImagesSuffix = includeImages ? '' : '_NoImages';
           link.href = url;
-          link.download = `PackMaster_Backup_${stamp}.json`;
+          link.download = `PackMaster_Backup${noImagesSuffix}_${stamp}.json`;
           document.body.appendChild(link);
           link.click();
           link.remove();
           setTimeout(() => URL.revokeObjectURL(url), 0);
-          showToast(`สำรอง Workspace แล้ว • ทะเบียนชื่อ ${summary.registryAssignments} • SKU ${summary.skuRules} • Batch ${summary.batches} • Orders ${summary.orders}`, 'success');
+          const imageNote = includeImages ? '' : ' (ไม่รวมรูปใบปะหน้า)';
+          const backupText = `สำรอง Workspace แล้ว • ทะเบียนชื่อ ${summary.registryAssignments} • SKU ${summary.skuRules} • Batch ${summary.batches} • Orders ${summary.orders}${imageNote}`;
+          const missingWarnings = missingParts.map(part => `ข้อมูล ${part} อ่านไม่ครบ จึงไม่ถูกรวมใน backup`);
+          const keyWarnings = backupLocalKeys.problems.map(problem => problem.message);
+          const allWarnings = [...missingWarnings, ...keyWarnings].join(' • ');
+          showToast(allWarnings ? `${backupText} • คำเตือน: ${allWarnings}` : backupText, allWarnings ? 'warning' : 'success');
         } catch (err) {
           console.error('Workspace backup failed', err);
           showToast(err.message || 'สำรอง Workspace ไม่สำเร็จ', 'error');
@@ -4248,7 +4447,7 @@
 
         setWorkspaceBusy(true);
         try {
-          if (!workspaceApi) throw new Error('โมดูล Workspace Backup ยังไม่พร้อม');
+          if (!workspaceApi || !restorePreviewApi || !restoreSafetyApi) throw new Error('โมดูล Workspace Backup ยังไม่พร้อม');
           const raw = await file.text();
           const parsed = JSON.parse(raw);
           const backup = workspaceApi.validateBackup(parsed);
@@ -4271,7 +4470,17 @@
           const marketplaceSummary = restoredMarketplaceRegistry ? marketplaceRegistryApi.getSummary(restoredMarketplaceRegistry) : null;
           const targetStore = window.packmasterDesktop && typeof window.packmasterDesktop.getContext === 'function'
             ? await window.packmasterDesktop.getContext() : null;
-          setRestorePreview({ backup: safeBackup, summary, marketplaceSummary, skuIntegrityReport: preparedRules.report,
+          const localLoadErrors = [
+            skuRulesLoadError ? 'SKU Rules' : null,
+            registryAssignmentsError ? 'ทะเบียนชื่อที่ผูก' : null,
+            marketplaceRegistryLoadError ? 'Marketplace Registry' : null
+          ].filter(Boolean);
+          const impact = restorePreviewApi.describeRestoreImpact({
+            backup: safeBackup,
+            currentBindingCount: registryAssignmentsError ? null : (registryAssignments?.entries?.length || 0),
+            loadErrors: localLoadErrors
+          });
+          setRestorePreview({ backup: safeBackup, summary, marketplaceSummary, impact, skuIntegrityReport: preparedRules.report,
             sourceStore: backup.settings.desktopStore || null, targetStore });
           setRestoreFileName(file.name);
           const integrityNote = preparedRules.report.rekeyed.length > 0
@@ -4289,6 +4498,7 @@
       };
 
       const handleConfirmWorkspaceRestore = async () => {
+        if (workspaceBusy) return;
         if (uploadGateRef.current.isActive()) {
           showToast('กำลังประมวลผล PDF อยู่ — รอให้เสร็จก่อนกู้คืน Workspace', 'error');
           return;
@@ -4297,7 +4507,7 @@
           showToast('Cloud Mode ยังไม่รองรับการ Replace Workspace กรุณาใช้เครื่องมือย้ายข้อมูลที่ตรวจสอบแล้ว', 'error');
           return;
         }
-        if (!restorePreview || !restorePreview.backup || !workspaceApi || !batchApi) return;
+        if (!restorePreview || !restorePreview.backup || !workspaceApi || !batchApi || !restorePreviewApi || !restoreSafetyApi || !restoreRunnerApi) return;
         if (!batchStorageReady) {
           showToast('Browser storage ยังไม่พร้อม จึงยัง Replace Workspace ไม่ได้', 'error');
           return;
@@ -4310,143 +4520,195 @@
         const recoverySafetyCopy = window.packmasterDesktop?.recovery
           ? 'โดย Desktop จะบันทึก Recovery Snapshot ลงดิสก์ก่อนเริ่มกู้คืน'
           : 'โดยระบบจะสร้าง Safety Snapshot ในหน่วยความจำก่อนเริ่มกู้คืน';
-        const confirmed = window.confirm(
-          `Replace Workspace ปัจจุบันด้วยไฟล์ Backup นี้หรือไม่?\n\nSKU ${summary.skuRules} • Batch ${summary.batches} • Orders ${summary.orders}${integrityPreview}\n\nข้อมูล Local ปัจจุบันจะถูกแทนที่ ${recoverySafetyCopy}`
-        );
+        // Stores that failed to load are not blocking (this restore is the repair path); the user is warned instead.
+        const localLoadErrors = [
+          skuRulesLoadError ? 'SKU Rules' : null,
+          registryAssignmentsError ? 'ทะเบียนชื่อที่ผูก' : null,
+          marketplaceRegistryLoadError ? 'Marketplace Registry' : null
+        ].filter(Boolean);
+        // The impact uses the bindings that are current at confirm time, not when the file was picked.
+        // An unreadable binding list is shown as unknown (null), never as 0.
+        const impact = restorePreviewApi.describeRestoreImpact({
+          backup,
+          currentBindingCount: registryAssignmentsError ? null : (registryAssignments?.entries?.length || 0),
+          loadErrors: localLoadErrors
+        });
+        const localKeyWarnings = restoreSafetyApi.readBackupLocalKeys(window.localStorage).problems.map(problem => problem.message);
+        const confirmed = window.confirm(restorePreviewApi.buildRestoreConfirmMessage({
+          impact, summary, integrityPreview, recoverySafetyCopy, localKeyWarnings
+        }));
         if (!confirmed) return;
 
-        let targetStore = null;
-        try {
-          targetStore = window.packmasterDesktop && typeof window.packmasterDesktop.getContext === 'function'
-            ? await window.packmasterDesktop.getContext() : null;
-        } catch (contextError) {
-          showToast(`ตรวจ Store ปัจจุบันไม่สำเร็จ จึงยังไม่เริ่ม Restore: ${contextError.message || 'Desktop context unavailable'}`, 'error');
-          return;
-        }
-        const sourceStore = backup.settings.desktopStore || null;
-        const ownershipConfirmed = window.PackMasterDesktopRecovery.confirmStoreOwnership(
-          sourceStore, targetStore, prompt => window.confirm(prompt)
-        );
-        if (!ownershipConfirmed) return;
-
         setWorkspaceBusy(true);
-        const previousSkuRules = JSON.parse(JSON.stringify(skuRules));
-        const previousSkuRulesLoadError = skuRulesLoadError;
-        const previousThermalMode = thermalMode;
-        const previousDuplicateFingerprints = duplicateApi ? duplicateApi.exportFingerprintStore() : {};
-        const previousArchiveState = archiveApi ? archiveApi.exportArchiveStore() : {};
-        const previousMarketplaceRegistry = marketplaceRegistry;
-        const previousMarketplaceRegistryLoadError = marketplaceRegistryLoadError;
-        const previousReprintSnapshots = reprintSnapshotApi ? reprintSnapshotApi.exportStore() : {};
-        const previousRegistryAssignments = registryAssignments;
-        const previousRegistryAssignmentsError = registryAssignmentsError;
-        const previousRegistryAssignmentsRaw = !cloudMode && registryMatcherApi
-          ? window.localStorage.getItem(registryMatcherApi.LOCAL_ASSIGNMENTS_KEY) : null;
-        const previousLocalStorageEntries = window.PackMasterDesktopRecovery.captureLocalStorageEntries(window.localStorage);
-        let previousMarketplaceRegistryRaw = null;
-        try { previousMarketplaceRegistryRaw = window.localStorage.getItem(marketplaceRegistryApi.STORAGE_KEY); } catch (error) {}
-        let safetyBackup = null;
-        let rollbackSucceeded = false;
-        let replacementStarted = false;
-        let recoveryId = null;
-
+        let outcome;
         try {
-          if (activeBatchId) {
-            const saved = await saveActiveBatchSnapshot();
-            if (!saved) throw new Error('บันทึก Active Batch ล่าสุดไม่สำเร็จ จึงยกเลิก Restore');
+          let targetStore = null;
+          try {
+            targetStore = window.packmasterDesktop && typeof window.packmasterDesktop.getContext === 'function'
+              ? await window.packmasterDesktop.getContext() : null;
+          } catch (contextError) {
+            showToast(`ตรวจ Store ปัจจุบันไม่สำเร็จ จึงยังไม่เริ่ม Restore: ${contextError.message || 'Desktop context unavailable'}`, 'error');
+            return;
           }
+          const sourceStore = backup.settings.desktopStore || null;
+          const ownershipConfirmed = window.PackMasterDesktopRecovery.confirmStoreOwnership(
+            sourceStore, targetStore, prompt => window.confirm(prompt)
+          );
+          if (!ownershipConfirmed) return;
 
-          const restoredRules = backup.skuRules.map((rule, index) => sanitizeSkuRule(rule, `restore-${Date.now()}-${index}`));
-          if (restoredRules.some(rule => !rule)) throw new Error('Backup มี SKU rule ที่ไม่ถูกต้อง');
-
-          const safetyPayload = await workspaceApi.collectBackupPayload({
-            batchApi,
-            skuRules: previousSkuRules,
-            settings: {
-              thermalMode: previousThermalMode,
-              duplicateFingerprints: previousDuplicateFingerprints,
-              archiveState: previousArchiveState,
-              marketplaceRegistry: previousMarketplaceRegistryLoadError ? null : previousMarketplaceRegistry,
-              reprintSnapshots: previousReprintSnapshots,
-              registryAssignments: previousRegistryAssignments || null
-            },
-            appVersion: document.title
-          });
-          safetyBackup = workspaceApi.createBackup(safetyPayload, new Date());
-
-          await window.PackMasterDesktopRecovery.runRestore({
-            bridge: window.packmasterDesktop,
-            backup: safetyBackup,
-            localStorageEntries: previousLocalStorageEntries,
-            onPrepared: prepared => { recoveryId = prepared.id; },
-            replace: async () => {
-          // Refuse before any write if local names/registry changed since this restore started (keeps rollback accurate).
-          if (!cloudMode && !previousRegistryAssignmentsError && !previousMarketplaceRegistryLoadError) {
-            rereadLocalNamingState({ assignments: previousRegistryAssignments, registry: previousMarketplaceRegistry });
-          }
-          replacementStarted = true;
-          await workspaceApi.replaceWorkspaceBatches(backup, batchApi);
-          if (duplicateApi) duplicateApi.replaceFingerprintStore(backup.settings.duplicateFingerprints || {});
-          if (archiveApi) archiveApi.replaceArchiveStore(backup.settings.archiveState || {});
-          if (reprintSnapshotApi && backup.settings.reprintSnapshots) {
-            reprintSnapshotApi.replaceStore(backup.settings.reprintSnapshots);
-          }
-          const restoredAssignments = backup.settings.registryAssignments != null
-            ? (registryMatcherApi
-                ? registryMatcherApi.validateAssignments(backup.settings.registryAssignments)
-                : backup.settings.registryAssignments)
-            : (registryMatcherApi ? registryMatcherApi.newAssignments() : { schema: 'packmaster-registry-sku-assignments', version: 1, updatedAt: null, entries: [] });
-          if (!cloudMode && registryMatcherApi) {
-            registryMatcherApi.saveLocalAssignments(window.localStorage, restoredAssignments);
-          }
-          setRegistryAssignments(restoredAssignments);
-          setRegistryAssignmentsError('');
-          if (cloudMode && typeof cloud?.saveRegistryAssignments === 'function') {
+          const previousSkuRules = JSON.parse(JSON.stringify(skuRules));
+          const previousSkuRulesLoadError = skuRulesLoadError;
+          const previousThermalMode = thermalMode;
+          let previousDuplicateFingerprints = {};
+          if (duplicateApi) {
             try {
-              await cloud.saveRegistryAssignments(restoredAssignments);
-            } catch (cloudRegErr) {
-              console.warn('Sync restored registryAssignments to Cloud failed', cloudRegErr);
+              previousDuplicateFingerprints = duplicateApi.exportFingerprintStore();
+            } catch (err) {
+              console.warn('Export duplicate fingerprints failed before restore', err);
             }
           }
-          if (backup.settings.marketplaceRegistry != null) {
-            marketplaceRegistryApi.saveStore(window.localStorage, backup.settings.marketplaceRegistry);
-            setMarketplaceRegistry(backup.settings.marketplaceRegistry);
-            setMarketplaceRegistryLoadError('');
-          }
-
-          window.localStorage.setItem('skuMappingRules', JSON.stringify(restoredRules));
-          // Record what the restore wrote, so this tab's later edits are not treated as another tab's change.
-          skuMappingRulesRawRef.current = window.localStorage.getItem('skuMappingRules');
-          setSkuRules(restoredRules);
-          setSkuRulesLoadError('');
-          if (typeof backup.settings.thermalMode === 'boolean') {
-            window.localStorage.setItem('thermalMode', JSON.stringify(backup.settings.thermalMode));
-            setThermalMode(backup.settings.thermalMode);
-          }
-
-          const restoredBatches = await batchApi.listBatches();
-          setBatches(restoredBatches);
-          setActiveBatchId(null);
-          activeBatchIdRef.current = null;
-          activeBatchTransitionVersionRef.current += 1;
-          if (typeof window !== 'undefined') window.__pmActiveBatchId = null;
-          setOrders([]);
-          setReviewSearch('');
-          setReviewPlatform('ALL');
-          setReviewStatus('ALL');
-          setUploadError('');
-          resetRestorePreview();
-          setActiveTab('upload');
-          setActiveView('batches');
-            },
-            apply: async () => {}
-          });
-          showToast(`กู้คืน Workspace สำเร็จ • Batch ${summary.batches} • Orders ${summary.orders}`, 'success');
-        } catch (err) {
-          console.error('Workspace replace failed', err);
-
-          if (safetyBackup && replacementStarted) {
+          let previousArchiveState = {};
+          if (archiveApi) {
             try {
+              previousArchiveState = archiveApi.exportArchiveStore();
+            } catch (err) {
+              console.warn('Export archive state failed before restore', err);
+            }
+          }
+          const previousMarketplaceRegistry = marketplaceRegistry;
+          const previousMarketplaceRegistryLoadError = marketplaceRegistryLoadError;
+          let previousReprintSnapshots = {};
+          if (reprintSnapshotApi) {
+            try {
+              previousReprintSnapshots = reprintSnapshotApi.exportStore();
+            } catch (err) {
+              console.warn('Export reprint snapshots failed before restore', err);
+            }
+          }
+          const previousRegistryAssignments = registryAssignments;
+          const previousRegistryAssignmentsError = registryAssignmentsError;
+          const previousRegistryAssignmentsRaw = !cloudMode && registryMatcherApi
+            ? window.localStorage.getItem(registryMatcherApi.LOCAL_ASSIGNMENTS_KEY) : null;
+          const previousLocalStorageEntries = window.PackMasterDesktopRecovery.captureLocalStorageEntries(window.localStorage);
+          let previousMarketplaceRegistryRaw = null;
+          try { previousMarketplaceRegistryRaw = window.localStorage.getItem(marketplaceRegistryApi.STORAGE_KEY); } catch (error) {}
+          let restoredRules = null;
+
+          // Control flow (order, safety copy, confirm, journal, rollback, reload) lives in packmaster-restore-runner.js.
+          outcome = await restoreRunnerApi.runWorkspaceRestore({
+            preflight: async () => {
+              if (activeBatchId) {
+                const saved = await saveActiveBatchSnapshot();
+                if (!saved) throw new Error('บันทึก Active Batch ล่าสุดไม่สำเร็จ จึงยกเลิก Restore');
+              }
+              const rules = backup.skuRules.map((rule, index) => sanitizeSkuRule(rule, `restore-${Date.now()}-${index}`));
+              if (rules.some(rule => !rule)) throw new Error('Backup มี SKU rule ที่ไม่ถูกต้อง');
+              restoredRules = rules;
+            },
+            buildSafetyCopy: async () => {
+              const backupLocalKeys = restoreSafetyApi.readBackupLocalKeys(window.localStorage);
+              const payload = await workspaceApi.collectBackupPayload({
+                batchApi,
+                skuRules: previousSkuRules,
+                settings: {
+                  thermalMode: previousThermalMode,
+                  duplicateFingerprints: previousDuplicateFingerprints,
+                  archiveState: previousArchiveState,
+                  marketplaceRegistry: previousMarketplaceRegistryLoadError ? null : previousMarketplaceRegistry,
+                  reprintSnapshots: previousReprintSnapshots,
+                  registryAssignments: previousRegistryAssignments || null,
+                  ...backupLocalKeys.values,
+                  ...(targetStore ? { desktopStore: { id: targetStore.id, label: targetStore.label } } : {})
+                },
+                appVersion: document.title
+              });
+              return workspaceApi.createBackup(payload, new Date());
+            },
+            downloadSafetyCopy: safetyBackup => restoreSafetyApi.downloadSafetyCopy(safetyBackup, { now: new Date() }),
+            confirmSafetyCopySaved: filename => window.confirm(`ดาวน์โหลดไฟล์สำเนาข้อมูลเดิม "${filename}" แล้วหรือยัง?\n\nกด OK เฉพาะเมื่อไฟล์ถูกบันทึกแล้วตามที่คุณเลือกบันทึกไว้\nถ้ายังไม่เห็นไฟล์ กด Cancel ระบบจะยกเลิก Restore และข้อมูลเดิมจะไม่ถูกแก้ไข`),
+            runRecoveredReplace: async ({ backup: safetyBackup, onPrepared, markReplacementStarted }) => {
+              const executeRestore = targetBackup => window.PackMasterDesktopRecovery.runRestore({
+                bridge: window.packmasterDesktop,
+                backup: targetBackup,
+                localStorageEntries: previousLocalStorageEntries,
+                onPrepared,
+                replace: async () => {
+                // Refuse before any write if local names/registry changed since this restore started (keeps rollback accurate).
+                if (!cloudMode && !previousRegistryAssignmentsError && !previousMarketplaceRegistryLoadError) {
+                  rereadLocalNamingState({ assignments: previousRegistryAssignments, registry: previousMarketplaceRegistry });
+                }
+                if (typeof markReplacementStarted === 'function') markReplacementStarted();
+                await workspaceApi.replaceWorkspaceBatches(backup, batchApi);
+                if (duplicateApi) duplicateApi.replaceFingerprintStore(backup.settings.duplicateFingerprints || {});
+                if (archiveApi) archiveApi.replaceArchiveStore(backup.settings.archiveState || {});
+                if (reprintSnapshotApi && backup.settings.reprintSnapshots) {
+                  reprintSnapshotApi.replaceStore(backup.settings.reprintSnapshots);
+                }
+                const restoredAssignments = backup.settings.registryAssignments != null
+                  ? (registryMatcherApi
+                      ? registryMatcherApi.validateAssignments(backup.settings.registryAssignments)
+                      : backup.settings.registryAssignments)
+                  : (registryMatcherApi ? registryMatcherApi.newAssignments() : { schema: 'packmaster-registry-sku-assignments', version: 1, updatedAt: null, entries: [] });
+                if (!cloudMode && registryMatcherApi) {
+                  registryMatcherApi.saveLocalAssignments(window.localStorage, restoredAssignments);
+                }
+                setRegistryAssignments(restoredAssignments);
+                setRegistryAssignmentsError('');
+                if (cloudMode && typeof cloud?.saveRegistryAssignments === 'function') {
+                  try {
+                    await cloud.saveRegistryAssignments(restoredAssignments);
+                  } catch (cloudRegErr) {
+                    console.warn('Sync restored registryAssignments to Cloud failed', cloudRegErr);
+                  }
+                }
+                if (backup.settings.marketplaceRegistry != null) {
+                  marketplaceRegistryApi.saveStore(window.localStorage, backup.settings.marketplaceRegistry);
+                  setMarketplaceRegistry(backup.settings.marketplaceRegistry);
+                  setMarketplaceRegistryLoadError('');
+                }
+
+                // Ticket 23: batch source-file names and SKU integrity backup come from the backup (or are cleared if it has none).
+                restoreSafetyApi.writeBackupLocalKeys(window.localStorage, backup.settings);
+                window.localStorage.setItem('skuMappingRules', JSON.stringify(restoredRules));
+                // Record what the restore wrote, so this tab's later edits are not treated as another tab's change.
+                skuMappingRulesRawRef.current = window.localStorage.getItem('skuMappingRules');
+                setSkuRules(restoredRules);
+                setSkuRulesLoadError('');
+                if (typeof backup.settings.thermalMode === 'boolean') {
+                  window.localStorage.setItem('thermalMode', JSON.stringify(backup.settings.thermalMode));
+                  setThermalMode(backup.settings.thermalMode);
+                }
+
+                const restoredBatches = await batchApi.listBatches();
+                setBatches(restoredBatches);
+                setActiveBatchId(null);
+                activeBatchIdRef.current = null;
+                activeBatchTransitionVersionRef.current += 1;
+                if (typeof window !== 'undefined') window.__pmActiveBatchId = null;
+                setOrders([]);
+                setReviewSearch('');
+                setReviewPlatform('ALL');
+                setReviewStatus('ALL');
+                setUploadError('');
+                resetRestorePreview();
+                setActiveTab('upload');
+                setActiveView('batches');
+              },
+              apply: async () => {}
+            });
+
+            // 64 MB recovery limit: ask once, then retry with an image-free copy (shared helper strips
+            // batchOrders + reprintSnapshots). Declining or a still-too-large retry throws a Thai error.
+            return await workspaceApi.runWithImageFallback({
+              backup: safetyBackup,
+              execute: executeRestore,
+              confirm: () => typeof window.confirm === 'function' && window.confirm(
+                'Recovery Snapshot มีขนาดเกินขีดจำกัด (64 MB) ซึ่งมักเกิดจากรูปภาพใบปะหน้า (pdfImage) ในประวัติ Batch\n\n' +
+                'ต้องการลองกู้คืนโดยไม่รวมรูปใบปะหน้าใน Snapshot หรือไม่? (ข้อมูล Batch, รายการสินค้า และการตั้งค่าทั้งหมดยังคงอยู่ครบถ้วน)'
+              )
+            });
+          },
+            rollback: async safetyBackup => {
               await workspaceApi.replaceWorkspaceBatches(safetyBackup, batchApi);
               if (duplicateApi) duplicateApi.replaceFingerprintStore(previousDuplicateFingerprints);
               if (archiveApi) archiveApi.replaceArchiveStore(previousArchiveState);
@@ -4471,36 +4733,39 @@
               setThermalMode(previousThermalMode);
               window.PackMasterDesktopRecovery.restoreLocalStorageEntries(window.localStorage, previousLocalStorageEntries);
               skuMappingRulesRawRef.current = window.localStorage.getItem('skuMappingRules');
-              rollbackSucceeded = true;
-            } catch (rollbackErr) {
-              console.error('Workspace rollback failed', rollbackErr);
-            }
-          }
-
-          if (rollbackSucceeded && recoveryId) {
-            try { await window.PackMasterDesktopRecovery.completeRecovery(window.packmasterDesktop, recoveryId); }
-            catch (completeErr) { console.error('Workspace recovery journal could not be completed after rollback', completeErr); }
-          }
-
-          if (recoveryId) {
-            await window.PackMasterDesktopRecovery.reloadIfRecoveryPending({
+            },
+            completeRecovery: recoveryId => window.PackMasterDesktopRecovery.completeRecovery(window.packmasterDesktop, recoveryId),
+            reloadIfPending: recoveryId => window.PackMasterDesktopRecovery.reloadIfRecoveryPending({
               bridge: window.packmasterDesktop,
               id: recoveryId,
               reload: () => window.location.reload()
-            });
-          }
-
-          showToast(
-            rollbackSucceeded
-              ? `กู้คืนไม่สำเร็จ แต่คืน Workspace เดิมแล้ว: ${err.message || 'Restore failed'}`
-              : replacementStarted
-                ? `กู้คืนไม่สำเร็จและคืนข้อมูลอัตโนมัติไม่ครบ กรุณาอย่าปิดหน้านี้และใช้ไฟล์ Backup ล่าสุด: ${err.message || 'Restore failed'}`
-                : `ยกเลิก Restore ก่อนเริ่มแทนที่ข้อมูลเดิม: ${err.message || 'Restore failed'}`,
-            'error'
-          );
+            })
+          });
         } finally {
           setWorkspaceBusy(false);
         }
+
+        if (!outcome) return;
+        if (outcome.status === 'replaced') {
+          showToast(`กู้คืน Workspace สำเร็จ • Batch ${summary.batches} • Orders ${summary.orders} • ไฟล์สำเนาข้อมูลเดิมบันทึกตามที่คุณเลือกบันทึกไว้: ${outcome.safetyCopyFilename || '-'}`, 'success');
+          return;
+        }
+        console.error('Workspace replace failed', outcome.error);
+        if (outcome.rollbackError) console.error('Workspace rollback failed', outcome.rollbackError);
+        if (outcome.completeError) console.error('Workspace recovery journal could not be completed after rollback', outcome.completeError);
+        const message = (outcome.error && outcome.error.message) || 'Restore failed';
+        const isSizeError = workspaceApi.isSnapshotTooLargeError(outcome.error);
+        const detailedMessage = outcome.error?.userMessage || (isSizeError
+          ? `Snapshot มีขนาดเกิน 64 MB แนะนำให้สำรองแบบไม่รวมรูปใบปะหน้าก่อนกู้คืน: ${message}`
+          : message);
+        showToast(
+          outcome.rollbackSucceeded
+            ? `กู้คืนไม่สำเร็จ แต่คืน Workspace เดิมแล้ว: ${detailedMessage}`
+            : outcome.replacementStarted
+              ? `กู้คืนไม่สำเร็จและคืนข้อมูลอัตโนมัติไม่ครบ กรุณาอย่าปิดหน้านี้และใช้ไฟล์ Backup ล่าสุด: ${detailedMessage}`
+              : `ยกเลิก Restore ก่อนเริ่มแทนที่ข้อมูลเดิม: ${detailedMessage}`,
+          'error'
+        );
       };
 
       // Save PDF shares the print single-flight: it cannot start while a print or another export runs,
@@ -5645,7 +5910,7 @@
                           {[
                             { value: 'all', label: 'ทั้งหมด', count: registryNameStats.all },
                             { value: 'unnamed', label: 'ยังไม่ตั้งชื่อ', count: registryNameStats.unnamed },
-                            { value: 'needsReview', label: 'มีข้อมูลที่ต้องตรวจ', count: registryNameStats.needsReview },
+                            { value: 'needsReview', label: 'ชื่อขัดกัน / ต้องตรวจ', count: registryNameStats.needsReview },
                             { value: 'missingSku', label: 'ไม่มี Seller SKU', count: registryNameStats.missingSku },
                             { value: 'duplicateSku', label: 'SKU ซ้ำ', count: registryNameStats.duplicateSku },
                             { value: 'productOnly', label: 'ไม่มีแถว SKU/ตัวเลือก', count: registryNameStats.productOnly }
@@ -5678,8 +5943,9 @@
                                     const rowEvidence = getRegistryRowEvidence(platform, row);
                                     const rowMatch = registryNameRowMatches.get(row) || null;
                                     const assignment = rowMatch?.status === 'matched' ? rowMatch.assignment : null;
+                                    const savedNames = getRegistryRowSavedNames(platform, row);
                                     const nameConflict = rowMatch?.reason === 'registry_name_conflict_or_stale' ||
-                                      rowMatch?.reason === 'registry_identity_changed';
+                                      rowMatch?.reason === 'registry_identity_changed' || savedNames.length > 1;
                                     const saveEvidence = rowEvidence;
                                     const key = [platform, productId, row.modelId || '', row.variantName || ''].join(':');
                                     const draft = Object.prototype.hasOwnProperty.call(registryNameDrafts, key)
@@ -5693,7 +5959,7 @@
                                         <div className="font-mono text-[10px] text-slate-500 mt-1">Product ID: {productId}{row.modelId ? ' • Model: ' + row.modelId : ''}</div>
                                       </td>
                                       <td><span className={`text-xs font-black ${assignment ? 'text-emerald-700' : 'text-amber-700'}`}>
-                                        {nameConflict ? 'ชื่อขัดกันหรือข้อมูลเก่า • ตรวจและบันทึกชื่ออีกครั้ง' : assignment ? 'มีชื่อสำหรับจับคู่' :
+                                        {nameConflict ? `ชื่อขัดกัน: ${savedNames.join(' / ')} • ตรวจและยืนยันชื่อที่จะใช้` : assignment ? 'มีชื่อสำหรับจับคู่' :
                                           row.sourceRowType === 'product_only' ? 'ไม่มีแถว SKU • ตั้งชื่อด้วย Product ID' :
                                           !sku ? 'ไม่มี SKU • ใช้ Product/Model' :
                                           sellerSkuNeedsCatalog ? 'SKU ซ้ำ • ใช้ Product/Model' :
@@ -5704,8 +5970,7 @@
                                         placeholder="ชื่อสินค้าในคลัง PPG" onChange={event => setRegistryNameDrafts(prev =>
                                           ({ ...prev, [key]: event.target.value }))} /></td>
                                       <td><button type="button" className="pm-secondary-btn !py-2" disabled={!canSave}
-                                        onClick={() => persistRegistryAssignmentEvidence(platform, saveEvidence, draft)
-                                          .then(() => showToast(cloudMode ? 'บันทึกชื่อภายในจากทะเบียนกลางแล้ว' : 'บันทึกชื่อภายในในเครื่องแล้ว', 'success'))
+                                        onClick={() => handleSaveRegistryRowName(platform, row, saveEvidence, draft)
                                           .catch(error => showToast('บันทึกไม่ได้: ' + error.message, 'error'))}>
                                         ยืนยัน
                                       </button></td>
@@ -5753,9 +6018,10 @@
                       <div className="pm-card p-5">
                         <div className="flex items-start gap-3"><div className="pm-feature-icon"><PMIcon name="database"/></div><div className="flex-1"><div className="pm-section-kicker">Workspace Backup</div><h3 className="text-base font-black text-slate-900">ความปลอดภัย Workspace</h3><p className="text-xs font-semibold text-slate-400 mt-1 leading-5">{cloudMode ? 'ส่งออก Batch/Orders จาก Cloud พร้อมข้อมูล sidecar ที่อยู่ใน Browser นี้เป็น JSON' : 'สำรองคลังคำศัพท์, Settings และ Batch เป็น JSON ในเครื่อง ก่อนย้ายเครื่องหรือล้าง Browser'}</p></div></div>
                         <div className="flex flex-wrap gap-2 mt-5"><button data-pm-action="workspace-backup" onClick={handleWorkspaceBackup} disabled={workspaceBusy||!batchStorageReady} className="pm-primary-btn"><PMIcon name="download"/> สำรอง Workspace</button>{!cloudMode ? <label className={`pm-secondary-btn cursor-pointer ${workspaceBusy||!batchStorageReady?'opacity-50 pointer-events-none':''}`}><PMIcon name="upload"/> กู้คืน Workspace<input type="file" accept=".json,application/json" disabled={workspaceBusy||!batchStorageReady} className="hidden" onChange={handleWorkspaceRestoreFile}/></label> : <div data-pm-cloud-restore-unavailable className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">Cloud Replace Workspace ยังไม่รองรับ — ไฟล์ส่งออกจากหน้านี้กู้คืน Cloud ไม่ได้</div>}</div>
+                        <label className="flex items-center gap-2 mt-3 cursor-pointer select-none text-xs font-bold text-slate-700"><input type="checkbox" checked={backupExcludeImages} onChange={e => setBackupExcludeImages(e.target.checked)} className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" /><span>ไม่รวมรูปใบปะหน้า (ลดขนาดไฟล์/ซ่อนข้อมูลลูกค้า)</span></label>
                         <div className="mt-4 rounded-xl bg-amber-50 border border-amber-200 px-3 py-3 text-[11px] font-semibold leading-5 text-amber-800">Backup อาจมีข้อมูลที่อ่านจากใบออเดอร์ ควรเก็บเป็นข้อมูลภายในร้านและไม่อัปโหลดไฟล์จริงขึ้น Public GitHub</div>
 
-                        {restorePreview&&<div className="mt-4 rounded-xl border-2 border-blue-200 bg-blue-50/50 p-4"><div className="text-[10px] font-black text-blue-600">ตรวจไฟล์ผ่านแล้ว • {restoreFileName||'Backup JSON'}</div><div data-pm-desktop-restore-store-scope className="mt-2 text-xs font-bold text-slate-700">Store ต้นทาง: {restorePreview.sourceStore?.label || 'ไม่ทราบ (Web/Backup รุ่นเก่า)'}{restorePreview.sourceStore?.id ? ` (${restorePreview.sourceStore.id})` : ''} • Store ปัจจุบัน: {restorePreview.targetStore?.label || 'Web/ไม่ระบุ'}{restorePreview.targetStore?.id ? ` (${restorePreview.targetStore.id})` : ''}</div>{restorePreview.marketplaceSummary&&<div className="mt-2 text-xs font-bold text-blue-800">Marketplace Registry: TikTok {restorePreview.marketplaceSummary.TIKTOK.productCount} สินค้า • Shopee {restorePreview.marketplaceSummary.SHOPEE.productCount} สินค้า</div>}<div className="grid grid-cols-3 gap-2 mt-3"><div className="pm-mini-stat"><span>SKU Rules</span><strong>{restorePreview.summary.skuRules}</strong></div><div className="pm-mini-stat"><span>Batches</span><strong>{restorePreview.summary.batches}</strong></div><div className="pm-mini-stat"><span>Orders</span><strong>{restorePreview.summary.orders}</strong></div></div><div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-blue-200"><span className="text-[10px] font-bold text-red-600">Replace Workspace จะแทนข้อมูล Local ปัจจุบัน</span><div className="flex gap-2"><button onClick={resetRestorePreview} className="pm-ghost-btn">ยกเลิก</button><button onClick={handleConfirmWorkspaceRestore} disabled={workspaceBusy} className="pm-danger-btn">Replace Workspace</button></div></div></div>}
+                        {restorePreview&&<div className="mt-4 rounded-xl border-2 border-blue-200 bg-blue-50/50 p-4"><div className="text-[10px] font-black text-blue-600">ตรวจไฟล์ผ่านแล้ว • {restoreFileName||'Backup JSON'}</div><div data-pm-desktop-restore-store-scope className="mt-2 text-xs font-bold text-slate-700">Store ต้นทาง: {restorePreview.sourceStore?.label || 'ไม่ทราบ (Web/Backup รุ่นเก่า)'}{restorePreview.sourceStore?.id ? ` (${restorePreview.sourceStore.id})` : ''} • Store ปัจจุบัน: {restorePreview.targetStore?.label || 'Web/ไม่ระบุ'}{restorePreview.targetStore?.id ? ` (${restorePreview.targetStore.id})` : ''}</div>{restorePreview.impact&&<div data-pm-restore-impact className="mt-2 text-xs font-bold text-slate-700">วันที่ Backup: {restorePreview.impact.createdAtLabel} • ชื่อที่ผูกใน Backup: {restorePreview.impact.backupBindingCount} • ชื่อที่ผูกปัจจุบันที่จะถูกแทนที่: {restorePreview.impact.currentBindingCountLabel}{restorePreview.impact.warnings.map(text => <div key={text} className="mt-1 text-[11px] font-black text-red-600">{text}</div>)}</div>}{restorePreview.marketplaceSummary&&<div className="mt-2 text-xs font-bold text-blue-800">Marketplace Registry: TikTok {restorePreview.marketplaceSummary.TIKTOK.productCount} สินค้า • Shopee {restorePreview.marketplaceSummary.SHOPEE.productCount} สินค้า</div>}<div className="grid grid-cols-3 gap-2 mt-3"><div className="pm-mini-stat"><span>SKU Rules</span><strong>{restorePreview.summary.skuRules}</strong></div><div className="pm-mini-stat"><span>Batches</span><strong>{restorePreview.summary.batches}</strong></div><div className="pm-mini-stat"><span>Orders</span><strong>{restorePreview.summary.orders}</strong></div></div><div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-blue-200"><span className="text-[10px] font-bold text-red-600">Replace Workspace จะแทนข้อมูล Local ปัจจุบัน</span><div className="flex gap-2"><button onClick={resetRestorePreview} className="pm-ghost-btn">ยกเลิก</button><button onClick={handleConfirmWorkspaceRestore} disabled={workspaceBusy} className="pm-danger-btn">Replace Workspace</button></div></div></div>}
                       </div>
 
                       <div className="pm-card p-5">

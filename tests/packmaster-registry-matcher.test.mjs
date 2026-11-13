@@ -300,7 +300,7 @@ test('Seller SKU assignment with null variantName matches candidate with non-nul
   assert.equal(res3.reason, 'internal_name_not_assigned');
 });
 
-test('saveConfirmedAssignment persists label requested seller SKU when candidate SKU differs', () => {
+test('Ticket 13: saveConfirmedAssignment refuses not_found evidence for modified seller SKU and never auto-writes unknown SKU', () => {
   const store = registryApi.replacePlatformRegistry(
     registryApi.createEmptyStore(),
     {
@@ -321,28 +321,20 @@ test('saveConfirmedAssignment persists label requested seller SKU when candidate
   );
   const catalog = identity.buildIndex(store, registryApi);
 
-  // Label has modified sellerSku but resolves via title
+  // Label has modified sellerSku: fails closed to not_found
   const labelItem = {
     qty: 1,
     sellerSku: 'MODIFIED-LABEL-SKU-5PK',
     text: 'HOYA 5 pack title | 1 | MODIFIED-LABEL-SKU-5PK'
   };
   const resolved = identity.resolve(catalog, 'TIKTOK', labelItem);
-  const canonical = matcher.canonicalEvidence(catalog, 'TIKTOK', resolved);
-  const saved = matcher.saveConfirmedAssignment(matcher.newAssignments(), catalog, 'TIKTOK', canonical, 'HOYA ฟ้า 5 ห่อ');
-
-  // Verify both canonical SKU and modified label SKU are saved
-  assert.ok(saved.entries.some(e => e.sellerSku === 'CATALOG-SKU-ORIGINAL' && e.shortName === 'HOYA ฟ้า 5 ห่อ'));
-  assert.ok(saved.entries.some(e => e.sellerSku === 'MODIFIED-LABEL-SKU-5PK' && e.shortName === 'HOYA ฟ้า 5 ห่อ'));
-
-  // Subsequent item with only the modified SKU matches automatically
-  const subsequent = matcher.match(catalog, 'TIKTOK', { sellerSku: 'MODIFIED-LABEL-SKU-5PK' }, saved, identity);
-  assert.equal(subsequent.status, 'matched');
-  assert.equal(subsequent.reason, 'registry_exact_verified');
-  assert.equal(subsequent.rule.shortName, 'HOYA ฟ้า 5 ห่อ');
+  assert.equal(resolved.status, 'not_found');
+  assert.throws(() => {
+    matcher.saveConfirmedAssignment(matcher.newAssignments(), catalog, 'TIKTOK', resolved, 'HOYA ฟ้า 5 ห่อ');
+  }, /Confirmed registry assignment requires productId/);
 });
 
-test('saveConfirmedAssignment binds unfound seller SKU by matching existing unambiguous shortName', () => {
+test('Ticket 13: saveConfirmedAssignment strictly requires evidence.status === found and refuses unfound seller SKU', () => {
   const store = registryApi.replacePlatformRegistry(
     registryApi.createEmptyStore(),
     {
@@ -385,11 +377,9 @@ test('saveConfirmedAssignment binds unfound seller SKU by matching existing unam
   const unfoundEv = identity.resolve(catalog, 'TIKTOK', unfoundItem);
   assert.equal(unfoundEv.status, 'not_found');
 
-  const saved = matcher.saveConfirmedAssignment(initialAssignments, catalog, 'TIKTOK', unfoundEv, 'ม่วง5');
-  const subsequent = matcher.match(catalog, 'TIKTOK', unfoundItem, saved, identity);
-  assert.equal(subsequent.status, 'matched');
-  assert.equal(subsequent.reason, 'registry_exact_verified');
-  assert.equal(subsequent.rule.shortName, 'ม่วง5');
+  assert.throws(() => {
+    matcher.saveConfirmedAssignment(initialAssignments, catalog, 'TIKTOK', unfoundEv, 'ม่วง5');
+  }, /Confirmed registry assignment requires productId/);
 });
 
 test('saveConfirmedAssignment throws when evidence.status !== found and shortName is shared across multiple distinct productIds', () => {
@@ -454,7 +444,7 @@ test('explicit local SKU alias pairs persist and resolve only while selected reg
   const thirdItem = { text: 'HOYA Baby Wipes Value Pack | 10 ห่อ 800 แผ่น | 5 ห่อ HOYA Baby Wipes Value Pack', sellerSku: '5 ห่อ HOYA Baby Wipes Value Pack' };
   const selected = { platform: 'TIKTOK', productId: 'listing-5-pack', productName: 'HOYA Baby Wipes Value Pack', modelId: 'model-5-pack', variantName: '5 ห่อ 400 แผ่น' };
 
-  assert.equal(identity.resolve(catalog, 'TIKTOK', pdfItem).reason, 'exact_title_fallback');
+  assert.equal(identity.resolve(catalog, 'TIKTOK', pdfItem).reason, 'seller_sku_not_found');
   assert.throws(() => matcher.upsertManualSkuAlias(matcher.newAssignments(), catalog, 'TIKTOK', pdfItem,
     { ...selected, productName: 'Different product title' }, 'Unsafe', identity), /title conflicts/i);
   const first = matcher.upsertManualSkuAlias(matcher.newAssignments(), catalog, 'TIKTOK', pdfItem, selected, 'HOYA Value 5', identity);

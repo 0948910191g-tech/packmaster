@@ -94,8 +94,7 @@
           (candidate.version === 1 && (entry?.manualSkuAliases || entry?.manualSkuRegistryProductName || entry?.manualSkuAlias || entry?.manualSkuCatalogText)) ||
           (candidate.version === 2 && entry?.manualSkuAlias) ||
           manualSkuAliases.some(pair => !pair.productText || (!pair.variantText && entry.platform !== 'SHOPEE') || (pair.sellerSku && !normalizeSku(pair.sellerSku)) ||
-            !normalizeCatalogPart(pair.productText) || (pair.variantText && !normalizeCatalogPart(pair.variantText)) ||
-            (sellerSku && normalizeSku(pair.sellerSku) === normalizeSku(sellerSku))) ||
+            !normalizeCatalogPart(pair.productText) || (pair.variantText && !normalizeCatalogPart(pair.variantText))) ||
           (manualSkuAliases.length && (candidate.version !== 2 || typeof entry.manualSkuRegistryProductName !== 'string' || !entry.manualSkuRegistryProductName.trim())) ||
           (!manualSkuAliases.length && entry?.manualSkuRegistryProductName !== undefined) ||
           (!sellerSku && identityType !== 'catalog_row')) {
@@ -121,12 +120,6 @@
       }
       return clean;
     });
-    for (const entry of entries.filter(item => item.manualSkuAliases?.length)) {
-      if (entries.some(other => other !== entry && other.platform === entry.platform &&
-          (entry.manualSkuAliases || []).some(pair => normalizeSku(pair.sellerSku) && normalizeSku(other.sellerSku) === normalizeSku(pair.sellerSku)))) {
-        throw new Error('Manual SKU alias conflicts with an assigned Seller SKU identity');
-      }
-    }
     return { schema: SCHEMA, version: entries.some(entry => entry.manualSkuAliases?.length) ? 2 : candidate.version, entries };
   }
 
@@ -182,7 +175,7 @@
     }).entries[0];
   }
 
-  function upsertAssignment(current, platform, evidence, shortName) {
+  function upsertAssignment(current, platform, evidence, shortName, options = {}) {
     const store = validateAssignments(current);
     const assignment = makeAssignment(platform, evidence, shortName);
     const existing = store.entries.find(entry => assignmentKey(entry) === assignmentKey(assignment));
@@ -190,7 +183,7 @@
       throw new Error('Seller SKU identity conflict; review the existing mapping before changing its product or variant');
     }
     const aliasTargets = store.entries.filter(entry => entry.manualSkuAliases?.length && sameTarget(entry, assignment, platform));
-    if (aliasTargets.length > 1 || (aliasTargets.length && (!existing || aliasTargets[0] !== existing))) {
+    if (!options.resolveConflict && (aliasTargets.length > 1 || (aliasTargets.length && (!existing || aliasTargets[0] !== existing)))) {
       throw new Error('This registry row has manual PDF aliases under a different assignment key; review aliases before changing its identity');
     }
     const replacement = existing?.manualSkuAliases?.length
@@ -217,6 +210,9 @@
       (c.modelId || null) === (candidate.modelId || null) &&
       (candidate.modelId || (c.variantName || null) === (candidate.variantName || null));
     if (evidence?.status === 'found' && candidates.length === 1 && same(candidates[0])) {
+      if (evidence.sellerSku && normalizeSku(evidence.sellerSku) !== sku) {
+        return evidence;
+      }
       return {
         ...evidence,
         identityType: 'seller_sku',
@@ -234,43 +230,39 @@
   function saveConfirmedAssignment(current, index, platform, evidence, shortName) {
     current = validateAssignments(current);
     if (evidence?.status !== 'found') {
-      const normalizedSellerSku = normalizeSku(evidence?.sellerSku);
-      if (typeof shortName === 'string' && shortName.trim()) {
-        const matching = current.entries.filter(entry => entry.platform === platform && entry.shortName === shortName.trim());
-        const uniqueIdentities = new Set(matching.map((entry) => `${entry.productId}:${entry.modelId || ''}`));
-        if (uniqueIdentities.size === 1 || (platform === 'TIKTOK' && uniqueIdentities.size === 2 && shortName.trim() === 'ม่วง5')) {
-          const matchedEntry = matching[0];
-          evidence = {
-            status: 'found',
-            identityType: normalizedSellerSku ? 'seller_sku' : (matchedEntry.identityType || 'catalog_row'),
-            sellerSku: evidence.sellerSku || null,
-            candidate: {
-              platform,
-              sellerSku: evidence.sellerSku || matchedEntry.sellerSku || null,
-              productId: matchedEntry.productId,
-              productName: '',
-              modelId: matchedEntry.modelId || null,
-              variantName: matchedEntry.variantName || null
-            }
-          };
-        } else {
-          throw new Error('Confirmed registry assignment requires productId');
-        }
-      } else {
-        throw new Error('Confirmed registry assignment requires productId');
-      }
+      throw new Error('Confirmed registry assignment requires productId');
     }
 
     const canonical = canonicalEvidence(index, platform, evidence);
-    let next = upsertAssignment(current, platform, canonical, shortName);
-    if (canonical.identityType === 'seller_sku') {
-      const catalogKey = evidenceKey(platform, { ...evidence, identityType: 'catalog_row' });
-      next = validateAssignments({ ...next, entries: next.entries.map(entry =>
-        assignmentKey(entry) === catalogKey ? { ...entry, shortName: shortName.trim() } : entry) });
-    }
+    const trimmed = typeof shortName === 'string' ? shortName.trim() : '';
+    const candidateTarget = canonical.candidate;
+    const catalogKey = evidenceKey(platform, { ...evidence, identityType: 'catalog_row' });
+
+    // Pre-sync existing entries on the same row or catalogKey to the confirmed shortName
+    const syncedEntries = current.entries.map(entry => {
+      if (entry.platform === platform && (sameTarget(entry, candidateTarget, platform) || assignmentKey(entry) === catalogKey)) {
+        return { ...entry, shortName: trimmed };
+      }
+      return entry;
+    });
+
+    let next = upsertAssignment({ ...current, entries: syncedEntries }, platform, canonical, trimmed, { resolveConflict: true });
+    next = validateAssignments({
+      ...next,
+      entries: next.entries.map(entry => {
+        if (entry.platform === platform && (sameTarget(entry, candidateTarget, platform) || assignmentKey(entry) === catalogKey)) {
+          return { ...entry, shortName: trimmed };
+        }
+        return entry;
+      })
+    });
     const extraSku = canonical.requestedSellerSku || evidence?.requestedSellerSku || evidence?.sellerSku;
-    if (normalizeSku(extraSku) && (canonical.identityType === 'catalog_row' || normalizeSku(extraSku) !== normalizeSku(canonical.sellerSku))) {
-      next = upsertAssignment(next, platform, { ...canonical, identityType: 'seller_sku', sellerSku: extraSku }, shortName);
+    const normalizedExtraSku = normalizeSku(extraSku);
+    if (normalizedExtraSku && (canonical.identityType === 'catalog_row' || normalizedExtraSku !== normalizeSku(canonical.sellerSku))) {
+      const extraSkuRows = index?.[platform]?.sellerSkus?.get(normalizedExtraSku) || [];
+      if (extraSkuRows.length === 1 && sameTarget(extraSkuRows[0], canonical.candidate, platform)) {
+        next = upsertAssignment(next, platform, { ...canonical, identityType: 'seller_sku', sellerSku: extraSku }, trimmed, { resolveConflict: true });
+      }
     }
     return next;
   }
@@ -297,7 +289,9 @@
       throw new Error('An explicit PDF catalog product and variant, selected registry row, and internal name are required');
     }
     const knownSkuRows = index[platform].sellerSkus.get(normalizedSku) || [];
-    if (knownSkuRows.length) throw new Error('This PDF Seller SKU already exists in the registry; verify its existing identity before binding');
+    if (!options.confirmedExplicitTarget && knownSkuRows.length) {
+      throw new Error('This PDF Seller SKU already exists in the registry; verify its existing identity before binding');
+    }
     const registryRows = index[platform].registryRows || [];
     const sameSelectedRow = row => row.platform === platform && row.productId === candidate.productId &&
       (row.modelId || null) === candidate.modelId && (row.variantName || null) === candidate.variantName;
@@ -310,8 +304,8 @@
       throw new Error('The selected product title conflicts with the current registry');
     }
     const catalogEvidence = identityApi.resolve(index, platform, { catalogText: catalogPair.join(' ') });
-    if (catalogEvidence.status === 'ambiguous' ||
-        (catalogEvidence.status === 'found' && !sameSelectedRow(catalogEvidence.candidate))) {
+    if (!options.confirmedExplicitTarget && (catalogEvidence.status === 'ambiguous' ||
+        (catalogEvidence.status === 'found' && !sameSelectedRow(catalogEvidence.candidate)))) {
       throw new Error('The exact PDF product and variant conflict with the selected registry row; verify the source or use this name for this order only');
     }
     const pair = { sellerSku: sourceSku || '', productText: catalogPair[0], variantText: catalogPair[1] };
@@ -348,7 +342,11 @@
     const staleAliasTitle = existingTarget.some(entry => entry.manualSkuAliases?.length &&
       entry.manualSkuRegistryProductName !== registryProductName);
     if (staleAliasTitle && options.confirmedRegistryProductName !== registryProductName) {
-      throw new Error('The selected registry product title changed after the existing alias was saved; confirm the current title to re-bind this alias');
+      const err = new Error('The selected registry product title changed after the existing alias was saved; confirm the current title to re-bind this alias');
+      err.code = 'registry_alias_title_changed';
+      err.previousProductNames = [...new Set(existingTarget.filter(entry => entry.manualSkuAliases?.length).map(entry => entry.manualSkuRegistryProductName).filter(Boolean))];
+      err.currentProductName = registryProductName;
+      throw err;
     }
     const existingAliases = base.manualSkuAliases || [];
     const samePair = existingAliases.some(existing => aliasKey(platform, existing) === aliasKey(platform, pair));
@@ -386,6 +384,49 @@
           rule: { keyword: localPair.join(' | '), shortName: row.shortName } };
       }
     }
+    const store = prepared && prepared.source === assignments ? prepared.store : validateAssignments(assignments);
+
+    const sourceSku = identityApi.extractSellerSku?.(platform, item);
+    const sourcePair = identityApi.extractCatalogPair?.(platform, item);
+    const hasCompleteSourcePair = sourcePair?.[0] && (sourcePair?.[1] || (platform === 'SHOPEE' && sourcePair?.[1] === ''));
+    if (hasCompleteSourcePair) {
+      const sourceAlias = { sellerSku: sourceSku || '', productText: sourcePair[0], variantText: sourcePair[1] };
+      const matchingAliases = store.entries.filter(entry => entry.platform === platform &&
+        (entry.manualSkuAliases || []).some(pair => aliasKey(platform, pair) === aliasKey(platform, sourceAlias)));
+      if (matchingAliases.length > 1) {
+        return { status: 'ambiguous', reason: 'duplicate_manual_sku_alias', evidence };
+      }
+      if (matchingAliases.length === 1) {
+        const assignment = matchingAliases[0];
+        const currentRows = index[platform]?.registryRows || [];
+        const sameCurrentTarget = row => sameTarget(assignment, row, platform) &&
+          (row.variantName || null) === (assignment.variantName || null) &&
+          String(row.productName || '').trim() === assignment.manualSkuRegistryProductName;
+        if (currentRows.filter(sameCurrentTarget).length !== 1) {
+          return { status: 'ambiguous', reason: 'registry_identity_changed', evidence };
+        }
+        const matchedRow = currentRows.find(sameCurrentTarget);
+        const rowSku = normalizeSku(matchedRow?.sellerSku);
+        const hasConflictingEntry = store.entries.some(entry =>
+          entry.platform === platform &&
+          (sameTarget(entry, assignment, platform) || (rowSku && assignmentKey(entry) === JSON.stringify(['seller_sku', platform, rowSku]))) &&
+          entry.shortName !== assignment.shortName
+        );
+        if (hasConflictingEntry) {
+          return { status: 'ambiguous', reason: 'registry_name_conflict_or_stale', evidence };
+        }
+        return {
+          status: 'matched',
+          reason: 'registry_manual_alias_exact_verified',
+          identityType: sourceSku ? 'manual_seller_sku_alias' : 'manual_catalog_alias',
+          sellerSku: normalizeSku(sourceSku) || null,
+          evidence,
+          assignment: { ...assignment },
+          rule: { keyword: normalizeSku(sourceSku) || sourcePair.join(' | '), shortName: assignment.shortName }
+        };
+      }
+    }
+
     if (evidence.status === 'ambiguous') {
       return {
         status: 'ambiguous',
@@ -393,8 +434,6 @@
         evidence
       };
     }
-
-    const store = prepared && prepared.source === assignments ? prepared.store : validateAssignments(assignments);
 
     const normSellerSku = normalizeSku(evidence?.sellerSku);
     const directKey = normSellerSku ? JSON.stringify(['seller_sku', platform, normSellerSku]) : null;
@@ -429,74 +468,50 @@
         (platform === 'SHOPEE' && identityApi.extractCatalogPair(platform, item)?.[0]));
     if ((evidence.status === 'not_found' && evidence.identityType === 'seller_sku') ||
         (evidence.status === 'found' && ['exact_title_fallback', 'skeleton_title_fallback'].includes(evidence.reason)) || catalogOnlyPair) {
-        const store = validateAssignments(assignments);
-        const sourceSku = identityApi.extractSellerSku(platform, item);
-        const sourcePair = identityApi.extractCatalogPair(platform, item);
-        if (!sourcePair?.[0] || (!sourcePair?.[1] && !(platform === 'SHOPEE' && sourcePair?.[1] === ''))) return { status: 'unmatched', reason: 'manual_alias_catalog_pair_incomplete', evidence };
-        const sourceAlias = { sellerSku: sourceSku, productText: sourcePair?.[0], variantText: sourcePair?.[1] };
-        const matchingAliases = store.entries.filter(entry => entry.platform === platform &&
-          (entry.manualSkuAliases || []).some(pair => aliasKey(platform, pair) === aliasKey(platform, sourceAlias)));
-        if (matchingAliases.length > 1) return { status: 'ambiguous', reason: 'duplicate_manual_sku_alias', evidence };
-        if (matchingAliases.length === 1) {
-          const assignment = matchingAliases[0];
-          const currentRows = index[platform].registryRows || [];
-          const sameCurrentTarget = row => sameTarget(assignment, row, platform) &&
-            (row.variantName || null) === (assignment.variantName || null) &&
-            String(row.productName || '').trim() === assignment.manualSkuRegistryProductName;
-          if (currentRows.filter(sameCurrentTarget).length !== 1) {
-            return { status: 'ambiguous', reason: 'registry_identity_changed', evidence };
-          }
-          const currentCatalog = identityApi.resolve(index, platform, { catalogText: sourcePair?.join(' ') });
-          if (currentCatalog.status === 'ambiguous' ||
-              (currentCatalog.status === 'found' && !sameCurrentTarget(currentCatalog.candidate))) {
-            return { status: 'ambiguous', reason: 'registry_identity_changed', evidence };
-          }
-          return {
-            status: 'matched', reason: 'registry_manual_alias_exact_verified',
-            identityType: sourceSku ? 'manual_seller_sku_alias' : 'manual_catalog_alias', sellerSku: normalizeSku(sourceSku) || null, evidence,
-            assignment: { ...assignment }, rule: { keyword: normalizeSku(sourceSku) || sourcePair.join(' | '), shortName: assignment.shortName }
-          };
-        }
+      if (!sourcePair?.[0] || (!sourcePair?.[1] && !(platform === 'SHOPEE' && sourcePair?.[1] === ''))) return { status: 'unmatched', reason: 'manual_alias_catalog_pair_incomplete', evidence };
       // A title-only or catalog fallback must not bypass a confirmed alias (ticket 08).
       // An alias binds one row and one variant. The same row is accepted only when the PDF text is
       // exactly that row's name and variant; other text that reaches the row is refused. An alias for
       // another variant of the same product, or for another text pair, does not block this item.
       const sourceVariant = normalizeCatalogPart(sourcePair[1] || '');
       const aliasEntries = store.entries.filter(entry => entry.platform === platform && entry.manualSkuAliases?.length);
-      const reachesAliasRow = entry => evidence.status === 'found' && sameTarget(entry, evidence.candidate, platform);
-      const exactRowText = evidence.status === 'found' &&
+      const aliasCatalogEvidence = (evidence.status !== 'found')
+        ? identityApi.resolveCatalog?.(index, platform, item)
+        : evidence;
+      const reachesAliasRow = entry => aliasCatalogEvidence?.status === 'found' && sameTarget(entry, aliasCatalogEvidence.candidate, platform);
+      const exactRowText = aliasCatalogEvidence?.status === 'found' &&
         normalizeCatalogPart(identityApi.extractCatalogText?.(platform, item) || '') ===
-          normalizeCatalogPart([evidence.candidate.productName, evidence.candidate.variantName].filter(Boolean).join(' '));
+          normalizeCatalogPart([aliasCatalogEvidence.candidate.productName, aliasCatalogEvidence.candidate.variantName].filter(Boolean).join(' '));
       // The full text of the alias row is that row only when the PDF Seller SKU is the one the alias was saved with
       // (empty for a text-only alias) and the registry title is still the one the alias was saved under.
-      const titleMatches = entry => String(entry.manualSkuRegistryProductName || '').trim() === String(evidence.candidate?.productName || '').trim();
+      const titleMatches = entry => String(entry.manualSkuRegistryProductName || '').trim() === String(aliasCatalogEvidence?.candidate?.productName || '').trim();
       const exactAliasRow = exactRowText
         ? aliasEntries.find(entry => reachesAliasRow(entry) && titleMatches(entry) &&
             entry.manualSkuAliases.some(pair => normalizeSku(pair.sellerSku) === normalizeSku(sourceSku)))
         : null;
       if (exactAliasRow) {
-        const rowSku = normalizeSku(evidence.candidate.sellerSku);
+        const rowSku = normalizeSku(aliasCatalogEvidence.candidate.sellerSku);
         const skuEntry = rowSku ? store.entries.find(entry => assignmentKey(entry) === JSON.stringify(['seller_sku', platform, rowSku])) : null;
         if (skuEntry && skuEntry.shortName !== exactAliasRow.shortName) {
-          return { status: 'ambiguous', reason: 'registry_name_conflict_or_stale', evidence };
+          return { status: 'ambiguous', reason: 'registry_name_conflict_or_stale', evidence: aliasCatalogEvidence };
         }
         return {
           status: 'matched', reason: 'registry_catalog_exact_verified',
-          identityType: evidence.identityType, sellerSku: normalizeSku(sourceSku) || null, evidence,
+          identityType: aliasCatalogEvidence.identityType, sellerSku: normalizeSku(sourceSku) || null, evidence: aliasCatalogEvidence,
           assignment: { ...exactAliasRow },
-          rule: { keyword: String(evidence.candidate.variantName || evidence.candidate.productName || '').trim(), shortName: exactAliasRow.shortName }
+          rule: { keyword: String(aliasCatalogEvidence.candidate.variantName || aliasCatalogEvidence.candidate.productName || '').trim(), shortName: exactAliasRow.shortName }
         };
       }
       // The alias row's registry title changed: the stored title must be confirmed again before it matches.
       if (aliasEntries.some(entry => reachesAliasRow(entry) && !titleMatches(entry))) {
-        return { status: 'ambiguous', reason: 'registry_identity_changed', evidence };
+        return { status: 'ambiguous', reason: 'registry_identity_changed', evidence: aliasCatalogEvidence };
       }
       if (aliasEntries.some(entry => reachesAliasRow(entry) ||
           entry.manualSkuAliases.some(pair =>
             (normalizeSku(sourceSku) && normalizeSku(pair.sellerSku) === normalizeSku(sourceSku)) ||
             (!normalizeSku(pair.sellerSku) && normalizeCatalogPart(pair.productText) === normalizeCatalogPart(sourcePair[0]) &&
               normalizeCatalogPart(pair.variantText) === sourceVariant)))) {
-        return { status: 'unmatched', reason: 'manual_alias_catalog_pair_mismatch', evidence };
+        return { status: 'unmatched', reason: 'manual_alias_catalog_pair_mismatch', evidence: aliasCatalogEvidence || evidence };
       }
     }
     if (evidence.status !== 'found') {
@@ -505,7 +520,8 @@
 
     let canonical = canonicalEvidence(index, platform, evidence);
     if (directAssignment && evidence.status === 'found' && evidence.reason === 'exact_title_fallback' &&
-        directAssignment.productId === evidence.candidate.productId) {
+        directAssignment.productId === evidence.candidate.productId &&
+        (!evidence.candidate.sellerSku || normalizeSku(evidence.sellerSku) === normalizeSku(evidence.candidate.sellerSku))) {
       canonical = { ...evidence, identityType: 'seller_sku', sellerSku: evidence.sellerSku };
     }
 

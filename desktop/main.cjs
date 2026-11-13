@@ -111,7 +111,7 @@ function registerStoreIpc(win) {
       const created = createStore({ basePath: BASE_PROFILE_PATH, label: payload.label });
       return { id: created.id, label: created.label };
     },
-    'packmaster:stores:switch': (event, payload) => {
+    'packmaster:stores:switch': async (event, payload) => {
       if (!isTrustedTopFrame(event, win)) throw new Error('Untrusted Packmaster renderer');
       if (!payload || typeof payload !== 'object' || Array.isArray(payload) ||
           Object.keys(payload).some(key => key !== 'id') || typeof payload.id !== 'string') {
@@ -119,6 +119,11 @@ function registerStoreIpc(win) {
       }
       resolveStoreProfile(BASE_PROFILE_PATH, payload.id);
       if (payload.id === ACTIVE_STORE_ID) return { switched: false };
+      if (win && !win.isDestroyed() && win.webContents && win.webContents.session && typeof win.webContents.session.flushStorageData === 'function') {
+        try {
+          await win.webContents.session.flushStorageData();
+        } catch (_) {}
+      }
       setPreferredStore(BASE_PROFILE_PATH, payload.id);
       const args = process.argv.slice(1).filter(arg => !String(arg).startsWith('--store-id'));
       app.relaunch({ args: [...args, `--store-id=${payload.id}`] });
@@ -191,7 +196,7 @@ function createWindow() {
   });
   mainWindow = win;
   registerStoreIpc(win);
-  for (const action of ['get-pending', 'prepare', 'complete']) ipcMain.removeHandler(`packmaster:recovery:${action}`);
+  for (const action of ['get-pending', 'prepare', 'complete', 'discard']) ipcMain.removeHandler(`packmaster:recovery:${action}`);
   const { registerRecoveryIpc } = require('./lib/recovery-ipc.cjs');
   registerRecoveryIpc({ ipcMain, win, profilePath: ACTIVE_PROFILE_PATH, storeId: ACTIVE_STORE_ID, origin: APP_ORIGIN });
   Menu.setApplicationMenu(makeMenu(win));

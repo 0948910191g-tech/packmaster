@@ -87,6 +87,24 @@
       }
     }
 
+    // Added in ticket 23. Old backups omit them (null), which restore treats as "nothing to restore".
+    if (candidate.settings.batchSourceFiles != null) {
+      if (!isPlainObject(candidate.settings.batchSourceFiles)) {
+        throw new Error('settings.batchSourceFiles must be an object of batch id to file name lists');
+      }
+      for (const [batchId, names] of Object.entries(candidate.settings.batchSourceFiles)) {
+        if (!Array.isArray(names) || names.some(name => typeof name !== 'string')) {
+          throw new Error(`settings.batchSourceFiles[${batchId}] must be a list of file names`);
+        }
+      }
+    }
+    if (candidate.settings.skuIntegrityBackup != null) {
+      if (!Array.isArray(candidate.settings.skuIntegrityBackup) ||
+          candidate.settings.skuIntegrityBackup.some(rule => !isPlainObject(rule))) {
+        throw new Error('settings.skuIntegrityBackup must be a list of SKU rule objects');
+      }
+    }
+
     requireArray(candidate.skuRules, 'skuRules');
     requireArray(candidate.batches, 'batches');
     requireArray(candidate.batchOrders, 'batchOrders');
@@ -182,6 +200,73 @@
     };
   };
 
+  // Label images (pdfImage) live in two places: batchOrders[].orders and settings.reprintSnapshots[id].orders.
+  // These helpers mutate the arrays/objects they are given, so callers pass clones.
+  const stripImagesFromOrders = (orders) => {
+    if (!Array.isArray(orders)) return orders;
+    for (const order of orders) {
+      if (order && typeof order === 'object' && 'pdfImage' in order) delete order.pdfImage;
+    }
+    return orders;
+  };
+
+  const stripImagesFromSettings = (settings) => {
+    if (isPlainObject(settings) && isPlainObject(settings.reprintSnapshots)) {
+      for (const snapshot of Object.values(settings.reprintSnapshots)) {
+        if (isPlainObject(snapshot)) stripImagesFromOrders(snapshot.orders);
+      }
+    }
+    return settings;
+  };
+
+  // Returns an image-free deep copy of a backup; the input is not mutated.
+  const stripImagesFromBackup = (backup) => {
+    const copy = cloneJson(backup);
+    if (!isPlainObject(copy)) return copy;
+    if (Array.isArray(copy.batchOrders)) {
+      for (const record of copy.batchOrders) {
+        if (isPlainObject(record)) stripImagesFromOrders(record.orders);
+      }
+    }
+    stripImagesFromSettings(copy.settings);
+    return copy;
+  };
+
+  const SNAPSHOT_LIMIT_LABEL = '64 MB';
+  const IMAGE_FREE_BACKUP_LABEL = 'สำรองแบบไม่รวมรูปใบปะหน้า';
+
+  const isSnapshotTooLargeError = (error) => Boolean(error) && (
+    error.code === 'RECOVERY_SNAPSHOT_TOO_LARGE' || /exceeds the supported size/i.test(String(error.message || ''))
+  );
+
+  const createSnapshotTooLargeError = (cause, { retried }) => {
+    const message = retried
+      ? `Recovery Snapshot ยังมีขนาดเกินขีดจำกัด ${SNAPSHOT_LIMIT_LABEL} แม้ตัดรูปใบปะหน้าออกแล้ว จึงยกเลิกการกู้คืนและข้อมูลเดิมยังอยู่ครบ แนะนำให้ "${IMAGE_FREE_BACKUP_LABEL}" และลดจำนวน Batch เก่าก่อนลองกู้คืนอีกครั้ง`
+      : `Recovery Snapshot มีขนาดเกินขีดจำกัด ${SNAPSHOT_LIMIT_LABEL} (มักเกิดจากรูปใบปะหน้าในประวัติ Batch) จึงยกเลิกการกู้คืนและข้อมูลเดิมยังอยู่ครบ แนะนำให้ "${IMAGE_FREE_BACKUP_LABEL}" แล้วลองกู้คืนอีกครั้ง`;
+    const error = new Error(message);
+    error.code = 'RECOVERY_SNAPSHOT_TOO_LARGE';
+    error.userMessage = message;
+    error.cause = cause;
+    return error;
+  };
+
+  // Runs execute(backup); on a 64 MB snapshot rejection, asks confirm() and retries once with an image-free copy.
+  // A declined/unavailable confirm or a retry that is still too large throws a Thai error naming the alternative.
+  const runWithImageFallback = async ({ backup, execute, confirm }) => {
+    try {
+      return await execute(backup);
+    } catch (error) {
+      if (!isSnapshotTooLargeError(error)) throw error;
+      if (typeof confirm !== 'function' || !confirm()) throw createSnapshotTooLargeError(error, { retried: false });
+      try {
+        return await execute(stripImagesFromBackup(backup));
+      } catch (retryError) {
+        if (isSnapshotTooLargeError(retryError)) throw createSnapshotTooLargeError(retryError, { retried: true });
+        throw retryError;
+      }
+    }
+  };
+
   const requireBatchApi = (batchApi) => {
     if (!batchApi || typeof batchApi !== 'object') throw new Error('Batch API is required');
     for (const method of ['listBatches', 'loadBatch', 'saveBatch', 'deleteBatch']) {
@@ -189,7 +274,7 @@
     }
   };
 
-  const collectBackupPayload = async ({ batchApi, skuRules, settings, appVersion }) => {
+  const collectBackupPayload = async ({ batchApi, skuRules, settings, appVersion, includeImages = true }) => {
     requireBatchApi(batchApi);
     const listed = await batchApi.listBatches();
     if (!Array.isArray(listed)) throw new Error('Batch list could not be read for workspace backup');
@@ -213,12 +298,17 @@
       const meta = loaded.meta;
       const orders = loaded.orders;
       batches.push(cloneJson(meta));
-      batchOrders.push({ batchId: meta.id, orders: cloneJson(orders) });
+      const clonedOrders = cloneJson(orders);
+      if (!includeImages) stripImagesFromOrders(clonedOrders);
+      batchOrders.push({ batchId: meta.id, orders: clonedOrders });
     }
+
+    const clonedSettings = cloneJson(isPlainObject(settings) ? settings : {});
+    if (!includeImages) stripImagesFromSettings(clonedSettings);
 
     const payload = {
       appVersion: typeof appVersion === 'string' ? appVersion : '',
-      settings: cloneJson(isPlainObject(settings) ? settings : {}),
+      settings: clonedSettings,
       skuRules: cloneJson(Array.isArray(skuRules) ? skuRules : []),
       batches,
       batchOrders
@@ -227,18 +317,24 @@
     return payload;
   };
 
+  // Validates the whole backup first, then writes every backup batch BEFORE removing any stale batch.
+  // Each saveBatch/deleteBatch is its own storage transaction, so this is not one atomic step:
+  // a failure midway never deletes a batch the backup lacks, but a batch whose id is in the backup
+  // is overwritten by the backup copy. A fully atomic replace needs a single-transaction call in the
+  // Batch adapter, which is frozen by the guardrail test (see the ticket 21 report).
   const replaceWorkspaceBatches = async (candidate, batchApi) => {
     requireBatchApi(batchApi);
     const backup = validateBackup(candidate);
     const existing = await batchApi.listBatches();
 
-    for (const batch of Array.isArray(existing) ? existing : []) {
-      if (batch && batch.id) await batchApi.deleteBatch(batch.id);
-    }
-
     const ordersByBatchId = new Map(backup.batchOrders.map(row => [row.batchId, row.orders]));
     for (const meta of backup.batches) {
       await batchApi.saveBatch(cloneJson(meta), cloneJson(ordersByBatchId.get(meta.id) || []));
+    }
+
+    const nextIds = new Set(backup.batches.map(meta => meta.id));
+    for (const batch of Array.isArray(existing) ? existing : []) {
+      if (batch && batch.id && !nextIds.has(batch.id)) await batchApi.deleteBatch(batch.id);
     }
   };
 
@@ -249,6 +345,9 @@
     validateBackup,
     getBackupSummary,
     collectBackupPayload,
-    replaceWorkspaceBatches
+    replaceWorkspaceBatches,
+    stripImagesFromBackup,
+    isSnapshotTooLargeError,
+    runWithImageFallback
   };
 });

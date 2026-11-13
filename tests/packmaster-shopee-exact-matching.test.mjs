@@ -28,14 +28,21 @@ test('Shopee matching bridges Thai PDF font variations, displaced marks, and ell
   assert.equal(m36.status, 'matched');
   assert.equal(m36.assignment.shortName, 'ฮากุ 1 ลัง');
 
-  // 3. TikTok Value pack 5:
+  // 3. TikTok Value pack 5: unknown SKU without alias goes to Review; with manual alias it matches
   const itemValue = { text: '( แพ็ค 5 หอ 400 แผน ) HOYA Baby Wipes Value Pack ทิชชูเปียกเด็ก สูตรนํ้าบริสุทธิ์ 99.9% ไมมีแอลกอฮอล ไมมีนํ้าหอม | 5 หอ HOYA Baby Wipes Value Pack รวม 400 แผ น | 5 หอ HOYA Baby Wipes Value Pack', sellerSku: '5 หอ HOYA Baby Wipes Value Pack' };
-  const mValue = registryMatcher.match(index, 'TIKTOK', itemValue, complete, registryIdentity);
-  assert.equal(mValue.status, 'matched');
-  assert.equal(mValue.assignment.shortName, 'HOYA Value 5');
+  const mValueUnmatched = registryMatcher.match(index, 'TIKTOK', itemValue, complete, registryIdentity);
+  assert.equal(mValueUnmatched.status, 'unmatched');
+  assert.equal(mValueUnmatched.reason, 'seller_sku_not_found');
 
-  // 4. Unfound Shopee item saving via saveConfirmedAssignment:
+  const targetRow = regData.platforms.TIKTOK.skuRows.find(r => r.productId === '1736126922142418758');
+  const completeWithAlias = registryMatcher.upsertManualSkuAlias(complete, index, 'TIKTOK', itemValue, targetRow, 'HOYA Value 5', registryIdentity);
+  const mValueMatched = registryMatcher.match(index, 'TIKTOK', itemValue, completeWithAlias, registryIdentity);
+  assert.equal(mValueMatched.status, 'matched');
+  assert.equal(mValueMatched.assignment.shortName, 'HOYA Value 5');
+
+  // 4. Unfound Shopee item saving via saveConfirmedAssignment requires productId and throws
   const unfound = { status: 'not_found', identityType: 'catalog_row', sellerSku: null, catalogKey: 'new_shopee_key' };
-  const bound = registryMatcher.saveConfirmedAssignment(complete, index, 'SHOPEE', unfound, 'ฮากุ 1 ลัง');
-  assert.equal(bound.entries[bound.entries.length - 1].productId, '1457976379');
+  assert.throws(() => {
+    registryMatcher.saveConfirmedAssignment(complete, index, 'SHOPEE', unfound, 'ฮากุ 1 ลัง');
+  }, /Confirmed registry assignment requires productId/);
 });

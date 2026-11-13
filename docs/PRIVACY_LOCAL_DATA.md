@@ -47,10 +47,26 @@ Diagnostics ต้องไม่ส่งออก:
 
 Workspace Backup มีไว้สำหรับ Recovery/ย้ายเครื่อง จึงอาจมี Parsed Order Data มากกว่า Diagnostics ให้ถือเป็นไฟล์ภายในร้าน:
 
+- มีตัวเลือกสำรองแบบ **"ไม่รวมรูปใบปะหน้า (ลดขนาดไฟล์/ซ่อนข้อมูลลูกค้า)"**: ตัดฟิลด์ `pdfImage` ออกจากทุกออเดอร์และ Reprint Snapshot ช่วยลดขนาดไฟล์และไม่ส่งออกรูปภาพใบปะหน้าจริงของลูกค้า ทำให้แชร์ไฟล์เพื่อแก้ปัญหาได้ปลอดภัยขึ้น
 - เก็บใน Drive/Folder ที่ผู้ใช้ควบคุม
 - ไม่แชร์ Public link
 - ไม่ Commit ลง Repository
 - ลบสำเนาที่ไม่จำเป็นเมื่อ Pilot จบตาม policy ของร้าน
+
+## Desktop Recovery Journal & History Snapshots
+
+บน PackMaster Desktop แอปมีระบบบันทึก Recovery Snapshot ก่อนเริ่มการกู้คืน Workspace โดยจัดเก็บใน `recovery/history/` ภายในโปรไฟล์ของผู้ใช้:
+
+- ระบบมีนโยบายตัดทอนประวัติเก่าอัตโนมัติ (Retention & Pruning): เก็บประวัติ Recovery สูงสุดไม่เกิน 10 รายการ และลบ Snapshot ที่มีอายุเกิน 30 วันโดยอัตโนมัติทุกครั้งที่มีการบันทึกประวัติสำเร็จ
+- ป้องกันการสะสมข้อมูลใบปะหน้าและ Snapshot เก่าในดิสก์ของเครื่อง
+
+## Cloud Mode Architecture & Security
+
+เมื่อเปิดใช้งาน Cloud Mode สถาปัตยกรรมข้อมูลจะแบ่งการจัดเก็บอย่างชัดเจน:
+
+- **ข้อมูลบน Cloudflare D1 / Cloudflare Worker**: ข้อมูลงานส่วนกลาง ได้แก่ Batch, Orders, Archive, Reprint Snapshots, Marketplace Registry และ Registry Assignments
+- **ข้อมูลใน Local Browser Storage**: ข้อมูล sidecar เฉพาะเครื่อง ได้แก่ Duplicate history (ลายนิ้วมือไฟล์กันนำเข้าซ้ำ) และ Source filenames (ชื่อไฟล์ต้นทางของ Batch) จะยังคงอยู่ในเครื่องนี้เท่านั้น ไม่ถูกส่งขึ้น Cloud
+
 
 ## Sanitized Fixture สำหรับ Bug
 

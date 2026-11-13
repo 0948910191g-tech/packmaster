@@ -173,20 +173,30 @@ test('saveRegistryAssignment updates registryAssignments and subsequent getMatch
   vm.runInContext(html.slice(html.indexOf('const rereadLocalNamingState ='), endSave) + '\nglobalThis.saveRegistryAssignment = saveRegistryAssignment;', context);
   vm.runInContext(html.slice(startMatch, endMatch) + '\nglobalThis.getMatchResult = getMatchResult;', context);
 
-  // Item with modified Seller SKU resolved by title
-  const item = {
+  // Ticket 13: Item with unknown Seller SKU fails closed and refuses saveRegistryAssignment
+  const unknownItem = {
     qty: 1,
     sellerSku: 'HOYA-VALUE-NEW-LABEL',
     text: '( ราคาส่ง )HOYA Baby Wipes Value Pack 5 ห่อ (400 แผ่น ) ทิชชู่เปียกเด็ก สูตรน้ำบริสุทธิ์ 99.9% ไม่มีแอลกอฮอล์ ไม่มีน้ำหอม | HOYA-VALUE-NEW-LABEL'
   };
+  await assert.rejects(
+    async () => context.saveRegistryAssignment(platform, unknownItem, 'HOYA ฟ้า 5 ห่อ'),
+    /ไม่พบแถวทะเบียนที่ระบุตัวได้แบบแน่นอน/
+  );
 
-  await context.saveRegistryAssignment(platform, item, 'HOYA ฟ้า 5 ห่อ');
-  assert.ok(currentAssignments.entries.some(e => e.sellerSku === 'HOYA-VALUE-NEW-LABEL' && e.shortName === 'HOYA ฟ้า 5 ห่อ'));
+  // Item with valid registered unique Seller SKU saves cleanly
+  const validItem = {
+    qty: 1,
+    sellerSku: 'โนโน่คละสี 4ห่อ',
+    text: '(4ห่อ)NONO BABY WIPES โนโน่เบบี้ไวพส์ 45 แผ่น คละสี | โนโน่คละสี 4ห่อ'
+  };
+  await context.saveRegistryAssignment(platform, validItem, 'โนโน่ 4 ห่อ');
+  assert.ok(currentAssignments.entries.some(e => e.sellerSku === 'โนโน่คละสี 4ห่อ' && e.shortName === 'โนโน่ 4 ห่อ'));
 
-  // Subsequent getMatchResult with only the new sellerSku matches cleanly
-  const result = context.getMatchResult({ sellerSku: 'HOYA-VALUE-NEW-LABEL' }, platform);
+  // Subsequent getMatchResult matches cleanly
+  const result = context.getMatchResult({ sellerSku: 'โนโน่คละสี 4ห่อ' }, platform);
   assert.equal(result.status, 'matched');
-  assert.equal(result.rule.shortName, 'HOYA ฟ้า 5 ห่อ');
+  assert.equal(result.rule.shortName, 'โนโน่ 4 ห่อ');
 });
 
 test('Brand filter chips container and all 6 PPG brand options render in index.html', () => {

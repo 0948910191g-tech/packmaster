@@ -28,7 +28,7 @@ test('Thai skeleton fallback cannot bypass a confirmed alias pair', () => {
   const { index, item, saved } = fixture();
   assert.equal(matcher.match(index, 'TIKTOK', item, saved, identity).status, 'matched');
   const changed = { text: 'มา | two | ALIAS' };
-  assert.equal(identity.resolve(index, 'TIKTOK', changed).reason, 'skeleton_title_fallback');
+  assert.equal(identity.resolve(index, 'TIKTOK', changed).reason, 'seller_sku_not_found');
   assert.equal(matcher.match(index, 'TIKTOK', changed, saved, identity).reason, 'manual_alias_catalog_pair_mismatch');
 });
 

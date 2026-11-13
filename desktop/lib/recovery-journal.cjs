@@ -10,6 +10,8 @@ const HISTORY_DIRECTORY = 'history';
 const FORMAT_VERSION = 1;
 const MAX_JOURNAL_BYTES = 64 * 1024 * 1024;
 const MIN_FREE_BYTES = 1024 * 1024;
+const MAX_HISTORY_SNAPSHOTS = 10;
+const MAX_HISTORY_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 function plainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value) &&
@@ -77,10 +79,12 @@ function serializeSnapshot({ backup, localStorageEntries }) {
     seenKeys.add(entry[0]);
     totalEntryBytes += Buffer.byteLength(entry[0], 'utf8') + Buffer.byteLength(entry[1], 'utf8');
   }
-  if (totalEntryBytes > MAX_JOURNAL_BYTES) throw new Error('Recovery snapshot exceeds the supported size');
+  if (totalEntryBytes > MAX_JOURNAL_BYTES) {
+    throw Object.assign(new Error('Recovery snapshot exceeds the supported size'), { code: 'RECOVERY_SNAPSHOT_TOO_LARGE' });
+  }
   const serialized = JSON.stringify({ backup, localStorageEntries });
   if (Buffer.byteLength(serialized, 'utf8') > MAX_JOURNAL_BYTES - MIN_FREE_BYTES) {
-    throw new Error('Recovery snapshot exceeds the supported size');
+    throw Object.assign(new Error('Recovery snapshot exceeds the supported size'), { code: 'RECOVERY_SNAPSHOT_TOO_LARGE' });
   }
   return JSON.parse(serialized);
 }
@@ -106,7 +110,14 @@ function assertNoSymlink(profilePath, targetPath, fsOps) {
   }
 }
 
-function createRecoveryJournal({ profilePath, storeId, fsOps = {} }) {
+function createRecoveryJournal({
+  profilePath,
+  storeId,
+  fsOps = {},
+  maxHistorySnapshots = MAX_HISTORY_SNAPSHOTS,
+  maxHistoryAgeMs = MAX_HISTORY_AGE_MS,
+  now = () => new Date()
+}) {
   if (typeof profilePath !== 'string' || !path.isAbsolute(profilePath)) throw new Error('Active profile path is invalid');
   if (typeof storeId !== 'string' || !storeId || storeId.length > 128) throw new Error('Active store ID is invalid');
 
@@ -160,7 +171,9 @@ function createRecoveryJournal({ profilePath, storeId, fsOps = {} }) {
   function atomicWrite(journal) {
     const contents = JSON.stringify(journal);
     const bytes = Buffer.byteLength(contents, 'utf8');
-    if (bytes > MAX_JOURNAL_BYTES) throw new Error('Recovery snapshot exceeds the supported size');
+    if (bytes > MAX_JOURNAL_BYTES) {
+      throw Object.assign(new Error('Recovery snapshot exceeds the supported size'), { code: 'RECOVERY_SNAPSHOT_TOO_LARGE' });
+    }
     ensureDirectory();
     if (typeof ops.statfsSync === 'function') {
       const stats = ops.statfsSync(journalDirectory);
@@ -209,6 +222,7 @@ function createRecoveryJournal({ profilePath, storeId, fsOps = {} }) {
         throw new Error('Existing recovery history entry does not match the completed snapshot');
       }
       validateStoredSnapshot(existing.snapshot);
+      pruneHistorySnapshots();
       return;
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
@@ -232,12 +246,80 @@ function createRecoveryJournal({ profilePath, storeId, fsOps = {} }) {
       // linkSync creates the immutable archive name only if it does not exist.
       ops.linkSync(temporaryPath, archivePath);
       ops.unlinkSync(temporaryPath);
+      pruneHistorySnapshots();
     } catch (error) {
       if (descriptor !== undefined) {
         try { ops.closeSync(descriptor); } catch {}
       }
       try { ops.unlinkSync(temporaryPath); } catch {}
       throw error;
+    }
+  }
+
+  function pruneHistorySnapshots() {
+    ensureHistoryDirectory();
+    let entries = [];
+    try {
+      entries = ops.readdirSync(historyDirectory);
+    } catch (err) {
+      if (err.code === 'ENOENT') return;
+      throw err;
+    }
+    const jsonFiles = entries.filter(file => file.endsWith('.json') && !file.startsWith('.'));
+    if (jsonFiles.length === 0) return;
+
+    const currentTime = typeof now === 'function' ? now().getTime() : (now instanceof Date ? now.getTime() : Date.now());
+    const snapshotMetas = [];
+
+    for (const fileName of jsonFiles) {
+      const filePath = path.join(historyDirectory, fileName);
+      assertNoSymlink(profilePath, filePath, ops);
+      let fileTimestamp = null;
+      try {
+        const raw = ops.readFileSync(filePath, 'utf8');
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.updatedAt === 'string') {
+          fileTimestamp = Date.parse(parsed.updatedAt);
+        }
+      } catch (err) {
+        // Fallback to mtime if file cannot be parsed
+      }
+      if (!Number.isFinite(fileTimestamp)) {
+        try {
+          const stats = ops.statSync(filePath);
+          fileTimestamp = stats.mtimeMs;
+        } catch (err) {
+          fileTimestamp = 0;
+        }
+      }
+      snapshotMetas.push({ fileName, filePath, timestamp: fileTimestamp });
+    }
+
+    const filesToDelete = new Set();
+    const validSnapshots = [];
+    for (const item of snapshotMetas) {
+      if (currentTime - item.timestamp > maxHistoryAgeMs) {
+        filesToDelete.add(item.filePath);
+      } else {
+        validSnapshots.push(item);
+      }
+    }
+
+    validSnapshots.sort((a, b) => b.timestamp - a.timestamp);
+
+    if (validSnapshots.length > maxHistorySnapshots) {
+      for (let i = maxHistorySnapshots; i < validSnapshots.length; i++) {
+        filesToDelete.add(validSnapshots[i].filePath);
+      }
+    }
+
+    for (const deleteTarget of filesToDelete) {
+      assertNoSymlink(profilePath, deleteTarget, ops);
+      try {
+        ops.unlinkSync(deleteTarget);
+      } catch (err) {
+        if (err.code !== 'ENOENT') throw err;
+      }
     }
   }
 
@@ -275,8 +357,21 @@ function createRecoveryJournal({ profilePath, storeId, fsOps = {} }) {
       }
       atomicWrite({ ...journal, phase: 'completed', updatedAt: new Date().toISOString() });
       return { success: true };
+    },
+    discard() {
+      ensureDirectory();
+      try {
+        ops.unlinkSync(journalPath);
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
+      return { success: true };
     }
   };
 }
 
-module.exports = { createRecoveryJournal };
+module.exports = {
+  createRecoveryJournal,
+  MAX_HISTORY_SNAPSHOTS,
+  MAX_HISTORY_AGE_MS
+};

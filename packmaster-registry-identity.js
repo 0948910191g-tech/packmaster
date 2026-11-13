@@ -56,13 +56,15 @@
           variantName: row.variantName || null
         };
         addCandidate(sellerSkus, normalizeSellerSku(row.sellerSku), candidate);
-        addCandidate(catalogTexts, normalizeCatalogText(productName), candidate);
+        if (!row.variantName) {
+          addCandidate(catalogTexts, normalizeCatalogText(productName), candidate);
+          addCandidate(catalogSkeletons, normalizeThaiSkeleton(productName), candidate);
+        }
         addCandidate(
           catalogTexts,
           normalizeCatalogText([productName, row.variantName].filter(Boolean).join(' ')),
           candidate
         );
-        addCandidate(catalogSkeletons, normalizeThaiSkeleton(productName), candidate);
         addCandidate(
           catalogSkeletons,
           normalizeThaiSkeleton([productName, row.variantName].filter(Boolean).join(' ')),
@@ -417,9 +419,44 @@
     if (namesOtherProduct(index, platform, item, skuCandidate.productId)) return true;
     const skuVariant = String(skuCandidate.variantName || '').trim();
     if (!guessCandidate) {
-      // No name guess: a TikTok variant column that genuinely conflicts with the SKU row's variant contradicts it.
-      const pdfVariantColumn = tikTokVariantColumn(platform, item);
-      return Boolean(pdfVariantColumn && skuVariant && !variantsAgree(pdfVariantColumn, skuVariant));
+      if (skuVariant) {
+        // Explicit PDF variant columns / fields
+        const pdfVariantColumn = tikTokVariantColumn(platform, item);
+        if (pdfVariantColumn && !variantsAgree(pdfVariantColumn, skuVariant)) {
+          return true;
+        }
+        const rawText = typeof item === 'string' ? stripInvisible(item) : stripInvisible(item?.text);
+        if (typeof rawText === 'string' && rawText.includes('|')) {
+          const pieces = rawText.split('|').map(piece => piece.trim()).filter(Boolean);
+          if (pieces.length === 2 && !/^seller\s*sku\s*:\s*/i.test(pieces[1]) && extractSellerSku(platform, item)) {
+            if (!variantsAgree(pieces[1], skuVariant)) return true;
+          }
+        }
+        if (item && typeof item === 'object') {
+          const pairVariant = item.catalogPair?.[1];
+          if (pairVariant && !variantsAgree(pairVariant, skuVariant)) return true;
+          const propVariant = item.variantName || item.variation;
+          if (propVariant && !variantsAgree(propVariant, skuVariant)) return true;
+        }
+
+        // Un-piped / Shopee extractCatalogText
+        if (named.length === 0) {
+          const fullText = (extractCatalogText(platform, item) || '').replace(/seller\s*sku\s*:\s*[^\s|]+/i, '').trim();
+          let rem = withoutProductName(fullText, skuCandidate.productName);
+          if (ELLIPSIS.test(rem)) {
+            const parts = rem.split(/\.{3,}|…/);
+            rem = parts[parts.length - 1].trim();
+          }
+          if (rem && !variantsAgree(rem, skuVariant)) {
+            const normRem = normalizeCatalogText(rem);
+            const normTitle = normalizeCatalogText(skuCandidate.productName || '');
+            if (!normTitle.includes(normRem)) {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
     }
     if (guessCandidate.productId !== skuCandidate.productId) return true; // a different product
     const guessVariant = String(guessCandidate.variantName || '').trim();
@@ -444,55 +481,38 @@
     if (skuKey) {
       const candidates = index[platform].sellerSkus.get(skuKey) || [];
       if (candidates.length === 0) {
-        const rawText = typeof item === 'string' ? stripInvisible(item) : (typeof item?.text === 'string' ? stripInvisible(item.text) : null);
-        let productTitle = null;
-        if (rawText && rawText.includes('|')) {
-          const pieces = rawText.split('|').map(piece => piece.trim()).filter(Boolean);
-          if (pieces.length > 0) productTitle = pieces[0];
-        }
-        if (!productTitle && item && typeof item === 'object') {
-          if (typeof item.productName === 'string' && item.productName.trim()) {
-            productTitle = item.productName.trim();
-          } else if (typeof item.title === 'string' && item.title.trim()) {
-            productTitle = item.title.trim();
+        const fullCatalogText = extractCatalogText(platform, item);
+        const catalogKey = normalizeCatalogText(fullCatalogText);
+        let titleCandidate = null;
+        let matchReason = null;
+        if (catalogKey) {
+          const titleCandidates = index[platform].catalogTexts.get(catalogKey) || [];
+          if (titleCandidates.length === 1) {
+            titleCandidate = titleCandidates[0];
+            matchReason = 'exact_title_fallback';
           }
         }
-
-        if (productTitle) {
-          const titleKey = normalizeCatalogText(productTitle);
-          if (titleKey) {
-            const titleCandidates = index[platform].catalogTexts.get(titleKey) || [];
-            if (titleCandidates.length === 1) {
-              const candidate = titleCandidates[0];
-              return {
-                status: 'found',
-                identityType: 'catalog_row',
-                sellerSku: skuText,
-                catalogKey: titleKey,
-                candidate: { ...candidate },
-                captureDate: index[platform].captureDate,
-                reason: 'exact_title_fallback'
-              };
-            }
-          }
-
-          // Secondary title fallback: normalized Thai skeleton
-          const titleSkeletonKey = normalizeThaiSkeleton(productTitle);
-          if (titleSkeletonKey && index[platform].catalogSkeletons) {
-            const skelCandidates = index[platform].catalogSkeletons.get(titleSkeletonKey) || [];
+        if (!titleCandidate) {
+          const skelKey = normalizeThaiSkeleton(fullCatalogText);
+          if (skelKey && index[platform].catalogSkeletons) {
+            const skelCandidates = index[platform].catalogSkeletons.get(skelKey) || [];
             if (skelCandidates.length === 1) {
-              const candidate = skelCandidates[0];
-              return {
-                status: 'found',
-                identityType: 'catalog_row',
-                sellerSku: skuText,
-                catalogKey: titleKey || titleSkeletonKey,
-                candidate: { ...candidate },
-                captureDate: index[platform].captureDate,
-                reason: 'skeleton_title_fallback'
-              };
+              titleCandidate = skelCandidates[0];
+              matchReason = 'skeleton_title_fallback';
             }
           }
+        }
+
+        if (titleCandidate && Boolean(titleCandidate.variantName) && !titleCandidate.sellerSku) {
+          return {
+            status: 'found',
+            identityType: 'catalog_row',
+            sellerSku: skuText,
+            catalogKey: catalogKey || normalizeThaiSkeleton(fullCatalogText),
+            candidate: { ...titleCandidate },
+            captureDate: index[platform].captureDate,
+            reason: matchReason
+          };
         }
         return { status: 'not_found', reason: 'seller_sku_not_found', identityType: 'seller_sku', sellerSku: skuText };
       }
@@ -555,6 +575,7 @@
     extractSellerSku,
     extractCatalogText,
     extractCatalogPair,
+    resolveCatalog,
     resolve
   };
 });

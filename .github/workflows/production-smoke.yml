@@ -37,6 +37,9 @@ jobs:
               && grep -Fq './packmaster-print-scope.js' <<< "$html" \
               && grep -Fq './packmaster-print-flow.js' <<< "$html" \
               && grep -Fq './packmaster-save-guards.js' <<< "$html" \
+              && grep -Fq './packmaster-restore-safety.js' <<< "$html" \
+              && grep -Fq './packmaster-restore-preview.js' <<< "$html" \
+              && grep -Fq './packmaster-restore-runner.js' <<< "$html" \
               && grep -Fq 'ใช้กับ Order นี้' <<< "$html" \
               && grep -Fq "handleExportPDF('FULL_BATCH')" <<< "$html" \
               && grep -Fq "handlePrint('FULL_BATCH')" <<< "$html" \
