@@ -37,14 +37,25 @@
 
   // Exact SKU comparison with typographic PDF variations normalized. Never
   // infer an SKU from product titles, keyword rules, or loose substrings.
+  // Invisible characters that PDFs and marketplace copies add or drop without
+  // changing the words: soft hyphen, zero-width space/non-joiner/joiner, word
+  // joiner, and byte-order mark.
+  const INVISIBLE_CHARACTERS = /[\u00AD\u200B-\u200D\u2060\uFEFF]/g;
+
+  function stripInvisible(value) {
+    return typeof value === 'string' ? value.replace(INVISIBLE_CHARACTERS, '') : '';
+  }
+
+  // Seller SKU rule and canonical display form. Whitespace runs collapse to one
+  // space; a space is never deleted, so SKUs that differ by one internal space
+  // stay distinct. Invisible characters are removed before anything else.
   function normalizeSellerSku(value) {
     if (typeof value !== 'string') return '';
-    return repairThaiPdfGlyphs(value)
+    return repairThaiPdfGlyphs(stripInvisible(value))
       .normalize('NFKC')
       // Thai PDFs may emit nikhahit before a tone mark while marketplace text
       // stores the same visible syllable as tone mark + nikhahit.
       .replace(/\u0E4D([\u0E48-\u0E4B])/g, '$1\u0E4D')
-      .replace(/[\u200B-\u200D\uFEFF]/g, '')
       .replace(/\s+/g, ' ')
       .trim()
       // PDF text may insert a space between a quantity and its pack or sheet unit.
@@ -52,9 +63,18 @@
       .toUpperCase();
   }
 
-  function normalizeCatalogText(value) {
-    return normalizeSellerSku(value).replace(/\s+/g, '');
+  // Key for catalog text, alias text and Local product text (not for Seller SKU).
+  // Spaces are removed, except a space between two digits, which keeps numbers
+  // apart ("1 2" is not "12"). Texts that differ only by spaces, line breaks,
+  // NBSP or invisible characters get the same key.
+  const isDigit = character => character !== undefined && /[0-9]/.test(character);
+  function normalizeMatchKey(value) {
+    return normalizeSellerSku(value).replace(/ /g, (space, offset, text) =>
+      isDigit(text[offset - 1]) && isDigit(text[offset + 1]) ? ' ' : '');
   }
+
+  // Kept as a name for existing callers; it is the same rule, not a second one.
+  const normalizeCatalogText = normalizeMatchKey;
 
   // Thai text skeleton for fuzzy-safe fallback: strips Thai vowels/tones/diacritics
   // and non-alphanumeric chars to bridge PDF font extraction glitches and reordered marks.
@@ -68,5 +88,5 @@
       .toUpperCase();
   }
 
-  return { cleanPdfSellerSku, normalizeSellerSku, normalizeCatalogText, normalizeThaiSkeleton, repairThaiPdfGlyphs };
+  return { cleanPdfSellerSku, normalizeSellerSku, normalizeMatchKey, normalizeCatalogText, normalizeThaiSkeleton, repairThaiPdfGlyphs, stripInvisible };
 });

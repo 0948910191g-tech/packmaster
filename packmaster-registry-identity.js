@@ -9,11 +9,12 @@
 
   if (!skuNormalization) throw new Error('Seller SKU normalization module is required');
   const PLATFORMS = ['TIKTOK', 'SHOPEE'];
+  // One text rule for every comparison; see packmaster-sku-normalization.js.
   const normalizeSellerSku = skuNormalization.normalizeSellerSku;
-  const normalizeCatalogText = skuNormalization.normalizeCatalogText ||
-    (value => normalizeSellerSku(value).replace(/\s+/g, ''));
-  const normalizeThaiSkeleton = skuNormalization.normalizeThaiSkeleton ||
-    (value => normalizeCatalogText(value));
+  const normalizeMatchKey = skuNormalization.normalizeMatchKey;
+  const normalizeCatalogText = normalizeMatchKey;
+  const stripInvisible = skuNormalization.stripInvisible;
+  const normalizeThaiSkeleton = skuNormalization.normalizeThaiSkeleton;
 
   const candidateKey = candidate =>
     JSON.stringify([
@@ -102,9 +103,9 @@
   const extractSellerSku = (platform, item) => {
     if (!PLATFORMS.includes(platform) || !item) return null;
     if (typeof item.sellerSku === 'string' && item.sellerSku.trim()) {
-      return skuNormalization.cleanPdfSellerSku(item.sellerSku) || null;
+      return skuNormalization.cleanPdfSellerSku(stripInvisible(item.sellerSku)) || null;
     }
-    const text = typeof item === 'string' ? item : item.text;
+    const text = typeof item === 'string' ? stripInvisible(item) : stripInvisible(item.text);
     if (typeof text !== 'string') return null;
     const explicit = text.match(/(?:^|[|\n])\s*Seller\s*SKU\s*[:：]\s*([^|\n]+)/i);
     if (explicit?.[1]?.trim()) return skuNormalization.cleanPdfSellerSku(explicit[1]) || null;
@@ -119,8 +120,8 @@
 
   const extractCatalogText = (platform, item) => {
     if (!PLATFORMS.includes(platform) || !item) return null;
-    if (typeof item.catalogText === 'string' && item.catalogText.trim()) return item.catalogText.trim();
-    const text = typeof item === 'string' ? item : item.text;
+    if (typeof item.catalogText === 'string' && stripInvisible(item.catalogText).trim()) return stripInvisible(item.catalogText).trim();
+    const text = typeof item === 'string' ? stripInvisible(item) : stripInvisible(item.text);
     if (typeof text !== 'string' || !text.trim()) return null;
     if (platform === 'TIKTOK') {
       const pieces = text.split('|').map(piece => piece.trim()).filter(Boolean);
@@ -132,10 +133,10 @@
 
   const extractCatalogPair = (platform, item) => {
     if (!PLATFORMS.includes(platform) || !item) return null;
-    if (Array.isArray(item.catalogPair) && item.catalogPair.length === 2 && item.catalogPair.every(value => typeof value === 'string' && value.trim())) {
-      return item.catalogPair.map(value => value.trim());
+    if (Array.isArray(item.catalogPair) && item.catalogPair.length === 2 && item.catalogPair.every(value => typeof value === 'string' && stripInvisible(value).trim())) {
+      return item.catalogPair.map(value => stripInvisible(value).trim());
     }
-    const text = typeof item === 'string' ? item : item.text;
+    const text = typeof item === 'string' ? stripInvisible(item) : stripInvisible(item.text);
     if (platform === 'TIKTOK' && typeof text === 'string') {
       const pieces = text.split('|').map(piece => piece.trim());
       if ((pieces.length === 2 || pieces.length === 3) && pieces[0] && pieces[1]) return pieces.slice(0, 2);
@@ -196,7 +197,8 @@
     }
 
     // Tertiary fallback: prefix and ellipsis matching for Flash/Shopee labels where title was truncated
-    if (Array.isArray(index[platform].catalogRowsList) && rawText.length >= 20) {
+    // Length gate ignores whitespace runs so that line breaks do not change which path runs.
+    if (Array.isArray(index[platform].catalogRowsList) && rawText.replace(/\s+/g, ' ').length >= 20) {
       const parts = rawText.split(/\.{3,}|\u2026/).map(normalizeThaiSkeleton).filter(p => p.length >= 6);
       if (parts.length > 0) {
         const ellipsisCandidates = index[platform].catalogRowsList.filter(row => {
@@ -246,7 +248,7 @@
     if (skuKey) {
       const candidates = index[platform].sellerSkus.get(skuKey) || [];
       if (candidates.length === 0) {
-        const rawText = typeof item === 'string' ? item : (typeof item?.text === 'string' ? item.text : null);
+        const rawText = typeof item === 'string' ? stripInvisible(item) : (typeof item?.text === 'string' ? stripInvisible(item.text) : null);
         let productTitle = null;
         if (rawText && rawText.includes('|')) {
           const pieces = rawText.split('|').map(piece => piece.trim()).filter(Boolean);

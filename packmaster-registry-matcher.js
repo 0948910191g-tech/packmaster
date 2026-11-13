@@ -11,8 +11,11 @@
   const PLATFORMS = new Set(['TIKTOK', 'SHOPEE']);
   const SCHEMA = 'packmaster-registry-sku-assignments';
   const LOCAL_ASSIGNMENTS_KEY = 'packmasterRegistrySkuAssignmentsV1';
+  // Seller SKU: space-sensitive canonical form. Same meaning as before for external callers.
   const normalizeSku = skuNormalization.normalizeSellerSku;
-  const normalizeCatalogPart = value => normalizeSku(value);
+  // Catalog, alias and Local product text: spaces are not significant (see sku module).
+  const normalizeMatchKey = skuNormalization.normalizeMatchKey;
+  const normalizeCatalogPart = value => normalizeMatchKey(value);
   const newAssignments = () => ({ schema: SCHEMA, version: 1, entries: [] });
 
   const catalogVariantKey = entry =>
@@ -92,7 +95,7 @@
           (candidate.version === 2 && entry?.manualSkuAlias) ||
           manualSkuAliases.some(pair => !pair.productText || (!pair.variantText && entry.platform !== 'SHOPEE') || (pair.sellerSku && !normalizeSku(pair.sellerSku)) ||
             !normalizeCatalogPart(pair.productText) || (pair.variantText && !normalizeCatalogPart(pair.variantText)) ||
-            (sellerSku && normalizeSku(pair.sellerSku) === sellerSku)) ||
+            (sellerSku && normalizeSku(pair.sellerSku) === normalizeSku(sellerSku))) ||
           (manualSkuAliases.length && (candidate.version !== 2 || typeof entry.manualSkuRegistryProductName !== 'string' || !entry.manualSkuRegistryProductName.trim())) ||
           (!manualSkuAliases.length && entry?.manualSkuRegistryProductName !== undefined) ||
           (!sellerSku && identityType !== 'catalog_row')) {
@@ -533,6 +536,7 @@
     upsertManualSkuAlias,
     match,
     normalizeSku,
+    normalizeMatchKey,
     assignmentKey,
     loadLocalAssignments,
     saveLocalAssignments

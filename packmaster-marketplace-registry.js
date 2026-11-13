@@ -1,8 +1,10 @@
 (function (root, factory) {
-  const api = factory();
+  const api = factory(root, typeof module !== 'undefined' && module.exports
+    ? require('./packmaster-sku-normalization.js')
+    : null);
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.PackMasterMarketplaceRegistry = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (root, nodeSkuNormalization) {
   'use strict';
 
   const SCHEMA = 'packmaster-marketplace-registry';
@@ -20,8 +22,24 @@
   const isValidDate = (value) => typeof value === 'string' && !Number.isNaN(Date.parse(value));
   const idFieldFor = (platform) => platform === 'TIKTOK' ? 'productId' : 'itemId';
   const nameFieldFor = (platform) => platform === 'TIKTOK' ? 'productName' : 'title';
-  const normalizeLocalPart = value => String(value || '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
-  const localProductKey = row => JSON.stringify([row.platform, normalizeLocalPart(row.productText), normalizeLocalPart(row.variantText), normalizeLocalPart(row.sellerSku)]);
+  // Exact-duplicate guard, unchanged from before: a weak text key that loading
+  // always enforced. Only the new matcher-level collision is relaxed on load.
+  const exactLocalKey = row => JSON.stringify([row.platform,
+    String(row.productText || '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase(),
+    String(row.variantText || '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase(),
+    String(row.sellerSku || '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase()]);
+  // Creation guard: the same keys the matcher uses. Resolved at call time because
+  // the browser loads this file before the normalizer; Node passes it in.
+  const skuApi = () => {
+    const sku = nodeSkuNormalization || root.PackMasterSkuNormalization;
+    if (!sku) throw new Error('Seller SKU normalization module is required');
+    return sku;
+  };
+  const matcherLocalKey = row => {
+    const sku = skuApi();
+    return JSON.stringify([row.platform, sku.normalizeMatchKey(row.productText),
+      sku.normalizeMatchKey(row.variantText), sku.normalizeSellerSku(row.sellerSku)]);
+  };
 
   const createEmptyStore = (now = new Date()) => {
     const date = now instanceof Date ? now : new Date(now);
@@ -153,14 +171,15 @@
     if (candidate.localProducts !== undefined) {
       if (!Array.isArray(candidate.localProducts) || candidate.localProducts.length > 10000) throw new Error('Invalid Local products');
       const ids = new Set();
-      const keys = new Set();
+      const exactKeys = new Set();
       for (const row of candidate.localProducts) {
         if (!isPlainObject(row) || !hasText(row.id) || !row.id.startsWith('local-') || !PLATFORMS.includes(row.platform) ||
             !hasText(row.productText) || typeof row.variantText !== 'string' || typeof row.sellerSku !== 'string' || !hasText(row.shortName) ||
             Object.keys(row).some(key => !['id', 'platform', 'productText', 'variantText', 'sellerSku', 'shortName'].includes(key))) throw new Error('Invalid Local product');
-        const key = localProductKey(row);
-        if (ids.has(row.id) || keys.has(key)) throw new Error('Duplicate Local product');
-        ids.add(row.id); keys.add(key);
+        const exact = exactLocalKey(row);
+        if (ids.has(row.id) || exactKeys.has(exact)) throw new Error('Duplicate Local product');
+        ids.add(row.id);
+        exactKeys.add(exact);
       }
     }
     for (const platform of Object.keys(candidate.platforms)) {
@@ -171,9 +190,16 @@
     return cloneJson(candidate);
   };
 
+  // Creation refuses a second Local product the matcher would treat as the same
+  // text. Loading accepts such a collision (the matcher then reports it as
+  // ambiguous) so an existing store never fails to open.
   const addLocalProduct = (candidate, product) => {
     const store = validateStore(candidate);
-    return validateStore({ ...store, localProducts: [...(store.localProducts || []), product] });
+    const prior = store.localProducts || [];
+    const next = validateStore({ ...store, localProducts: [...prior, product] });
+    const key = matcherLocalKey(product);
+    if (prior.some(row => matcherLocalKey(row) === key)) throw new Error('Duplicate Local product');
+    return next;
   };
 
   const replacePlatformRegistry = (currentStore, sourceRegistry, now = new Date()) => {
