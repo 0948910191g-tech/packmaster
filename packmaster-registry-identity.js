@@ -238,6 +238,62 @@
     };
   };
 
+  // B9: a unique exact Seller SKU keeps its row unless the PDF text contradicts it.
+  // Variants are matched as whole tokens: "แพ็ค 3" does not match "แพ็ค 30", and "3"
+  // does not match inside "3.5" or "5+5".
+  const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const variantPattern = value => {
+    const text = normalizeSellerSku(value);
+    let pattern = '';
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === ' ') continue;
+      pattern += escapeRegex(text[i]);
+      const digitGap = text[i + 1] === ' ' && /[0-9]/.test(text[i]) && /[0-9]/.test(text[i + 2] || '');
+      if (digitGap) {
+        pattern += '\\s';
+        i++;
+      } else {
+        pattern += '\\s*';
+      }
+    }
+    return pattern;
+  };
+  const variantAppears = (text, variant) => {
+    const pattern = variantPattern(variant);
+    if (!pattern) return false;
+    return new RegExp(
+      `(?<![\\p{L}\\p{N}])(?<!\\p{N}[.+/])${pattern}(?![\\p{L}\\p{N}])(?![.+/]\\p{N})`, 'u')
+      .test(normalizeSellerSku(text));
+  };
+  // The SKU row's product name can contain variant words ("Cup Mini"), so it is removed first.
+  const withoutProductName = (text, productName) => {
+    const body = normalizeSellerSku(text);
+    const name = normalizeSellerSku(productName || '');
+    return name ? body.split(name).join(' ') : body;
+  };
+  // true = the SKU row is contradicted, so the caller returns Review.
+  const skuRowContradicted = (index, platform, item, skuCandidate, guessCandidate) => {
+    const body = withoutProductName(extractCatalogText(platform, item) || '', skuCandidate.productName);
+    const productVariants = [...new Set((index[platform].registryRows || [])
+      .filter(row => row.productId === skuCandidate.productId && row.variantName)
+      .map(row => String(row.variantName).trim()))];
+    const named = productVariants.filter(variant => variantAppears(body, variant));
+    if (named.length > 1) return true; // the PDF names two variants of this product
+    if (!guessCandidate) return false; // no name guess: behaviour unchanged
+    if (guessCandidate.productId !== skuCandidate.productId) return true; // a different product
+    const guessVariant = String(guessCandidate.variantName || '').trim();
+    if (guessVariant && variantAppears(body, guessVariant)) return true;
+    if (named.length === 0) {
+      // No registry variant in the text: only a TikTok variant column that names something the registry lacks contradicts.
+      const pdfVariantColumn = platform === 'TIKTOK'
+        ? String(extractCatalogPair(platform, item)?.[1] || '').trim()
+        : '';
+      return Boolean(pdfVariantColumn);
+    }
+    const skuVariant = String(skuCandidate.variantName || '').trim();
+    return !(skuVariant && named[0] === skuVariant);
+  };
+
   const resolve = (index, platform, item) => {
     if (!PLATFORMS.includes(platform) || !index?.[platform]) {
       return { status: 'unavailable', reason: 'platform_or_registry_unavailable' };
@@ -302,8 +358,11 @@
       }
       if (candidates.length === 1) {
         const catalogEvidence = resolveCatalog(index, platform, item);
-        if (catalogEvidence.status === 'found' &&
-            candidateKey(catalogEvidence.candidate) !== candidateKey(candidates[0])) {
+        const guess = catalogEvidence.status === 'found' &&
+          candidateKey(catalogEvidence.candidate) !== candidateKey(candidates[0])
+          ? catalogEvidence.candidate
+          : null;
+        if (skuRowContradicted(index, platform, item, candidates[0], guess)) {
           return {
             status: 'ambiguous',
             reason: 'seller_sku_catalog_identity_conflict',
