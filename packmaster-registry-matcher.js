@@ -343,15 +343,21 @@
       variantName: candidate.variantName,
       shortName: shortName.trim()
     };
-    if (base.manualSkuAliases?.length && base.manualSkuRegistryProductName !== registryProductName) {
-      throw new Error('The selected registry product title changed after the existing alias was saved; review the mapping before adding another');
+    // B6: the row was matched by productId, model and variant above, so a title edit keeps the same row.
+    // Re-binding after a title edit needs the user to confirm the current title; the stored title is updated below.
+    const staleAliasTitle = existingTarget.some(entry => entry.manualSkuAliases?.length &&
+      entry.manualSkuRegistryProductName !== registryProductName);
+    if (staleAliasTitle && options.confirmedRegistryProductName !== registryProductName) {
+      throw new Error('The selected registry product title changed after the existing alias was saved; confirm the current title to re-bind this alias');
     }
     const existingAliases = base.manualSkuAliases || [];
     const samePair = existingAliases.some(existing => aliasKey(platform, existing) === aliasKey(platform, pair));
     const incoming = { ...base, variantName: candidate.variantName, shortName: shortName.trim(), manualSkuAliases: samePair ? existingAliases : [...existingAliases, pair],
       manualSkuRegistryProductName: registryProductName };
-    const nextEntries = store.entries.filter(entry => entry !== base).map(entry =>
-      sameManualTarget(entry, candidate) ? { ...entry, shortName: shortName.trim() } : entry);
+    // A confirmed title is stored on every alias-bearing entry of this row, so none keeps the old title.
+    const nextEntries = store.entries.filter(entry => entry !== base).map(entry => sameManualTarget(entry, candidate)
+      ? { ...entry, shortName: shortName.trim(), ...(entry.manualSkuAliases?.length ? { manualSkuRegistryProductName: registryProductName } : {}) }
+      : entry);
     nextEntries.push(incoming);
     return validateAssignments({ ...store, version: 2, entries: nextEntries });
   }
@@ -451,12 +457,45 @@
             assignment: { ...assignment }, rule: { keyword: normalizeSku(sourceSku) || sourcePair.join(' | '), shortName: assignment.shortName }
           };
         }
-      // A title-only fallback must not bypass a confirmed SKU+catalog-pair restriction.
-      if (store.entries.some(entry => entry.platform === platform &&
-          (entry.manualSkuAliases || []).some(pair =>
+      // A title-only or catalog fallback must not bypass a confirmed alias (ticket 08).
+      // An alias binds one row and one variant. The same row is accepted only when the PDF text is
+      // exactly that row's name and variant; other text that reaches the row is refused. An alias for
+      // another variant of the same product, or for another text pair, does not block this item.
+      const sourceVariant = normalizeCatalogPart(sourcePair[1] || '');
+      const aliasEntries = store.entries.filter(entry => entry.platform === platform && entry.manualSkuAliases?.length);
+      const reachesAliasRow = entry => evidence.status === 'found' && sameTarget(entry, evidence.candidate, platform);
+      const exactRowText = evidence.status === 'found' &&
+        normalizeCatalogPart(identityApi.extractCatalogText?.(platform, item) || '') ===
+          normalizeCatalogPart([evidence.candidate.productName, evidence.candidate.variantName].filter(Boolean).join(' '));
+      // The full text of the alias row is that row only when the PDF Seller SKU is the one the alias was saved with
+      // (empty for a text-only alias) and the registry title is still the one the alias was saved under.
+      const titleMatches = entry => String(entry.manualSkuRegistryProductName || '').trim() === String(evidence.candidate?.productName || '').trim();
+      const exactAliasRow = exactRowText
+        ? aliasEntries.find(entry => reachesAliasRow(entry) && titleMatches(entry) &&
+            entry.manualSkuAliases.some(pair => normalizeSku(pair.sellerSku) === normalizeSku(sourceSku)))
+        : null;
+      if (exactAliasRow) {
+        const rowSku = normalizeSku(evidence.candidate.sellerSku);
+        const skuEntry = rowSku ? store.entries.find(entry => assignmentKey(entry) === JSON.stringify(['seller_sku', platform, rowSku])) : null;
+        if (skuEntry && skuEntry.shortName !== exactAliasRow.shortName) {
+          return { status: 'ambiguous', reason: 'registry_name_conflict_or_stale', evidence };
+        }
+        return {
+          status: 'matched', reason: 'registry_catalog_exact_verified',
+          identityType: evidence.identityType, sellerSku: normalizeSku(sourceSku) || null, evidence,
+          assignment: { ...exactAliasRow },
+          rule: { keyword: String(evidence.candidate.variantName || evidence.candidate.productName || '').trim(), shortName: exactAliasRow.shortName }
+        };
+      }
+      // The alias row's registry title changed: the stored title must be confirmed again before it matches.
+      if (aliasEntries.some(entry => reachesAliasRow(entry) && !titleMatches(entry))) {
+        return { status: 'ambiguous', reason: 'registry_identity_changed', evidence };
+      }
+      if (aliasEntries.some(entry => reachesAliasRow(entry) ||
+          entry.manualSkuAliases.some(pair =>
             (normalizeSku(sourceSku) && normalizeSku(pair.sellerSku) === normalizeSku(sourceSku)) ||
-            (!normalizeSku(pair.sellerSku) && (normalizeCatalogPart(pair.productText) === normalizeCatalogPart(sourcePair[0]) ||
-              (evidence.status === 'found' && sameTarget(entry, evidence.candidate, platform))))))) {
+            (!normalizeSku(pair.sellerSku) && normalizeCatalogPart(pair.productText) === normalizeCatalogPart(sourcePair[0]) &&
+              normalizeCatalogPart(pair.variantText) === sourceVariant)))) {
         return { status: 'unmatched', reason: 'manual_alias_catalog_pair_mismatch', evidence };
       }
     }
