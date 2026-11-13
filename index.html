@@ -2795,6 +2795,12 @@
         };
       };
 
+      const getRegistryRowSavedNames = (platform, row) => [...new Set((registryAssignments?.entries || [])
+        .filter(entry => row && entry.platform === platform && entry.productId === String(row.productId || row.itemId || '') &&
+          (entry.modelId || null) === (row.modelId || null) &&
+          (row.modelId || (entry.variantName || null) === (row.variantName || null)))
+        .map(entry => entry.shortName))];
+
       const getRegistryRowAssignment = (platform, row) => {
         if (!row || !registryMatcherApi || !registryIdentityApi || !marketplaceCatalogIndex || !registryAssignments) return null;
         const evidence = getRegistryRowEvidence(platform, row);
@@ -2883,9 +2889,23 @@
               next = registryMatcherApi.upsertAssignment(latestAssignments, order.platform, latestEvidence, quickMapState.shortName);
             } else {
               if (latestEvidence.status === 'ambiguous') throw new Error('Seller SKU ซ้ำหรือมีหลักฐานขัดแย้ง กรุณาตรวจในทะเบียนก่อน');
-              next = registryMatcherApi.upsertManualSkuAlias(
-                latestAssignments, latestIndex, order.platform, item, latestSelectedRow,
-                quickMapState.shortName, registryIdentityApi);
+              try {
+                next = registryMatcherApi.upsertManualSkuAlias(
+                  latestAssignments, latestIndex, order.platform, item, latestSelectedRow,
+                  quickMapState.shortName, registryIdentityApi);
+              } catch (conflict) {
+                if (conflict.code !== 'registry_name_conflict' || !Array.isArray(conflict.conflictingEntries)) throw conflict;
+                const previousNames = [...new Set(conflict.conflictingEntries.map(entry => entry.shortName))];
+                if (!window.confirm(`พบชื่อภายในต่างกันสำหรับสินค้าและตัวเลือกเดียวกัน\n\n${selectedLabel}\n\nชื่อเดิม:\n${previousNames.map(name => '• ' + name).join('\n')}\n\nยืนยันใช้ชื่อ “${String(quickMapState.shortName || '').trim()}” แทนชื่อทั้งสองชุดสำหรับสินค้าตัวเลือกนี้ และผูกข้อความ PDF ที่เลือก?\nสินค้าและตัวเลือกอื่นจะไม่ถูกแก้ไข`)) return;
+                const confirmedRegistry = marketplaceRegistryApi.loadStore(window.localStorage);
+                if (JSON.stringify(registryMatcherApi.loadLocalAssignments(window.localStorage)) !== JSON.stringify(latestAssignments) ||
+                    confirmedRegistry.error || JSON.stringify(confirmedRegistry.store) !== JSON.stringify(latestRegistry.store)) {
+                  throw new Error('ข้อมูลเปลี่ยนระหว่างยืนยัน กรุณาโหลดใหม่และตรวจชื่ออีกครั้ง');
+                }
+                next = registryMatcherApi.upsertManualSkuAlias(
+                  latestAssignments, latestIndex, order.platform, item, latestSelectedRow,
+                  quickMapState.shortName, registryIdentityApi, { confirmedConflictEntries: conflict.conflictingEntries });
+              }
             }
             registryMatcherApi.saveLocalAssignments(window.localStorage, next);
             setRegistryAssignments(next);
@@ -2998,7 +3018,7 @@
         const packCounts = value => [...String(value || '').toLocaleLowerCase().matchAll(/(\d+)\s*(?:ห่อ|แพ็ค|packs?)/gu)].map(match => match[1]);
         const sourceCounts = packCounts(quickMapState.sourceText);
         const candidateCounts = packCounts(text);
-        const packConflict = sourceCounts.length && candidateCounts.length && !sourceCounts.some(count => candidateCounts.includes(count));
+        const packConflict = Boolean(sourceCounts.length && candidateCounts.length && !sourceCounts.some(count => candidateCounts.includes(count)));
         return { row, terms, packConflict };
       }).filter(result => result.terms.length).sort((a, b) => b.terms.length - a.terms.length).slice(0, 3);
       const quickMapSelectedRegistryRow = quickMapRegistryRows.find(row =>
@@ -4512,7 +4532,7 @@
                           }).map(candidate => {
                             const rowKey = getQuickMapRegistryRowKey(quickMapRegistryPlatform, candidate);
                             const selected = rowKey === quickMapState.selectedRegistryRowKey;
-                            const savedName = getRegistryRowAssignment(quickMapRegistryPlatform, candidate)?.shortName;
+                            const savedName = getRegistryRowSavedNames(quickMapRegistryPlatform, candidate).join(' / ');
                             return <button type="button" key={rowKey} aria-pressed={selected} className={`block w-full border-b border-slate-100 p-3 text-left hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 ${selected ? 'bg-blue-100 ring-2 ring-inset ring-blue-600' : ''}`} onClick={() => {
                               const savedAssignment = getRegistryRowAssignment(quickMapRegistryPlatform, candidate);
                               setQuickMapState(prev => ({ ...prev, selectedRegistryRowKey: rowKey, shortName: savedAssignment?.shortName || (prev.chooserFilledShortName ? '' : prev.shortName), chooserFilledShortName: Boolean(savedAssignment) }));
@@ -4553,7 +4573,10 @@
                         </select>
                         <p className="mt-2 text-[10px] font-semibold text-blue-900/75">รายการนี้มาจากทะเบียนทั้งชุด การเลือกเพียงอย่างเดียวยังไม่บันทึก ระบบจะขอให้ยืนยัน Seller SKU PDF และข้อความสินค้า/ตัวเลือกก่อนผูกใน Local สำหรับออเดอร์อนาคตที่มีหลักฐานตรงกันเท่านั้น{cloudMode ? ' • Cloud ยังไม่รองรับการผูกแบบนี้' : ''}</p>
                         {quickMapSelectedRegistryRow && <div className="mt-2 text-[10px] font-bold text-slate-700">
-                          {getRegistryRowAssignment(quickMapRegistryPlatform, quickMapSelectedRegistryRow)?.shortName
+                          <div>เลือกแล้ว: {quickMapSelectedRegistryRow.productName || quickMapSelectedRegistryRow.title} · ตัวเลือก: {quickMapSelectedRegistryRow.variantName || 'ไม่ได้ระบุ'} · Product ID: {quickMapSelectedRegistryRow.productId || quickMapSelectedRegistryRow.itemId}</div>
+                          {getRegistryRowSavedNames(quickMapRegistryPlatform, quickMapSelectedRegistryRow).length > 1
+                            ? `ชื่อเดิมขัดกัน: ${getRegistryRowSavedNames(quickMapRegistryPlatform, quickMapSelectedRegistryRow).join(' / ')} — ระบุชื่อที่จะใช้ในช่องด้านบน ระบบจะให้ตรวจและยืนยันก่อนเปลี่ยน`
+                            : getRegistryRowAssignment(quickMapRegistryPlatform, quickMapSelectedRegistryRow)?.shortName
                             ? `ชื่อภายในที่บันทึกไว้: ${getRegistryRowAssignment(quickMapRegistryPlatform, quickMapSelectedRegistryRow).shortName}`
                             : 'แถวนี้ยังไม่มีชื่อภายในที่บันทึกไว้ — ระบุชื่อด้วยตนเองหลังตรวจใบจริง'}
                         </div>}

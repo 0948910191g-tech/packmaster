@@ -272,7 +272,7 @@
     return next;
   }
 
-  function upsertManualSkuAlias(current, index, platform, sourceItem, selectedCandidate, shortName, identityApi) {
+  function upsertManualSkuAlias(current, index, platform, sourceItem, selectedCandidate, shortName, identityApi, options = {}) {
     const store = validateAssignments(current);
     const sourceSku = identityApi?.extractSellerSku?.(platform, sourceItem);
     const catalogPair = identityApi?.extractCatalogPair?.(platform, sourceItem);
@@ -318,7 +318,16 @@
       !sameManualTarget(entry, candidate));
     if (conflictingAlias) throw new Error('This exact PDF SKU and product/variant pair is already assigned to a different registry row');
     const existingTarget = store.entries.filter(entry => sameManualTarget(entry, candidate));
-    if (new Set(existingTarget.map(entry => entry.shortName)).size > 1) throw new Error('More than one saved registry name targets this product and variant; review existing mappings first');
+    if (options.confirmedConflictEntries !== undefined &&
+        JSON.stringify(options.confirmedConflictEntries) !== JSON.stringify(existingTarget)) {
+      throw new Error('ชื่อหรือข้อมูลที่ขัดกันเปลี่ยนแล้ว กรุณาตรวจและยืนยันใหม่');
+    }
+    if (new Set(existingTarget.map(entry => entry.shortName)).size > 1 && options.confirmedConflictEntries === undefined) {
+      const error = new Error('สินค้าตัวเลือกเดียวกันมีชื่อภายในต่างกัน: ' + [...new Set(existingTarget.map(entry => entry.shortName))].join(' / '));
+      error.code = 'registry_name_conflict';
+      error.conflictingEntries = existingTarget.map(entry => JSON.parse(JSON.stringify(entry)));
+      throw error;
+    }
     // A model ID is the variant identity even when an older catalog assignment
     // omitted its display name. Reuse that key instead of inserting a duplicate.
     const base = existingTarget.find(entry => (entry.manualSkuAliases || []).some(existing => aliasKey(platform, existing) === aliasKey(platform, pair))) ||
