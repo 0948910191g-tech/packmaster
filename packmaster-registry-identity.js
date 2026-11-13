@@ -145,6 +145,121 @@
     return catalogText ? [catalogText.trim(), ''] : null;
   };
 
+  // Whole-token variant matching. A variant must stand alone: "3" is not inside "30", "3.5" or "5+5".
+  const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const isDigitChar = character => /[0-9]/.test(character || '');
+  const variantPattern = value => {
+    const text = normalizeSellerSku(value);
+    let pattern = '';
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === ' ') continue;
+      pattern += escapeRegex(text[i]);
+      if (isDigitChar(text[i]) && text[i + 1] === ' ' && isDigitChar(text[i + 2])) {
+        // "5 5" in the PDF is one space between two digits; the variant "55" never gets a gap.
+        pattern += '\\s';
+        i++;
+      } else if (!(isDigitChar(text[i]) && isDigitChar(text[i + 1]))) {
+        pattern += '\\s*';
+      }
+    }
+    return pattern;
+  };
+  const TOKEN_BEFORE = '(?<![\\p{L}\\p{N}])(?<!\\p{N}[.+/])';
+  const TOKEN_AFTER = '(?![\\p{L}\\p{N}])(?![.+/]\\p{N})';
+  const variantAppears = (text, variant) => {
+    const pattern = variantPattern(variant);
+    if (!pattern) return false;
+    return new RegExp(`${TOKEN_BEFORE}${pattern}${TOKEN_AFTER}`, 'u').test(normalizeSellerSku(text));
+  };
+  // The whole text is this variant, e.g. the piece after an ellipsis.
+  const variantIsWhole = (text, variant) => {
+    const pattern = variantPattern(variant);
+    if (!pattern) return false;
+    return new RegExp(`^${pattern}$`, 'u').test(normalizeSellerSku(text));
+  };
+  // The text ends with this variant as a whole token. Returns the text before it, or null.
+  const textBeforeVariant = (text, variant) => {
+    const pattern = variantPattern(variant);
+    if (!pattern) return null;
+    const match = new RegExp(`^(.*?)\\s*${TOKEN_BEFORE}${pattern}${TOKEN_AFTER}$`, 'u')
+      .exec(normalizeSellerSku(text));
+    return match ? match[1] : null;
+  };
+
+  // Variant comparison for contradiction checks only. Spaces, commas and other punctuation do not
+  // count, so "สีฟ้า, ขนาด L" agrees with "สีฟ้า ขนาด L". Digits and the "." "+" "/" signs do count,
+  // so "3.5" is not "35" and "5+5" is not "55". Two variants agree when one is a whole-word
+  // prefix of the other, which is how a truncated PDF variant looks.
+  const variantWords = value => normalizeSellerSku(value)
+    .split(/[\s,;:|]+/)
+    .map(word => normalizeThaiSkeleton(word.replace(/\./g, 'DOT').replace(/\+/g, 'PLUS').replace(/\//g, 'SLASH')))
+    .filter(Boolean);
+  const variantsAgree = (a, b) => {
+    const x = variantWords(a);
+    const y = variantWords(b);
+    if (!x.length || !y.length) return false;
+    const [shorter, longer] = x.length <= y.length ? [x, y] : [y, x];
+    return shorter.every((word, i) => word === longer[i]);
+  };
+
+  // Truncated Shopee/TikTok titles. Used only after exact and skeleton lookups fail.
+  // A name prefix alone never matches: the variant must match as a whole token.
+  const ELLIPSIS = /\.{3,}|…/;
+  const MIN_NAME_KEY = 6;
+  // A name head must be long enough to identify the product: at least 12 characters and at
+  // least half of the candidate's title. "Synthetic" or "Synthetic Gloves Nit" are not enough.
+  const MIN_HEAD_KEY = 12;
+  const headIsLongEnough = (headKey, titleSkeleton) =>
+    headKey.length >= MIN_HEAD_KEY && headKey.length * 2 >= titleSkeleton.length;
+  // A head that ends in a digit must not stop inside a longer number ("Pack 3" inside "Pack 30").
+  const cutsNumber = (headKey, skeleton) =>
+    isDigitChar(headKey.charAt(headKey.length - 1)) && isDigitChar(skeleton.charAt(headKey.length));
+  // The head is the complete title of another product, so it is not a truncation for this row.
+  const isCompleteTitleOfOtherProduct = (rows, row, headKey) =>
+    rows.some(other => other.candidate.productId !== row.candidate.productId && other.titleSkeleton === headKey);
+  const headNamesRow = (rows, row, headKey, skeletons) =>
+    skeletons.some(skeleton => skeleton.startsWith(headKey) && !cutsNumber(headKey, skeleton)) &&
+    headIsLongEnough(headKey, row.titleSkeleton) &&
+    !isCompleteTitleOfOtherProduct(rows, row, headKey);
+  // A piece after an ellipsis passes when it is the row's whole variant, or when it is a
+  // long name fragment that appears in the row (the legacy rule). Short pieces must be the variant.
+  const tailPieceMatches = (row, piece) => {
+    const variant = row.candidate.variantName;
+    if (variant && variantIsWhole(piece, variant)) return true;
+    const key = normalizeThaiSkeleton(piece);
+    return key.length >= MIN_NAME_KEY && row.fullSkeleton.includes(key);
+  };
+  const truncatedCandidates = (rows, rawText) => {
+    if (ELLIPSIS.test(rawText)) {
+      const [head, ...rest] = rawText.split(/\.{3,}|…/);
+      const headKey = normalizeThaiSkeleton(head);
+      const tails = rest.map(piece => piece.trim()).filter(piece => normalizeThaiSkeleton(piece));
+      if (headKey.length < MIN_HEAD_KEY || tails.length === 0) return null;
+      return {
+        candidates: rows.filter(row =>
+          headNamesRow(rows, row, headKey, [row.fullSkeleton, row.titleSkeleton]) &&
+          // A row with a variant needs that variant as a whole token somewhere in the text.
+          (!row.candidate.variantName || variantAppears(rawText, row.candidate.variantName)) &&
+          tails.every(piece => tailPieceMatches(row, piece))),
+        foundReason: 'ellipsis_catalog_match',
+        duplicateReason: 'duplicate_ellipsis_catalog_match'
+      };
+    }
+    // No ellipsis: "name prefix + variant". The variant must end the text as a whole token.
+    return {
+      candidates: rows.filter(row => {
+        const variant = row.candidate.variantName;
+        if (!variant) return false;
+        const before = textBeforeVariant(rawText, variant);
+        if (before === null) return false;
+        const headKey = normalizeThaiSkeleton(before);
+        return headKey.length >= MIN_HEAD_KEY && headNamesRow(rows, row, headKey, [row.titleSkeleton]);
+      }),
+      foundReason: 'truncated_catalog_match',
+      duplicateReason: 'duplicate_truncated_catalog_match'
+    };
+  };
+
   const resolveCatalog = (index, platform, item) => {
     const rawText = extractCatalogText(platform, item);
     const catalogKey = normalizeCatalogText(rawText);
@@ -196,37 +311,29 @@
       }
     }
 
-    // Tertiary fallback: prefix and ellipsis matching for Flash/Shopee labels where title was truncated
+    // Tertiary fallback: truncated titles (with or without "..."), variant matched as a whole token.
     // Length gate ignores whitespace runs so that line breaks do not change which path runs.
     if (Array.isArray(index[platform].catalogRowsList) && rawText.replace(/\s+/g, ' ').length >= 20) {
-      const parts = rawText.split(/\.{3,}|\u2026/).map(normalizeThaiSkeleton).filter(p => p.length >= 6);
-      if (parts.length > 0) {
-        const ellipsisCandidates = index[platform].catalogRowsList.filter(row => {
-          return parts.every((p, idx) => {
-            if (idx === 0) return row.fullSkeleton.startsWith(p) || row.titleSkeleton.startsWith(p);
-            return row.fullSkeleton.includes(p);
-          });
-        });
-        if (ellipsisCandidates.length === 1) {
-          return {
-            status: 'found',
-            identityType: 'catalog_row',
-            sellerSku: null,
-            catalogKey,
-            candidate: { ...ellipsisCandidates[0].candidate },
-            captureDate: index[platform].captureDate,
-            reason: 'ellipsis_catalog_match'
-          };
-        }
-        if (ellipsisCandidates.length > 1) {
-          return {
-            status: 'ambiguous',
-            reason: 'duplicate_ellipsis_catalog_match',
-            identityType: 'catalog_row',
-            catalogKey,
-            candidateCount: ellipsisCandidates.length
-          };
-        }
+      const truncated = truncatedCandidates(index[platform].catalogRowsList, rawText);
+      if (truncated?.candidates.length === 1) {
+        return {
+          status: 'found',
+          identityType: 'catalog_row',
+          sellerSku: null,
+          catalogKey,
+          candidate: { ...truncated.candidates[0].candidate },
+          captureDate: index[platform].captureDate,
+          reason: truncated.foundReason
+        };
+      }
+      if (truncated?.candidates.length > 1) {
+        return {
+          status: 'ambiguous',
+          reason: truncated.duplicateReason,
+          identityType: 'catalog_row',
+          catalogKey,
+          candidateCount: truncated.candidates.length
+        };
       }
     }
 
@@ -239,38 +346,44 @@
   };
 
   // B9: a unique exact Seller SKU keeps its row unless the PDF text contradicts it.
-  // Variants are matched as whole tokens: "แพ็ค 3" does not match "แพ็ค 30", and "3"
-  // does not match inside "3.5" or "5+5".
-  const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const variantPattern = value => {
-    const text = normalizeSellerSku(value);
-    let pattern = '';
-    for (let i = 0; i < text.length; i++) {
-      if (text[i] === ' ') continue;
-      pattern += escapeRegex(text[i]);
-      const digitGap = text[i + 1] === ' ' && /[0-9]/.test(text[i]) && /[0-9]/.test(text[i + 2] || '');
-      if (digitGap) {
-        pattern += '\\s';
-        i++;
-      } else {
-        pattern += '\\s*';
-      }
-    }
-    return pattern;
-  };
-  const variantAppears = (text, variant) => {
-    const pattern = variantPattern(variant);
-    if (!pattern) return false;
-    return new RegExp(
-      `(?<![\\p{L}\\p{N}])(?<!\\p{N}[.+/])${pattern}(?![\\p{L}\\p{N}])(?![.+/]\\p{N})`, 'u')
-      .test(normalizeSellerSku(text));
-  };
+  // Variant helpers (whole-token matching) are defined above resolveCatalog.
   // The SKU row's product name can contain variant words ("Cup Mini"), so it is removed first.
   const withoutProductName = (text, productName) => {
     const body = normalizeSellerSku(text);
     const name = normalizeSellerSku(productName || '');
     return name ? body.split(name).join(' ') : body;
   };
+  // The longest product name that starts the PDF text ("Synthetic Cup Set Family Pack แพ็ค 3"
+  // names Family Pack) belongs to a different product than the SKU row. Used only as a veto
+  // that sends the row to Review; it never creates a match.
+  const namesOtherProduct = (index, platform, item, productId) => {
+    // TikTok keeps the product name in its own column, so "Cup | Mini" is not "Cup Mini".
+    const text = normalizeSellerSku(extractCatalogPair(platform, item)?.[0] || '');
+    if (!text) return false;
+    let longest = 0;
+    let owners = new Set();
+    for (const row of index[platform].registryRows || []) {
+      const name = normalizeSellerSku(row.productName || '');
+      if (!name || !(text === name || text.startsWith(name + ' '))) continue;
+      if (name.length > longest) {
+        longest = name.length;
+        owners = new Set();
+      }
+      if (name.length === longest) owners.add(row.productId);
+    }
+    return owners.size > 0 && !owners.has(productId);
+  };
+
+  // Only a full TikTok "name | variant | SKU" text has a variant column.
+  // "name | Seller SKU: X" has two pieces, so its second piece is not a variant.
+  const tikTokVariantColumn = (platform, item) => {
+    if (platform !== 'TIKTOK') return '';
+    const text = typeof item === 'string' ? stripInvisible(item) : stripInvisible(item?.text);
+    if (typeof text !== 'string') return '';
+    const pieces = text.split('|').map(piece => piece.trim());
+    return pieces.length === 3 && pieces.every(Boolean) ? pieces[1] : '';
+  };
+
   // true = the SKU row is contradicted, so the caller returns Review.
   const skuRowContradicted = (index, platform, item, skuCandidate, guessCandidate) => {
     const body = withoutProductName(extractCatalogText(platform, item) || '', skuCandidate.productName);
@@ -279,18 +392,23 @@
       .map(row => String(row.variantName).trim()))];
     const named = productVariants.filter(variant => variantAppears(body, variant));
     if (named.length > 1) return true; // the PDF names two variants of this product
-    if (!guessCandidate) return false; // no name guess: behaviour unchanged
+    if (namesOtherProduct(index, platform, item, skuCandidate.productId)) return true;
+    const skuVariant = String(skuCandidate.variantName || '').trim();
+    if (!guessCandidate) {
+      // No name guess: a TikTok variant column that genuinely conflicts with the SKU row's variant contradicts it.
+      const pdfVariantColumn = tikTokVariantColumn(platform, item);
+      return Boolean(pdfVariantColumn && skuVariant && !variantsAgree(pdfVariantColumn, skuVariant));
+    }
     if (guessCandidate.productId !== skuCandidate.productId) return true; // a different product
     const guessVariant = String(guessCandidate.variantName || '').trim();
     if (guessVariant && variantAppears(body, guessVariant)) return true;
     if (named.length === 0) {
-      // No registry variant in the text: only a TikTok variant column that names something the registry lacks contradicts.
+      // No registry variant in the text: only a TikTok variant column that matches none of the product's variants contradicts.
       const pdfVariantColumn = platform === 'TIKTOK'
         ? String(extractCatalogPair(platform, item)?.[1] || '').trim()
         : '';
-      return Boolean(pdfVariantColumn);
+      return Boolean(pdfVariantColumn) && !productVariants.some(variant => variantsAgree(pdfVariantColumn, variant));
     }
-    const skuVariant = String(skuCandidate.variantName || '').trim();
     return !(skuVariant && named[0] === skuVariant);
   };
 
