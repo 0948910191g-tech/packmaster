@@ -1,0 +1,27 @@
+{
+  "description": "Synthetic marketplace registry for the matcher benchmark. Names, IDs and SKUs are invented; no real shop or customer data.",
+  "captureDate": "2026-01-01",
+  "TIKTOK": {
+    "shop": "Synthetic TikTok Shop",
+    "products": [
+      { "productId": "T1001", "productName": "Synthetic Gel Pen Blue", "variants": [{ "variantName": "ม่วง10" }] },
+      { "productId": "T1003", "productName": "Synthetic Wipes Thin Sheet Fresh Pack Extra", "variants": [{ "variantName": "3ห่อ" }, { "variantName": "30ห่อ" }] },
+      { "productId": "T1004", "productName": "Synthetic Socks Basic", "sellerSku": "SYN-DUP-1" },
+      { "productId": "T1005", "productName": "Synthetic Socks Plus", "sellerSku": "SYN-DUP-1" },
+      { "productId": "T1006", "productName": "Synthetic Mug Set", "sellerSku": "SYN-MUG-7" },
+      { "productId": "T1007", "productName": "Synthetic Baby Wipes", "variants": [{ "variantName": "ชมพู" }] }
+    ]
+  },
+  "SHOPEE": {
+    "shop": "Synthetic Shopee Shop",
+    "products": [
+      { "itemId": "S2001", "title": "Synthetic Wipes Thin Sheet Fresh Pack Extra", "variants": [{ "modelId": "m-2001-3", "variantName": "3ห่อ" }, { "modelId": "m-2001-30", "variantName": "30ห่อ" }] },
+      { "itemId": "S2002", "title": "Synthetic Lunch Box Compact Family Set", "variants": [{ "modelId": "m-2002-b", "variantName": "Blue" }, { "modelId": "m-2002-r", "variantName": "Red" }] },
+      { "itemId": "S2003", "title": "Synthetic Mop Head Super Absorbent Long Name", "variants": [{ "modelId": "m-2003-w", "variantName": "ขาว" }] },
+      { "itemId": "S2004", "title": "Synthetic Cup Set Family Pack", "variants": [{ "modelId": "m-2004-30", "variantName": "แพ็ค 30" }] },
+      { "itemId": "S2005", "title": "Synthetic Cup Set Trial Pack", "variants": [{ "modelId": "m-2005-3", "variantName": "แพ็ค 3" }, { "modelId": "m-2005-30", "variantName": "แพ็ค 30" }] },
+      { "itemId": "S2006", "title": "Synthetic Tape Roll Mini", "variants": [{ "modelId": "m-2006-15", "variantName": "15 ห่อ" }] },
+      { "itemId": "S2007", "title": "Synthetic Cup Set Duo", "variants": [{ "modelId": "m-2007-55", "variantName": "55 ชิ้น" }] }
+    ]
+  }
+}

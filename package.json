@@ -6,6 +6,7 @@
   "main": "desktop/main.cjs",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
+    "benchmark:matcher": "node benchmarks/matcher-benchmark.cjs",
     "desktop:prepare": "node desktop/scripts/prepare.mjs",
     "desktop:start": "npm run desktop:prepare && electron .",
     "desktop:build": "npm run desktop:prepare && electron-builder --win nsis --x64",

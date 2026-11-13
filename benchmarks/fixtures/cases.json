@@ -1,0 +1,223 @@
+{
+  "description": "Synthetic matcher cases. Each case first saves its setup assignments the way the Review screen does (resolve, then saveConfirmedAssignment), then runs matcher.match on the input. expected is the intended group: matched, review (matcher status unmatched) or ambiguous. Current behavior is recorded as-is, including wrong answers.",
+  "requiredCoverage": [
+    "truncated_title",
+    "short_variant",
+    "new_sku",
+    "pack_3_vs_30",
+    "pack_1_5_vs_15",
+    "pack_5p5_vs_55"
+  ],
+  "cases": [
+    {
+      "id": "TR-01",
+      "covers": ["truncated_title"],
+      "label": "Shopee: title cut with no ellipsis, variant appended",
+      "platform": "SHOPEE",
+      "item": { "text": "Synthetic Wipes Thin Sheet Fresh Pack 3ห่อ" },
+      "setup": [{ "platform": "SHOPEE", "item": { "text": "Synthetic Wipes Thin Sheet Fresh Pack Extra 3ห่อ" }, "shortName": "Case TR-01 A" }],
+      "expected": "matched",
+      "note": "Title prefix plus whole-word variant should reach the 3ห่อ row."
+    },
+    {
+      "id": "TR-02",
+      "covers": ["truncated_title", "short_variant"],
+      "label": "Shopee: ellipsis truncation, unique product, short variant ขาว",
+      "platform": "SHOPEE",
+      "item": { "text": "Synthetic Mop Head Super Absorb... ขาว" },
+      "setup": [{ "platform": "SHOPEE", "item": { "text": "Synthetic Mop Head Super Absorbent Long Name ขาว" }, "shortName": "Case TR-02 A" }],
+      "expected": "matched",
+      "note": "Single product row with the same variant should match."
+    },
+    {
+      "id": "TR-03",
+      "covers": ["truncated_title", "short_variant"],
+      "label": "Shopee: same truncation, but variant ดำ is not in registry",
+      "platform": "SHOPEE",
+      "item": { "text": "Synthetic Mop Head Super Absorb... ดำ" },
+      "setup": [{ "platform": "SHOPEE", "item": { "text": "Synthetic Mop Head Super Absorbent Long Name ขาว" }, "shortName": "Case TR-03 A" }],
+      "expected": "review",
+      "note": "Short variant ดำ is dropped by the ellipsis fallback, so the ขาว row is wrongly accepted."
+    },
+    {
+      "id": "SV-01",
+      "covers": ["short_variant", "truncated_title"],
+      "label": "TikTok: ellipsis title, short variant 3ห่อ, two rows share the title",
+      "platform": "TIKTOK",
+      "item": { "text": "Synthetic Wipes Thin Sheet Fresh Pack... | 3ห่อ" },
+      "setup": [{ "platform": "TIKTOK", "item": { "text": "Synthetic Wipes Thin Sheet Fresh Pack Extra | 3ห่อ" }, "shortName": "Case SV-01 A" }],
+      "expected": "matched",
+      "note": "Variant 3ห่อ is under 6 characters, so it is dropped and both rows tie."
+    },
+    {
+      "id": "SV-02",
+      "covers": ["short_variant", "truncated_title"],
+      "label": "Shopee: ellipsis title, short variant 3ห่อ, two rows share the title",
+      "platform": "SHOPEE",
+      "item": { "text": "Synthetic Wipes Thin Sheet Fresh Pack... 3ห่อ" },
+      "setup": [{ "platform": "SHOPEE", "item": { "text": "Synthetic Wipes Thin Sheet Fresh Pack Extra 3ห่อ" }, "shortName": "Case SV-02 A" }],
+      "expected": "matched",
+      "note": "Same tie as SV-01 on the Shopee path."
+    },
+    {
+      "id": "SV-03",
+      "covers": ["short_variant", "truncated_title"],
+      "label": "Shopee: ellipsis title, short variant Blue, two variants share the title",
+      "platform": "SHOPEE",
+      "item": { "text": "Synthetic Lunch Box Compact Fam... Blue" },
+      "setup": [{ "platform": "SHOPEE", "item": { "text": "Synthetic Lunch Box Compact Family Set Blue" }, "shortName": "Case SV-03 A" }],
+      "expected": "matched",
+      "note": "Blue is under 6 characters and is dropped, so Blue and Red tie."
+    },
+    {
+      "id": "SV-04",
+      "covers": ["short_variant"],
+      "label": "Shopee: exact title and short variant 3ห่อ (control)",
+      "platform": "SHOPEE",
+      "item": { "text": "Synthetic Wipes Thin Sheet Fresh Pack Extra 3ห่อ" },
+      "setup": [{ "platform": "SHOPEE", "item": { "text": "Synthetic Wipes Thin Sheet Fresh Pack Extra 3ห่อ" }, "shortName": "Case SV-04 A" }],
+      "expected": "matched",
+      "note": "Exact catalog text, expected to match."
+    },
+    {
+      "id": "NS-01",
+      "covers": ["new_sku"],
+      "label": "TikTok: SKU not in registry, title matches row ม่วง10, PDF says 2 ห่อ",
+      "platform": "TIKTOK",
+      "item": { "text": "Synthetic Gel Pen Blue | 2 ห่อ | NEW-SKU-999" },
+      "setup": [{ "platform": "TIKTOK", "item": { "text": "Synthetic Gel Pen Blue | ม่วง10" }, "shortName": "Case NS-01 A" }],
+      "expected": "review",
+      "note": "A new SKU with a title-only match and a conflicting variant must not be treated as verified."
+    },
+    {
+      "id": "NS-02",
+      "covers": ["new_sku"],
+      "label": "TikTok: SKU not in registry, product not in registry at all",
+      "platform": "TIKTOK",
+      "item": { "text": "Synthetic Marker Set Sparkle | 2 ห่อ | NEW-SKU-998" },
+      "setup": [],
+      "expected": "review",
+      "note": "Control: nothing to match against."
+    },
+    {
+      "id": "NS-03",
+      "covers": ["new_sku"],
+      "label": "TikTok: SKU not in registry, title matches a row assigned by another SKU",
+      "platform": "TIKTOK",
+      "item": { "text": "Synthetic Mug Set | 7 ชิ้น | NEW-SKU-997" },
+      "setup": [{ "platform": "TIKTOK", "item": { "text": "Synthetic Mug Set | 7 ชิ้น | SYN-MUG-7" }, "shortName": "Case NS-03 A" }],
+      "expected": "review",
+      "note": "The title fallback is re-keyed to the row's registered SKU (canonicalEvidence), so the unknown SKU inherits the verified name instead of going to Review."
+    },
+    {
+      "id": "NS-04",
+      "covers": ["new_sku"],
+      "label": "TikTok: SKU not in registry, title matches row ชมพู, PDF says ม่วง (variant colour conflict)",
+      "platform": "TIKTOK",
+      "item": { "text": "Synthetic Baby Wipes | ม่วง | NEW-SKU-996" },
+      "setup": [{ "platform": "TIKTOK", "item": { "text": "Synthetic Baby Wipes | ชมพู" }, "shortName": "Case NS-04 A" }],
+      "expected": "review",
+      "note": "A title-only match must not ignore a conflicting colour variant."
+    },
+    {
+      "id": "PS-01",
+      "covers": ["pack_3_vs_30"],
+      "label": "Shopee: แพ็ค 3 text, only แพ็ค 30 is registered",
+      "platform": "SHOPEE",
+      "item": { "text": "Synthetic Cup Set Family Pack แพ็ค 3" },
+      "setup": [{ "platform": "SHOPEE", "item": { "text": "Synthetic Cup Set Family Pack แพ็ค 30" }, "shortName": "Case PS-01 A" }],
+      "expected": "review",
+      "note": "Prefix match of แพ็ค 3 onto แพ็ค 30 must not be accepted."
+    },
+    {
+      "id": "PS-02",
+      "covers": ["pack_3_vs_30"],
+      "label": "Shopee: แพ็ค 30 with both 3 and 30 registered (control)",
+      "platform": "SHOPEE",
+      "item": { "text": "Synthetic Cup Set Trial Pack แพ็ค 30" },
+      "setup": [{ "platform": "SHOPEE", "item": { "text": "Synthetic Cup Set Trial Pack แพ็ค 30" }, "shortName": "Case PS-02 A" }],
+      "expected": "matched",
+      "note": "Exact match, expected to pass."
+    },
+    {
+      "id": "PS-03",
+      "covers": ["pack_3_vs_30"],
+      "label": "Shopee: แพ็ค 3 with both 3 and 30 registered (control)",
+      "platform": "SHOPEE",
+      "item": { "text": "Synthetic Cup Set Trial Pack แพ็ค 3" },
+      "setup": [{ "platform": "SHOPEE", "item": { "text": "Synthetic Cup Set Trial Pack แพ็ค 3" }, "shortName": "Case PS-03 A" }],
+      "expected": "matched",
+      "note": "Exact match, expected to pass."
+    },
+    {
+      "id": "PK-01",
+      "covers": ["pack_1_5_vs_15"],
+      "label": "Shopee: 1.5 ห่อ text, only 15 ห่อ is registered",
+      "platform": "SHOPEE",
+      "item": { "text": "Synthetic Tape Roll Mini 1.5 ห่อ" },
+      "setup": [{ "platform": "SHOPEE", "item": { "text": "Synthetic Tape Roll Mini 15 ห่อ" }, "shortName": "Case PK-01 A" }],
+      "expected": "review",
+      "note": "The decimal point is dropped by the skeleton fallback, so 1.5 becomes 15."
+    },
+    {
+      "id": "PK-02",
+      "covers": ["pack_1_5_vs_15"],
+      "label": "Shopee: 15 ห่อ exact (control)",
+      "platform": "SHOPEE",
+      "item": { "text": "Synthetic Tape Roll Mini 15 ห่อ" },
+      "setup": [{ "platform": "SHOPEE", "item": { "text": "Synthetic Tape Roll Mini 15 ห่อ" }, "shortName": "Case PK-02 A" }],
+      "expected": "matched",
+      "note": "Exact match, expected to pass."
+    },
+    {
+      "id": "PK-03",
+      "covers": ["pack_5p5_vs_55"],
+      "label": "Shopee: 5+5 ชิ้น text, only 55 ชิ้น is registered",
+      "platform": "SHOPEE",
+      "item": { "text": "Synthetic Cup Set Duo 5+5 ชิ้น" },
+      "setup": [{ "platform": "SHOPEE", "item": { "text": "Synthetic Cup Set Duo 55 ชิ้น" }, "shortName": "Case PK-03 A" }],
+      "expected": "review",
+      "note": "The plus sign is dropped by the skeleton fallback, so 5+5 becomes 55."
+    },
+    {
+      "id": "PK-04",
+      "covers": ["pack_5p5_vs_55"],
+      "label": "Shopee: 55 ชิ้น exact (control)",
+      "platform": "SHOPEE",
+      "item": { "text": "Synthetic Cup Set Duo 55 ชิ้น" },
+      "setup": [{ "platform": "SHOPEE", "item": { "text": "Synthetic Cup Set Duo 55 ชิ้น" }, "shortName": "Case PK-04 A" }],
+      "expected": "matched",
+      "note": "Exact match, expected to pass."
+    },
+    {
+      "id": "C-01",
+      "covers": [],
+      "label": "TikTok: exact Seller SKU with a saved name (control)",
+      "platform": "TIKTOK",
+      "item": { "text": "Synthetic Mug Set | 7 ชิ้น | SYN-MUG-7" },
+      "setup": [{ "platform": "TIKTOK", "item": { "text": "Synthetic Mug Set | 7 ชิ้น | SYN-MUG-7" }, "shortName": "Case C-01 A" }],
+      "expected": "matched",
+      "note": "Exact SKU identity, expected to pass."
+    },
+    {
+      "id": "AM-01",
+      "covers": [],
+      "label": "TikTok: Seller SKU shared by two products",
+      "platform": "TIKTOK",
+      "item": { "text": "Synthetic Socks Basic | Black | SYN-DUP-1" },
+      "setup": [],
+      "expected": "ambiguous",
+      "note": "Duplicate SKU must not pick one product silently."
+    },
+    {
+      "id": "NF-01",
+      "covers": [],
+      "label": "Shopee: text not in registry (control)",
+      "platform": "SHOPEE",
+      "item": { "text": "Synthetic Unknown Item Zed 2ห่อ" },
+      "setup": [],
+      "expected": "review",
+      "note": "Control: nothing to match against."
+    }
+  ]
+}
