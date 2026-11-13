@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { createRequire } from 'node:module';
 
+const require = createRequire(import.meta.url);
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const start = html.indexOf('const resetActiveBatchCompletion =');
 const end = html.indexOf('const handlePrint =', start);
@@ -71,6 +73,9 @@ function harness({ failSave = false, failSaveOnce = false, lostAcknowledgement =
     duplicateApi: { clearBatchFingerprints() {} },
     // Upload busy gate: idle in this harness, so clear proceeds as before.
     uploadGateRef: { current: { isActive: () => false } },
+    // Print gate and save guards: idle in this harness, so clear proceeds as before.
+    saveGuardsApi: require('../packmaster-save-guards.js'),
+    printFlightRef: { current: require('../packmaster-print-flow.js').createSingleFlight() },
     cloudMode: true,
     cloud: { async saveDocument() { throw new Error('completion must not write a separate document'); } },
     showToast: message => state.events.push(message)

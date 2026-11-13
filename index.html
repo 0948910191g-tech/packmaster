@@ -37,6 +37,7 @@
   <script src="./packmaster-batch-source-files.js"></script>
   <script src="./packmaster-print-scope.js"></script>
   <script src="./packmaster-print-flow.js"></script>
+  <script src="./packmaster-save-guards.js"></script>
   <script src="./packmaster-archive.js"></script>
   <script src="./packmaster-storage-health.js"></script>
   <script src="./packmaster-diagnostics.js"></script>
@@ -1473,6 +1474,7 @@
       const uploadSessionApi = window.PackMasterUploadSession;
       const batchSourceFilesApi = window.PackMasterBatchSourceFiles;
       const printScopeApi = window.PackMasterPrintScope;
+      const saveGuardsApi = window.PackMasterSaveGuards;
       const archiveApi = window.PackMasterArchive;
       const storageHealthApi = window.PackMasterStorageHealth;
       const diagnosticsApi = window.PackMasterDiagnostics;
@@ -1693,6 +1695,11 @@
       const [printBusy, setPrintBusy] = useState(false);
       // Taken synchronously in handlePrint so a double click cannot start a second print flow.
       const printFlightRef = useRef(printFlowApi ? printFlowApi.createSingleFlight() : null);
+      // Unsaved-edit tracking. Autosave and failed upload saves mark edits dirty until a newer save persists them.
+      const saveTrackerRef = useRef(saveGuardsApi ? saveGuardsApi.createSaveTracker() : null);
+      // Pending 600ms autosave, so a close or reload can run it now instead of losing the edit.
+      const pendingAutosaveFlushRef = useRef(null);
+      const [unsavedWarning, setUnsavedWarning] = useState('');
       const [previewMode, setPreviewMode] = useState('labels');
       const [testInput, setTestInput] = useState('');
       const [testQty, setTestQty] = useState('1');
@@ -1937,6 +1944,14 @@
       // The input is reset on every exit path, here in finally.
       const handleFileUpload = async (e) => {
         if (Array.from(e.target?.files || []).length === 0) return;
+        // A print or Save PDF reads the Batch's orders; an import would change them under it. Refuse, and reset the
+        // input so the same file can be picked again after the print finishes.
+        const printBlock = saveGuardsApi ? saveGuardsApi.flightGuardMessage(printFlightRef.current, 'นำเข้า PDF') : '';
+        if (printBlock) {
+          showToast(printBlock, 'error');
+          resetFileInput(e.target);
+          return;
+        }
         const run = await uploadSessionApi.runExclusive(uploadGateRef.current, async () => {
           setLoadingStatus({ active: true, current: 0, total: 'เช็คจำนวนหน้า...' });
           setUploadError('');
@@ -2418,18 +2433,24 @@
                 ? activeBatchIdRef.current
                 : activeBatchId);
 
+            // Success wording comes only from a save that persisted. A failed save shows the real reason and
+            // keeps a persistent unsaved warning until a later save of this Batch succeeds.
+            const outcome = saveGuardsApi
+              ? saveGuardsApi.uploadSaveOutcome({ saved: batchSaved, saveProblem, orderCount: allNewOrders.length, cloudMode })
+              : { tone: batchSaved ? 'success' : 'error', unsaved: !batchSaved,
+                  message: batchSaved ? `เพิ่มข้อมูลสำเร็จ ${allNewOrders.length} ใบ` : `ยังไม่ได้บันทึกลง Batch (${saveProblem})` };
             if (currentLiveBatchId === uploadBatchId) {
               setOrders(prev => uploadSessionApi.mergeUploadedOrders(prev, allNewOrders));
               setActiveTab('preview');
               setActiveView('review');
+              if (outcome.unsaved) {
+                saveTrackerRef.current?.begin();
+                setUnsavedWarning(outcome.message);
+              } else {
+                setUnsavedWarning('');
+              }
             }
-            if (cloudMode || batchSaved) {
-              showToast(cloudMode
-                ? `บันทึก Cloud สำเร็จแล้ว ${allNewOrders.length} ใบ`
-                : `เพิ่มข้อมูลสำเร็จ ${allNewOrders.length} ใบ`, 'success');
-            } else {
-              showToast(`เพิ่มออเดอร์ในหน้านี้แล้ว แต่ยังไม่ได้บันทึกลง Batch (${saveProblem}) — ไฟล์นี้จะยังไม่ถูกจำว่านำเข้าแล้ว`, 'error');
-            }
+            showToast(outcome.message, outcome.tone);
           }
         } catch (err) {
           console.error(err);
@@ -2944,13 +2965,17 @@
           return;
         }
         if (!await resetActiveBatchCompletion()) return;
+        // Naming one order saves that name only. It never confirms the order-wide SKU parser warning:
+        // that stays open until the user ticks the separate "SKU ถูกต้อง" checkbox.
         setOrders(prev => prev.map(order => {
           if (order.id !== targetOrderId) return order;
-          let next = reviewOverridesApi.upsertManualSkuOverride(order, sourceText, shortName, quickMapState.itemIndex);
-          if ((quickMapState.row?.types || []).includes('REVIEW_SKU')) next = reviewOverridesApi.confirmReview(next, 'sku');
-          return next;
+          return reviewOverridesApi.upsertManualSkuOverride(order, sourceText, shortName, quickMapState.itemIndex);
         }));
-        showToast('ใช้ชื่อกับ Order นี้แล้ว — ไม่ได้เพิ่ม Mapping ใหม่', 'success');
+        const skuWarningStillOpen = Boolean(quickMapState.row?.order?.parserWarning) &&
+          !reviewOverridesApi.getReviewAcknowledgement(quickMapState.row?.order, 'sku');
+        showToast(skuWarningStillOpen
+          ? 'ใช้ชื่อกับ Order นี้แล้ว — คำเตือน SKU ทั้งออเดอร์ยังไม่ถูกยืนยัน ต้องติ๊ก "SKU ถูกต้อง" แยก • ไม่ได้เพิ่ม Mapping ใหม่'
+          : 'ใช้ชื่อกับ Order นี้แล้ว — ไม่ได้เพิ่ม Mapping ใหม่', 'success');
         setQuickMapState({ open: false, row: null, keyword: '', shortName: '' });
       };
 
@@ -3323,6 +3348,9 @@
         try {
           const storedMeta = await batchApi.saveBatch(updated, orders);
           upsertBatchMeta(storedMeta);
+          // The open batch is confirmed in storage: nothing is pending for it any more.
+          saveTrackerRef.current?.reset();
+          setUnsavedWarning('');
           return true;
         } catch (err) {
           console.error('Save active batch failed', err);
@@ -3368,6 +3396,16 @@
       const runBatchTransition = async (transition) => {
         if (uploadGateRef.current.isActive()) {
           showToast('กำลังประมวลผล PDF อยู่ — รอให้เสร็จก่อนสลับ Batch', 'error');
+          return false;
+        }
+        // Fail closed: without the guard module a batch switch could move labels under a running print.
+        if (!saveGuardsApi) {
+          showToast('โมดูลป้องกันยังไม่พร้อม — โหลดหน้าใหม่แล้วลองอีกครั้ง', 'error');
+          return false;
+        }
+        const printBlock = saveGuardsApi.flightGuardMessage(printFlightRef.current, 'สลับ Batch');
+        if (printBlock) {
+          showToast(printBlock, 'error');
           return false;
         }
         if (!batchTransitionCoordinator) {
@@ -3423,6 +3461,15 @@
 
       const handleOpenBatch = async (batch) => {
         if (!batch || !batch.id) return;
+        if (!saveGuardsApi) {
+          showToast('โมดูลป้องกันยังไม่พร้อม — โหลดหน้าใหม่แล้วลองอีกครั้ง', 'error');
+          return;
+        }
+        const printBlock = saveGuardsApi.flightGuardMessage(printFlightRef.current, 'เปิด Batch');
+        if (printBlock) {
+          showToast(printBlock, 'error');
+          return;
+        }
         if (!batchStorageReady || !batchApi) {
           showToast('Browser storage ยังไม่พร้อม จึงยังเปิด Batch เก่าไม่ได้', 'error');
           return;
@@ -3490,8 +3537,25 @@
         upsertBatchMeta(updated);
       };
       const handleArchiveBatch = async (batch) => {
+        if (!saveGuardsApi) {
+          showToast('โมดูลป้องกันยังไม่พร้อม — โหลดหน้าใหม่แล้วลองอีกครั้ง', 'error');
+          return;
+        }
         if (uploadGateRef.current.isActive()) {
           showToast('กำลังประมวลผล PDF อยู่ — รอให้เสร็จก่อนทำรายการนี้', 'error');
+          return;
+        }
+        const printBlock = saveGuardsApi.flightGuardMessage(printFlightRef.current, 'เก็บเข้าคลัง');
+        if (printBlock) {
+          showToast(printBlock, 'error');
+          return;
+        }
+        // Local: the open batch holds the in-memory orders, so archiving it would leave later edits unsaved.
+        const openBlock = saveGuardsApi && batch
+          ? saveGuardsApi.openBatchGuardMessage({ cloudMode, activeBatchId, batchIds: [batch.id], action: 'archive' })
+          : '';
+        if (openBlock) {
+          showToast(openBlock, 'error');
           return;
         }
         if (!batch || !batch.id || (!cloudMode && !archiveApi)) { showToast('Archive module ยังไม่พร้อม', 'error'); return; }
@@ -3601,6 +3665,26 @@
 
       const handleDeleteSelectedArchived = async () => {
         if (!batchApi || !batchStorageReady || selectedArchivedBatchIds.length === 0) return;
+        if (!saveGuardsApi) {
+          showToast('โมดูลป้องกันยังไม่พร้อม — โหลดหน้าใหม่แล้วลองอีกครั้ง', 'error');
+          return;
+        }
+        if (uploadGateRef.current.isActive()) {
+          showToast('กำลังประมวลผล PDF อยู่ — รอให้เสร็จก่อนทำรายการนี้', 'error');
+          return;
+        }
+        const printBlock = saveGuardsApi.flightGuardMessage(printFlightRef.current, 'ลบ');
+        if (printBlock) {
+          showToast(printBlock, 'error');
+          return;
+        }
+        const openBlock = saveGuardsApi
+          ? saveGuardsApi.openBatchGuardMessage({ cloudMode, activeBatchId, batchIds: selectedArchivedBatchIds, action: 'delete' })
+          : '';
+        if (openBlock) {
+          showToast(openBlock, 'error');
+          return;
+        }
         if (localMetadataHealth.status === 'degraded') {
           showToast('Local Safety Metadata เสีย — กรุณากู้หรือ Reset ก่อนลบ Batch', 'error');
           return;
@@ -3637,11 +3721,27 @@
       };
 
       const handleDeleteBatch = async (batch) => {
+        if (!saveGuardsApi) {
+          showToast('โมดูลป้องกันยังไม่พร้อม — โหลดหน้าใหม่แล้วลองอีกครั้ง', 'error');
+          return;
+        }
         if (uploadGateRef.current.isActive()) {
           showToast('กำลังประมวลผล PDF อยู่ — รอให้เสร็จก่อนทำรายการนี้', 'error');
           return;
         }
         if (!batch || !batch.id || !batchApi) return;
+        const printBlock = saveGuardsApi.flightGuardMessage(printFlightRef.current, 'ลบ');
+        if (printBlock) {
+          showToast(printBlock, 'error');
+          return;
+        }
+        const openBlock = saveGuardsApi
+          ? saveGuardsApi.openBatchGuardMessage({ cloudMode, activeBatchId, batchIds: [batch.id], action: 'delete' })
+          : '';
+        if (openBlock) {
+          showToast(openBlock, 'error');
+          return;
+        }
         if (!batchStorageReady) {
           showToast('Browser storage ยังไม่พร้อม', 'error');
           return;
@@ -3783,8 +3883,17 @@
 
       const handleClearActiveBatch = async () => {
         if (orders.length === 0) return;
+        if (!saveGuardsApi) {
+          showToast('โมดูลป้องกันยังไม่พร้อม — โหลดหน้าใหม่แล้วลองอีกครั้ง', 'error');
+          return;
+        }
         if (uploadGateRef.current.isActive()) {
           showToast('กำลังประมวลผล PDF อยู่ — ยังล้าง Orders ไม่ได้ กรุณารอให้เสร็จก่อน', 'error');
+          return;
+        }
+        const printBlock = saveGuardsApi ? saveGuardsApi.flightGuardMessage(printFlightRef.current, 'ล้าง Orders') : '';
+        if (printBlock) {
+          showToast(printBlock, 'error');
           return;
         }
         if (!window.confirm('ล้าง Orders ใน Batch นี้หรือไม่? ตัว Batch จะยังอยู่')) return;
@@ -3935,19 +4044,32 @@
       useEffect(() => {
         if (!activeBatchId || !activeBatch || !batchApi || !batchStorageReady || batchLoading || (cloudMode && loadingStatus.active)) return;
 
-        const timer = setTimeout(async () => {
+        const tracker = saveTrackerRef.current;
+        const seq = tracker ? tracker.begin() : 0;
+        const runSave = async () => {
+          if (pendingAutosaveFlushRef.current === flush) pendingAutosaveFlushRef.current = null;
+          clearTimeout(timer);
           try {
             const updated = batchApi.buildBatchMeta(activeBatch, reviewSummary, { printedAt: activeBatch.printedAt, now: new Date() });
             const storedMeta = await batchApi.saveBatch(updated, orders);
             upsertBatchMeta(storedMeta);
+            if (tracker && tracker.succeed(seq)) setUnsavedWarning('');
           } catch (err) {
             console.error('Auto-save batch failed', err);
+            if (tracker) tracker.fail(seq);
             if (cloudMode) setCloudBatchError(err.message || 'Cloud Batch auto-save failed');
+            setUnsavedWarning('บันทึกอัตโนมัติไม่สำเร็จ — ข้อมูลล่าสุดยังไม่ถูกบันทึก อย่าปิดหน้านี้หรือสลับงาน');
             showToast(err.code === crossTabApi?.STALE_WRITE_CODE ? err.message : 'Auto-save Batch ไม่สำเร็จ กรุณาอย่าเพิ่งสลับงาน', 'error');
           }
-        }, 600);
+        };
+        const timer = setTimeout(runSave, 600);
+        const flush = () => runSave();
+        pendingAutosaveFlushRef.current = flush;
 
-        return () => clearTimeout(timer);
+        return () => {
+          clearTimeout(timer);
+          if (pendingAutosaveFlushRef.current === flush) pendingAutosaveFlushRef.current = null;
+        };
       }, [
         activeBatchId,
         orders,
@@ -3962,6 +4084,41 @@
         cloudMode,
         loadingStatus.active
       ]);
+
+      // Closing or reloading the page: run a pending autosave now (best effort, IndexedDB may not finish) and,
+      // in the browser only, ask before leaving while edits are not confirmed as saved. The desktop shell does
+      // not handle a prevented unload, so it is not prompted there; it still gets the flush.
+      useEffect(() => {
+        if (typeof window === 'undefined') return undefined;
+        const flushPending = () => {
+          const flush = pendingAutosaveFlushRef.current;
+          if (flush) flush();
+        };
+        const onBeforeUnload = (event) => {
+          const tracker = saveTrackerRef.current;
+          if (!tracker || !tracker.isDirty()) return;
+          flushPending();
+          if (window.packmasterDesktop) return;
+          event.preventDefault();
+          event.returnValue = 'ยังมีข้อมูลที่ยังไม่ได้บันทึกลง Batch';
+        };
+        const onPageHide = () => flushPending();
+        window.addEventListener('beforeunload', onBeforeUnload);
+        window.addEventListener('pagehide', onPageHide);
+        return () => {
+          window.removeEventListener('beforeunload', onBeforeUnload);
+          window.removeEventListener('pagehide', onPageHide);
+        };
+      }, []);
+
+      // Leaving the open batch (back to the list, or a switch that clears it): nothing is pending for this page,
+      // so no stale leave-page prompt and no lingering banner.
+      useEffect(() => {
+        if (!activeBatchId) {
+          saveTrackerRef.current?.reset();
+          setUnsavedWarning('');
+        }
+      }, [activeBatchId]);
 
       const resetRestorePreview = () => {
         setRestorePreview(null);
@@ -4346,8 +4503,28 @@
         }
       };
 
+      // Save PDF shares the print single-flight: it cannot start while a print or another export runs,
+      // and print cannot start while Save PDF runs.
       const handleExportPDF = async (mode = 'FULL_BATCH') => {
         if (MappedOrders.length === 0) return;
+        if (uploadGateRef.current.isActive()) {
+          showToast('กำลังประมวลผล PDF อยู่ — รอให้เสร็จก่อน Save PDF', 'error');
+          return;
+        }
+        if (!printFlightRef.current || !printFlightRef.current.tryStart()) {
+          showToast(printFlightRef.current
+            ? 'กำลังพิมพ์หรือ Save PDF อยู่ — รอให้เสร็จก่อน'
+            : 'โมดูลพิมพ์ยังไม่พร้อม — โหลดหน้าใหม่แล้วลองอีกครั้ง', 'error');
+          return;
+        }
+        try {
+          await renderLabelsPdf(mode);
+        } finally {
+          printFlightRef.current.finish();
+        }
+      };
+
+      const renderLabelsPdf = async (mode = 'FULL_BATCH') => {
         const ordersToExport = printScopeApi
           ? printScopeApi.selectPrintOrders(MappedOrders, mode, order => getReviewFlags(order).ready)
           : (mode === 'READY_ONLY' ? MappedOrders.filter(order => getReviewFlags(order).ready) : MappedOrders);
@@ -4786,6 +4963,7 @@
         <div className="min-h-screen bg-[#f8fafc] text-blue-950 font-sans relative">
           {!cloudMode && registryAssignmentsError && <div role="alert" className="p-4 bg-red-100 text-red-900">{registryAssignmentsError}</div>}
           {!cloudMode && skuRulesLoadError && <div role="alert" className="p-4 bg-amber-100 text-amber-950">{skuRulesLoadError} • เก็บข้อมูลต้นฉบับไว้แล้ว กรุณากู้คืนจาก Backup ที่ตรวจสอบแล้วก่อนแก้ไข</div>}
+          {unsavedWarning && <div role="alert" data-pm-unsaved-warning className="fixed top-4 left-1/2 -translate-x-1/2 z-[99998] max-w-xl w-[calc(100%-2rem)] rounded-2xl border border-red-200 bg-red-50 px-5 py-3 text-sm font-bold text-red-700 shadow-lg">⚠️ {unsavedWarning}</div>}
           {toast.show && <Toast message={toast.message} type={toast.type} onClose={() => setToast({ ...toast, show: false })} />}
           {cloudMode && (!registryAssignmentsLoaded || registryAssignmentsError || !cloudRegistryLoaded || cloudRegistryError || cloudBatchError) && (
             <div data-pm-cloud-blocker className="no-print fixed inset-0 z-[99999] bg-slate-950/70 flex items-center justify-center p-4" role="alertdialog" aria-modal="true" aria-label="สถานะระบบข้อมูลกลาง">
@@ -5283,11 +5461,11 @@
                 {activeView === 'review' && (
                   <section data-pm-view="review" data-pm-review-layout className="pm-page pm-page-wide">
                     <div className="pm-page-head">
-                      <div><div className="pm-eyebrow">Exceptions-first QC</div><h2 className="pm-page-title">รีวิว & พิมพ์</h2><p className="pm-page-subtitle">{activeBatch ? `${activeBatch.name} • ` : ''}ตรวจเฉพาะรายการที่ระบบไม่มั่นใจ แล้วพิมพ์เมื่อ Batch พร้อม • สถานะพิมพ์แล้วหมายถึงระบบเริ่มสั่งพิมพ์หรือส่งออก ไม่ยืนยันว่ากระดาษออกจากเครื่องพิมพ์จริง</p></div>
+                      <div><div className="pm-eyebrow">Exceptions-first QC</div><h2 className="pm-page-title">รีวิว & พิมพ์</h2><p className="pm-page-subtitle">{activeBatch ? `${activeBatch.name} • ` : ''}ตรวจเฉพาะรายการที่ระบบไม่มั่นใจ แล้วพิมพ์เมื่อ Batch พร้อม • พิมพ์ทั้ง Batch ครั้งแรกจะถามยืนยันก่อนตั้งสถานะพิมพ์แล้ว (พิมพ์เฉพาะที่พร้อมและการพิมพ์ซ้ำไม่ตั้งสถานะ) • Save PDF ตั้งสถานะพิมพ์แล้วทันทีหลังดาวน์โหลด PDF สำเร็จ ไม่ถามยืนยันกระดาษ • ระบบไม่ยืนยันว่ากระดาษออกจากเครื่องพิมพ์จริง</p></div>
                       <div className="pm-page-actions">
                         <button onClick={()=>setThermalMode(!thermalMode)} className={`pm-secondary-btn ${thermalMode?'!border-emerald-200 !text-emerald-700':''}`}><PMIcon name="printer"/> Thermal {thermalMode?'ON':'OFF'}</button>
                         <button onClick={handleClearActiveBatch} disabled={orders.length===0 || loadingStatus.active} className="pm-ghost-btn"><PMIcon name="refresh"/> ล้างออเดอร์</button>
-                        <button data-pm-action="save-pdf" onClick={()=>handleExportPDF('FULL_BATCH')} disabled={exportStatus.active || orders.length === 0} className="pm-secondary-btn"><PMIcon name="download"/> Save PDF</button><button data-pm-action="print" onClick={()=>handlePrint('FULL_BATCH')} disabled={orders.length === 0 || printBusy} className="pm-primary-btn"><PMIcon name="printer"/> พิมพ์</button>
+                        <button data-pm-action="save-pdf" onClick={()=>handleExportPDF('FULL_BATCH')} disabled={exportStatus.active || printBusy || orders.length === 0} className="pm-secondary-btn"><PMIcon name="download"/> Save PDF</button><button data-pm-action="print" onClick={()=>handlePrint('FULL_BATCH')} disabled={orders.length === 0 || printBusy || exportStatus.active} className="pm-primary-btn"><PMIcon name="printer"/> พิมพ์</button>
                       </div>
                     </div>
 
@@ -5345,7 +5523,7 @@
                     )}
 
                     {ReviewDisplayOrders.length>0&&<div className="pm-pagination mt-4"><div className="text-[11px] font-bold text-slate-400">หน้า {reviewPage} / {reviewDisplayPageCount} • แสดง {visibleReviewDisplayOrders.length} รายการ</div><div className="flex items-center gap-2"><select value={reviewPageSize} onChange={(e)=>{setReviewPageSize(Number(e.target.value));setReviewPage(1);}} className="pm-select !py-1.5"><option value="12">12/หน้า</option><option value="24">24/หน้า</option><option value="48">48/หน้า</option></select><button disabled={reviewPage<=1} onClick={()=>setReviewPage(p=>Math.max(1,p-1))} className="pm-page-btn">‹</button><button disabled={reviewPage>=reviewDisplayPageCount} onClick={()=>setReviewPage(p=>Math.min(reviewDisplayPageCount,p+1))} className="pm-page-btn">›</button></div></div>}
-                    {orders.length>0&&<div data-pm-review-action-dock className="pm-review-action-wrap no-print"><div data-pm-review-action-bar className="pm-review-action-bar"><div className="min-w-0"><div className="text-sm font-black text-slate-900">Batch ทั้งหมด {reviewSummary.total} รายการ</div><div className="text-[10px] font-semibold text-slate-400 mt-0.5">{exceptionRows.length>0?`มี ${exceptionRows.length} รายการสำหรับตรวจเพิ่มเติม • ไม่บล็อกการพิมพ์`:'ไม่มีรายการต้องตรวจ'} • สถานะพิมพ์แล้วหมายถึงระบบเริ่มสั่งพิมพ์หรือส่งออก ไม่ยืนยันว่ากระดาษออกจากเครื่องพิมพ์จริง</div></div><div className="flex flex-wrap gap-2">{exceptionRows.length>0&&<button onClick={openExceptionMode} className="pm-secondary-btn"><PMIcon name="alert"/> ตรวจ {exceptionRows.length} รายการ</button>}<button onClick={()=>handleExportPDF('FULL_BATCH')} disabled={exportStatus.active||orders.length===0} className="pm-secondary-btn"><PMIcon name="download"/> Save PDF</button><button data-pm-action="print-ready" onClick={()=>handlePrint('READY_ONLY')} disabled={orders.length===0||printBusy||reviewSummary.ready===0} className="pm-secondary-btn"><PMIcon name="printer"/> พิมพ์เฉพาะที่พร้อม {reviewSummary.ready} ใบ</button><button onClick={()=>handlePrint('FULL_BATCH')} disabled={orders.length===0||printBusy} className="pm-primary-btn"><PMIcon name="printer"/> พิมพ์ {reviewSummary.total} ใบ</button></div></div></div>}
+                    {orders.length>0&&<div data-pm-review-action-dock className="pm-review-action-wrap no-print"><div data-pm-review-action-bar className="pm-review-action-bar"><div className="min-w-0"><div className="text-sm font-black text-slate-900">Batch ทั้งหมด {reviewSummary.total} รายการ</div><div className="text-[10px] font-semibold text-slate-400 mt-0.5">{exceptionRows.length>0?`มี ${exceptionRows.length} รายการสำหรับตรวจเพิ่มเติม • ไม่บล็อกการพิมพ์`:'ไม่มีรายการต้องตรวจ'} • พิมพ์ทั้ง Batch ครั้งแรกจะถามยืนยันก่อนตั้งสถานะพิมพ์แล้ว (พิมพ์เฉพาะที่พร้อมและการพิมพ์ซ้ำไม่ตั้งสถานะ) • Save PDF ตั้งสถานะพิมพ์แล้วทันทีหลังดาวน์โหลด PDF สำเร็จ ไม่ถามยืนยันกระดาษ • ระบบไม่ยืนยันว่ากระดาษออกจากเครื่องพิมพ์จริง</div></div><div className="flex flex-wrap gap-2">{exceptionRows.length>0&&<button onClick={openExceptionMode} className="pm-secondary-btn"><PMIcon name="alert"/> ตรวจ {exceptionRows.length} รายการ</button>}<button onClick={()=>handleExportPDF('FULL_BATCH')} disabled={exportStatus.active||orders.length===0} className="pm-secondary-btn"><PMIcon name="download"/> Save PDF</button><button data-pm-action="print-ready" onClick={()=>handlePrint('READY_ONLY')} disabled={orders.length===0||printBusy||reviewSummary.ready===0} className="pm-secondary-btn"><PMIcon name="printer"/> พิมพ์เฉพาะที่พร้อม {reviewSummary.ready} ใบ</button><button onClick={()=>handlePrint('FULL_BATCH')} disabled={orders.length===0||printBusy} className="pm-primary-btn"><PMIcon name="printer"/> พิมพ์ {reviewSummary.total} ใบ</button></div></div></div>}
                   </section>
                 )}
 

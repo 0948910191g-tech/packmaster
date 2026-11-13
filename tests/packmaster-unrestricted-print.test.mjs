@@ -37,7 +37,7 @@ test('registry results and warnings can be saved as printed history',()=>{
 test('full PDF export proceeds and records printed status with unresolved items',async()=>{
  const events=[];const order={id:'o3'};
  class PDF {addImage(){} save(){events.push('download')} addPage(){}}
- const s={Date,console,MappedOrders:[order],exceptionRows:[{}],printScopeApi:null,getReviewFlags:()=>({ready:false}),setExportStatus:()=>{},setExportRenderOrder:()=>{},setTimeout:f=>f(),requestAnimationFrame:f=>f(),document:{getElementById:()=>({})},waitForLabelRender:async()=>{},thermalMode:false,thermalFailedImages:new Set(),window:{jspdf:{jsPDF:PDF},html2canvas:async()=>({toDataURL:()=>'',width:2,height:2}),confirm:()=>false},markActiveBatchPrinted:async()=>(events.push('marked'),true),showToast:()=>{}};
+ const s={Date,console,MappedOrders:[order],exceptionRows:[{}],printScopeApi:null,getReviewFlags:()=>({ready:false}),setExportStatus:()=>{},setExportRenderOrder:()=>{},setTimeout:f=>f(),requestAnimationFrame:f=>f(),document:{getElementById:()=>({})},waitForLabelRender:async()=>{},thermalMode:false,thermalFailedImages:new Set(),printFlightRef:{current:require('../packmaster-print-flow.js').createSingleFlight()},uploadGateRef:{current:{isActive:()=>false}},window:{jspdf:{jsPDF:PDF},html2canvas:async()=>({toDataURL:()=>'',width:2,height:2}),confirm:()=>false},markActiveBatchPrinted:async()=>(events.push('marked'),true),showToast:()=>{}};
  vm.createContext(s);const start=html.indexOf('const handleExportPDF =');const end=html.indexOf('const prepareSkuRules',start);vm.runInContext(html.slice(start,end)+'\nglobalThis.runExport=handleExportPDF;',s);
  await s.runExport('FULL_BATCH');assert.deepEqual(events,['download','marked']);
 });

@@ -20,6 +20,7 @@ assert.ok(workflow.includes("grep -Fq './packmaster-review-keyword-suggestions.j
 assert.ok(workflow.includes("grep -Fq './packmaster-batch-source-files.js' <<< \"$html\""), 'production smoke must verify Batch source filename helper is deployed');
 assert.ok(workflow.includes("grep -Fq './packmaster-print-scope.js' <<< \"$html\""), 'production smoke must verify the print scope helper is deployed');
 assert.ok(workflow.includes("grep -Fq './packmaster-print-flow.js' <<< \"$html\""), 'production smoke must verify the print completion helper is deployed');
+assert.ok(workflow.includes("grep -Fq './packmaster-save-guards.js' <<< \"$html\""), 'production smoke must verify the save honesty and batch guard helper is deployed');
 assert.ok(workflow.includes("grep -Fq 'ใช้กับ Order นี้' <<< \"$html\""), 'production smoke must verify order-only Quick Mapping UI is deployed');
 assert.ok(workflow.includes("grep -Fq \"handleExportPDF('FULL_BATCH')\" <<< \"$html\""), 'production smoke must verify unrestricted full-Batch PDF export is deployed');
 assert.ok(workflow.includes("grep -Fq \"handlePrint('FULL_BATCH')\" <<< \"$html\""), 'production smoke must verify direct full-Batch print is deployed without an emergency override');
