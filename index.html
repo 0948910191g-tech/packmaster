@@ -33,6 +33,7 @@
   <script src="./packmaster-review-keyword-suggestions.js"></script>
   <script src="./packmaster-review-overrides.js"></script>
   <script src="./packmaster-manual-items.js"></script>
+  <script src="./packmaster-upload-session.js"></script>
   <script src="./packmaster-batch-source-files.js"></script>
   <script src="./packmaster-print-scope.js"></script>
   <script src="./packmaster-archive.js"></script>
@@ -1456,6 +1457,7 @@
       const reviewKeywordSuggestionsApi = window.PackMasterReviewKeywordSuggestions;
       const reviewOverridesApi = window.PackMasterReviewOverrides;
       const manualItemsApi = window.PackMasterManualItems;
+      const uploadSessionApi = window.PackMasterUploadSession;
       const batchSourceFilesApi = window.PackMasterBatchSourceFiles;
       const printScopeApi = window.PackMasterPrintScope;
       const archiveApi = window.PackMasterArchive;
@@ -1567,6 +1569,11 @@
       // Latest committed orders, read after awaits so a save never acts on a stale closure.
       const ordersRef = useRef(orders);
       ordersRef.current = orders;
+      // Busy gate for PDF upload. If the module is missing, uploads are refused (tryStart -> false) but
+      // isActive stays false, so Batch create/open/clear/delete are not blocked forever.
+      const uploadGateRef = useRef(uploadSessionApi
+        ? uploadSessionApi.createUploadGate()
+        : { tryStart: () => false, finish: () => {}, isActive: () => false });
       const [skuRules, setSkuRules] = useState(() => {
         if (cloudMode) return []; // Never prime central mapping from this browser's local rules.
         return localStartupSnapshot?.skuRules || [];
@@ -1902,7 +1909,36 @@
       }, [registryMatcherApi, marketplaceCatalogIndex,
         registryAssignments, registryAssignmentsLoaded, registryIdentityApi, registryAssignmentsError]);
 
+      const resetFileInput = (target) => {
+        if (target && typeof target === 'object') {
+          try { target.value = ''; }
+          catch (resetError) { console.warn('Reset PDF file input failed', resetError); }
+        }
+      };
+
+      // Entry point for file picker and drop. The busy gate is taken synchronously, before the first
+      // await, so a second pick/drop is refused while the first batch of PDFs is still processing.
+      // The input is reset on every exit path, here in finally.
       const handleFileUpload = async (e) => {
+        if (Array.from(e.target?.files || []).length === 0) return;
+        const run = await uploadSessionApi.runExclusive(uploadGateRef.current, async () => {
+          setLoadingStatus({ active: true, current: 0, total: 'เช็คจำนวนหน้า...' });
+          setUploadError('');
+          try {
+            await importPdfFiles(e);
+          } finally {
+            setLoadingStatus({ active: false, current: 0, total: 0 });
+            resetFileInput(e.target);
+          }
+        });
+        if (!run.ran) {
+          setUploadError('กำลังประมวลผลไฟล์อยู่ กรุณารอให้เสร็จก่อน');
+          showToast('กำลังประมวลผลไฟล์อยู่ — ไฟล์ที่เลือกใหม่ยังไม่ถูกนำเข้า กรุณาเลือกอีกครั้งหลังเสร็จ', 'error');
+          resetFileInput(e.target);
+        }
+      };
+
+      const importPdfFiles = async (e) => {
         const uploadBatchId = activeBatchId;
         const uploadBatch = activeBatch;
         if (typeof window !== 'undefined') {
@@ -1910,11 +1946,6 @@
         }
         let files = Array.from(e.target.files);
         if (files.length === 0) return;
-        if (loadingStatus.active) {
-          setUploadError('กำลังประมวลผลไฟล์อยู่ กรุณารอให้เสร็จก่อน');
-          e.target.value = '';
-          return;
-        }
         const unsupportedFiles = files.filter(file => !String(file.name || '').toLowerCase().endsWith('.pdf'));
         if (unsupportedFiles.length > 0) {
           setUploadError('รองรับเฉพาะไฟล์ PDF กรุณาเลือกไฟล์ใหม่อีกครั้ง');
@@ -1924,7 +1955,6 @@
 
         if (!activeBatchId) {
           showToast('กรุณาสร้างหรือเปิด Batch ก่อนอัปโหลดไฟล์', 'error');
-          e.target.value = null;
           return;
         }
 
@@ -1981,7 +2011,6 @@
 
           if (files.length === 0) {
             showToast('ข้ามไฟล์ที่ซ้ำทั้งหมดแล้ว — ไม่มีข้อมูลใหม่ถูกเพิ่ม', 'success');
-            e.target.value = null;
             return;
           }
         } else {
@@ -1990,7 +2019,6 @@
 
         if (orders.length >= 150) {
             showToast('อัลบั้มเต็มแล้ว! (สูงสุด 150 ใบ) กรุณาล้างข้อมูลก่อนอัปโหลดใหม่', 'error');
-            e.target.value = null;
             return;
         }
 
@@ -2020,16 +2048,12 @@
           if (totalNewPages === 0) {
               setUploadError('ไม่พบไฟล์ PDF ที่รองรับ กรุณาตรวจไฟล์อีกครั้งค่ะ');
               showToast('ไม่มีไฟล์ PDF', 'error');
-              setLoadingStatus({ active: false, current: 0, total: 0 });
-              e.target.value = null;
               return;
           }
 
           if (orders.length + totalNewPages > 150) {
               const overAmount = (orders.length + totalNewPages) - 150;
               showToast(`อัปโหลดไม่ได้! รวมแล้วเกิน 150 ใบ (เกินมา ${overAmount} ใบ)`, 'error');
-              setLoadingStatus({ active: false, current: 0, total: 0 });
-              e.target.value = null;
               return;
           }
 
@@ -2298,7 +2322,7 @@
 
           if (allNewOrders.length > 0) {
             const duplicateSignals = duplicateApi
-              ? duplicateApi.findOrderDuplicateSignals(allNewOrders, orders)
+              ? duplicateApi.findOrderDuplicateSignals(allNewOrders, ordersRef.current)
               : [];
 
             if (duplicateSignals.length > 0) {
@@ -2315,51 +2339,63 @@
               }
             }
 
-            const nextOrders = [...orders, ...allNewOrders];
-            if (cloudMode) {
-              if (!batchStorageReady || !batchApi || !uploadBatch) {
-                throw new Error('Cloud Batch ยังไม่พร้อมบันทึก กรุณาโหลดข้อมูลอีกครั้ง');
-              }
-              // Commit the PDF-derived orders before showing success or changing local state.
-              // Otherwise a 4 MiB Free-plan limit or network error can produce a phantom import.
-              try {
+            // Build the saved list from the LATEST committed orders, not the snapshot from upload start,
+            // so edits made while the PDFs were being read are kept.
+            const committedOrders = uploadSessionApi.mergeUploadedOrders(ordersRef.current, allNewOrders);
+
+            // Never save into a Batch that was switched away from or deleted while the PDFs were being read.
+            const liveBatchNow = (typeof window !== 'undefined' && window.__pmActiveBatchId !== undefined)
+              ? window.__pmActiveBatchId
+              : activeBatchIdRef.current;
+            if (!uploadSessionApi.isSameBatch(uploadBatchId, liveBatchNow)) {
+              showToast('Batch ถูกเปลี่ยนหรือลบระหว่างอัปโหลด — ยังไม่บันทึกไฟล์นี้ กรุณาเลือกไฟล์ใหม่ในหน้า Batch ที่ต้องการ', 'error');
+              return;
+            }
+
+            if (cloudMode && (!batchStorageReady || !batchApi || !uploadBatch)) {
+              throw new Error('Cloud Batch ยังไม่พร้อมบันทึก กรุณาโหลดข้อมูลอีกครั้ง');
+            }
+
+            // Fingerprints are remembered only from inside saveThenRemember, after a save that really persisted.
+            const persistence = await uploadSessionApi.saveThenRemember({
+              save: async () => {
+                // Cloud: commit before showing success or changing local state. A 4 MiB Free-plan limit
+                // or network error must not produce a phantom import.
+                if (!batchStorageReady || !batchApi || !uploadBatch) return false; // session only: nothing persisted
                 const meta = batchApi.buildBatchMeta(uploadBatch, reviewSummary, {
                   printedAt: null, resolvedSnapshot: null, now: new Date()
                 });
-                const storedMeta = await batchApi.saveBatch(meta, nextOrders);
+                const storedMeta = await batchApi.saveBatch(meta, committedOrders);
                 upsertBatchMeta(storedMeta);
-              } catch (error) {
-                error.cloudSaveFailed = true;
-                throw error;
-              }
-            } else {
-              if (batchStorageReady && batchApi && uploadBatch) {
-                try {
-                  const meta = batchApi.buildBatchMeta(uploadBatch, reviewSummary, {
-                    printedAt: null, resolvedSnapshot: null, now: new Date()
-                  });
-                  const storedMeta = await batchApi.saveBatch(meta, nextOrders);
-                  upsertBatchMeta(storedMeta);
-                  if (reprintSnapshotApi && uploadBatch.printedAt) {
-                    try { reprintSnapshotApi.clearBatchSnapshot(uploadBatch.id); }
-                    catch (snapshotError) { console.warn('Clear legacy resolved snapshot after upload failed', snapshotError); }
-                  }
-                } catch (saveErr) {
-                  console.error('Save upload batch failed', saveErr);
-                  if (saveErr.code === crossTabApi?.STALE_WRITE_CODE) showToast(saveErr.message, 'error');
+                if (!cloudMode && reprintSnapshotApi && uploadBatch.printedAt) {
+                  try { reprintSnapshotApi.clearBatchSnapshot(uploadBatch.id); }
+                  catch (snapshotError) { console.warn('Clear legacy resolved snapshot after upload failed', snapshotError); }
                 }
-              }
-            }
+                return true;
+              },
+              remember: entries => {
+                if (!duplicateApi || entries.length === 0) return;
+                try {
+                  duplicateApi.appendBatchFingerprints(activeBatchId, entries);
+                } catch (fingerprintSaveError) {
+                  console.error('Save duplicate fingerprint sidecar failed', fingerprintSaveError);
+                  showToast('นำเข้าได้ แต่บันทึกประวัติไฟล์ซ้ำใน LocalStorage ไม่สำเร็จ — กรุณา Backup ก่อนสลับ Batch', 'error');
+                }
+              },
+              entries: acceptedSourceFiles
+            });
 
-            if (duplicateApi && acceptedSourceFiles.length > 0) {
-              try {
-                duplicateApi.appendBatchFingerprints(activeBatchId, acceptedSourceFiles);
-              } catch (fingerprintSaveError) {
-                console.error('Save duplicate fingerprint sidecar failed', fingerprintSaveError);
-                showToast('นำเข้าได้ แต่บันทึกประวัติไฟล์ซ้ำใน LocalStorage ไม่สำเร็จ — กรุณา Backup ก่อนสลับ Batch', 'error');
-              }
+            if (cloudMode && persistence.error) {
+              persistence.error.cloudSaveFailed = true;
+              throw persistence.error;
             }
+            if (persistence.error) console.error('Save upload batch failed', persistence.error);
+            const batchSaved = persistence.saved;
+            const saveProblem = persistence.error
+              ? (persistence.error.message || 'บันทึกไม่สำเร็จ')
+              : 'Browser storage ยังไม่พร้อม';
 
+            // The batch may have changed while the save was awaited; only then-live state is updated.
             const currentLiveBatchId = (typeof window !== 'undefined' && window.__pmActiveBatchId !== undefined)
               ? window.__pmActiveBatchId
               : ((typeof activeBatchIdRef !== 'undefined' && activeBatchIdRef.current !== undefined)
@@ -2367,13 +2403,17 @@
                 : activeBatchId);
 
             if (currentLiveBatchId === uploadBatchId) {
-              setOrders(nextOrders);
+              setOrders(prev => uploadSessionApi.mergeUploadedOrders(prev, allNewOrders));
               setActiveTab('preview');
               setActiveView('review');
             }
-            showToast(cloudMode
-              ? `บันทึก Cloud สำเร็จแล้ว ${allNewOrders.length} ใบ`
-              : `เพิ่มข้อมูลสำเร็จ ${allNewOrders.length} ใบ`, 'success');
+            if (cloudMode || batchSaved) {
+              showToast(cloudMode
+                ? `บันทึก Cloud สำเร็จแล้ว ${allNewOrders.length} ใบ`
+                : `เพิ่มข้อมูลสำเร็จ ${allNewOrders.length} ใบ`, 'success');
+            } else {
+              showToast(`เพิ่มออเดอร์ในหน้านี้แล้ว แต่ยังไม่ได้บันทึกลง Batch (${saveProblem}) — ไฟล์นี้จะยังไม่ถูกจำว่านำเข้าแล้ว`, 'error');
+            }
           }
         } catch (err) {
           console.error(err);
@@ -2382,11 +2422,7 @@
           showToast(err.cloudSaveFailed
             ? 'บันทึกออเดอร์ขึ้น Cloud ไม่สำเร็จ — ยังไม่ได้เพิ่มออเดอร์ใน Batch'
             : 'อ่านไฟล์ไม่สำเร็จ', 'error');
-        } finally {
-          setLoadingStatus({ active: false, current: 0, total: 0 });
         }
-
-        e.target.value = null;
       };
 
       const LiveMappedOrders = useMemo(() => orders.map(o => {
@@ -3314,6 +3350,10 @@
         exportStatus?.active, batchLoading, loadingStatus.active, activeBatchId, saveActiveBatchSnapshot]);
 
       const runBatchTransition = async (transition) => {
+        if (uploadGateRef.current.isActive()) {
+          showToast('กำลังประมวลผล PDF อยู่ — รอให้เสร็จก่อนสลับ Batch', 'error');
+          return false;
+        }
         if (!batchTransitionCoordinator) {
           showToast('Batch transition safety module ยังไม่พร้อม', 'error');
           return false;
@@ -3434,6 +3474,10 @@
         upsertBatchMeta(updated);
       };
       const handleArchiveBatch = async (batch) => {
+        if (uploadGateRef.current.isActive()) {
+          showToast('กำลังประมวลผล PDF อยู่ — รอให้เสร็จก่อนทำรายการนี้', 'error');
+          return;
+        }
         if (!batch || !batch.id || (!cloudMode && !archiveApi)) { showToast('Archive module ยังไม่พร้อม', 'error'); return; }
         const unresolved = (batch.reviewSkuCount || 0) + (batch.reviewQtyCount || 0) + (batch.unmappedCount || 0);
         if (unresolved > 0 && !window.confirm(`Batch นี้ยังมี ${unresolved} รายการที่ต้องตรวจ\n\nต้องการเก็บเข้าคลังต่อหรือไม่?`)) return;
@@ -3447,6 +3491,10 @@
       };
 
       const handleRestoreArchivedBatch = async (batch) => {
+        if (uploadGateRef.current.isActive()) {
+          showToast('กำลังประมวลผล PDF อยู่ — รอให้เสร็จก่อนทำรายการนี้', 'error');
+          return;
+        }
         if (!batch || !batch.id || (!cloudMode && !archiveApi)) { showToast('Archive module ยังไม่พร้อม', 'error'); return; }
         try {
           if (cloudMode) await changeCloudBatchArchive(batch, null);
@@ -3573,6 +3621,10 @@
       };
 
       const handleDeleteBatch = async (batch) => {
+        if (uploadGateRef.current.isActive()) {
+          showToast('กำลังประมวลผล PDF อยู่ — รอให้เสร็จก่อนทำรายการนี้', 'error');
+          return;
+        }
         if (!batch || !batch.id || !batchApi) return;
         if (!batchStorageReady) {
           showToast('Browser storage ยังไม่พร้อม', 'error');
@@ -3715,6 +3767,10 @@
 
       const handleClearActiveBatch = async () => {
         if (orders.length === 0) return;
+        if (uploadGateRef.current.isActive()) {
+          showToast('กำลังประมวลผล PDF อยู่ — ยังล้าง Orders ไม่ได้ กรุณารอให้เสร็จก่อน', 'error');
+          return;
+        }
         if (!window.confirm('ล้าง Orders ใน Batch นี้หรือไม่? ตัว Batch จะยังอยู่')) return;
 
         if (activeBatch && batchApi) {
@@ -3963,6 +4019,11 @@
       const handleWorkspaceRestoreFile = async (event) => {
         const file = event.target.files && event.target.files[0];
         if (!file) return;
+        if (uploadGateRef.current.isActive()) {
+          showToast('กำลังประมวลผล PDF อยู่ — รอให้เสร็จก่อนกู้คืน Workspace', 'error');
+          event.target.value = '';
+          return;
+        }
 
         setWorkspaceBusy(true);
         try {
@@ -4007,6 +4068,10 @@
       };
 
       const handleConfirmWorkspaceRestore = async () => {
+        if (uploadGateRef.current.isActive()) {
+          showToast('กำลังประมวลผล PDF อยู่ — รอให้เสร็จก่อนกู้คืน Workspace', 'error');
+          return;
+        }
         if (cloudMode) {
           showToast('Cloud Mode ยังไม่รองรับการ Replace Workspace กรุณาใช้เครื่องมือย้ายข้อมูลที่ตรวจสอบแล้ว', 'error');
           return;
@@ -5156,7 +5221,7 @@
                       <div><div className="pm-eyebrow">Exceptions-first QC</div><h2 className="pm-page-title">รีวิว & พิมพ์</h2><p className="pm-page-subtitle">{activeBatch ? `${activeBatch.name} • ` : ''}ตรวจเฉพาะรายการที่ระบบไม่มั่นใจ แล้วพิมพ์เมื่อ Batch พร้อม • สถานะพิมพ์แล้วหมายถึงระบบเริ่มสั่งพิมพ์หรือส่งออก ไม่ยืนยันว่ากระดาษออกจากเครื่องพิมพ์จริง</p></div>
                       <div className="pm-page-actions">
                         <button onClick={()=>setThermalMode(!thermalMode)} className={`pm-secondary-btn ${thermalMode?'!border-emerald-200 !text-emerald-700':''}`}><PMIcon name="printer"/> Thermal {thermalMode?'ON':'OFF'}</button>
-                        <button onClick={handleClearActiveBatch} disabled={orders.length===0} className="pm-ghost-btn"><PMIcon name="refresh"/> ล้างออเดอร์</button>
+                        <button onClick={handleClearActiveBatch} disabled={orders.length===0 || loadingStatus.active} className="pm-ghost-btn"><PMIcon name="refresh"/> ล้างออเดอร์</button>
                         <button data-pm-action="save-pdf" onClick={()=>handleExportPDF('FULL_BATCH')} disabled={exportStatus.active || orders.length === 0} className="pm-secondary-btn"><PMIcon name="download"/> Save PDF</button><button data-pm-action="print" onClick={()=>handlePrint('FULL_BATCH')} disabled={orders.length === 0} className="pm-primary-btn"><PMIcon name="printer"/> พิมพ์</button>
                       </div>
                     </div>

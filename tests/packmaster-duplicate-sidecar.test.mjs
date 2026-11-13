@@ -61,7 +61,7 @@ assert.equal(duplicate.getBatchFingerprints('restored-batch', restoreStorage).le
 const html = fs.readFileSync(path.resolve(__dirname, '../index.html'), 'utf8');
 const markers = [
   'duplicateApi.getKnownFingerprints(activeBatchId, orders.length > 0 ? (activeBatch?.sourceFiles || []) : [])',
-  'duplicateApi.appendBatchFingerprints(activeBatchId, acceptedSourceFiles)',
+  'duplicateApi.appendBatchFingerprints(activeBatchId, entries)',
   'duplicateApi.clearBatchFingerprints(batch.id)',
   'duplicateApi.clearBatchFingerprints(activeBatchId)',
   'duplicateFingerprints: duplicateApi ? duplicateApi.exportFingerprintStore() : {}',

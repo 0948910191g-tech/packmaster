@@ -69,6 +69,8 @@ function harness({ failSave = false, failSaveOnce = false, lostAcknowledgement =
     setOrders: orders => { state.orders = orders; c.orders = orders; },
     window: { confirm: () => true },
     duplicateApi: { clearBatchFingerprints() {} },
+    // Upload busy gate: idle in this harness, so clear proceeds as before.
+    uploadGateRef: { current: { isActive: () => false } },
     cloudMode: true,
     cloud: { async saveDocument() { throw new Error('completion must not write a separate document'); } },
     showToast: message => state.events.push(message)

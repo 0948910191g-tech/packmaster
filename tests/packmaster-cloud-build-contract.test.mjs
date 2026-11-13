@@ -51,10 +51,10 @@ test('Cloud mode separates central Mapping, Batch, Registry and Archive from loc
   assert.match(app, /data-pm-cloud-blocker/);
   assert.match(app, /data-pm-cloud-logout/);
   const pdfImport = app.slice(app.indexOf('if (allNewOrders.length > 0) {'), app.indexOf('const LiveMappedOrders'));
-  assert.ok(pdfImport.includes('await batchApi.saveBatch(meta, nextOrders)'),
+  assert.ok(pdfImport.includes('await batchApi.saveBatch(meta, committedOrders)'),
     'Cloud PDF import must save orders before reporting success');
-  assert.ok(pdfImport.indexOf('await batchApi.saveBatch(meta, nextOrders)') <
-    pdfImport.indexOf('setOrders(nextOrders)'),
+  assert.ok(pdfImport.indexOf('await batchApi.saveBatch(meta, committedOrders)') <
+    pdfImport.indexOf('setOrders(prev => uploadSessionApi.mergeUploadedOrders(prev, allNewOrders))'),
     'Cloud must not show PDF-imported orders before persistence acknowledgement');
   assert.match(pdfImport, /error.cloudSaveFailed = true/);
   assert.match(app, /cloudMode && loadingStatus.active/,

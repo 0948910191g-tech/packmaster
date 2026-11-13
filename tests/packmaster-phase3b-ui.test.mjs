@@ -12,8 +12,8 @@ const required = [
   'duplicateApi.hashFile(file)',
   'duplicateApi.getKnownFingerprints(activeBatchId, orders.length > 0 ? (activeBatch?.sourceFiles || []) : [])',
   'duplicateApi.findExactFileDuplicate(fileHash, knownFingerprints)',
-  'duplicateApi.findOrderDuplicateSignals(allNewOrders, orders)',
-  'duplicateApi.appendBatchFingerprints(activeBatchId, acceptedSourceFiles)',
+  'duplicateApi.findOrderDuplicateSignals(allNewOrders, ordersRef.current)',
+  'duplicateApi.appendBatchFingerprints(activeBatchId, entries)',
   'พบไฟล์ PDF ที่เคยนำเข้า Batch นี้แล้ว',
   'พบ Order ที่อาจซ้ำกับข้อมูลใน Batch นี้'
 ];

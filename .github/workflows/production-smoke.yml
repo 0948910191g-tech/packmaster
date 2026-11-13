@@ -31,6 +31,7 @@ jobs:
               && grep -Fq './packmaster-pilot-safety.js' <<< "$html" \
               && grep -Fq './packmaster-review-overrides.js' <<< "$html" \
               && grep -Fq './packmaster-manual-items.js' <<< "$html" \
+              && grep -Fq './packmaster-upload-session.js' <<< "$html" \
               && grep -Fq './packmaster-review-keyword-suggestions.js' <<< "$html" \
               && grep -Fq './packmaster-batch-source-files.js' <<< "$html" \
               && grep -Fq './packmaster-print-scope.js' <<< "$html" \
