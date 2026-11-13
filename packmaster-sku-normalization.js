@@ -67,7 +67,8 @@
   // Spaces are removed, except a space between two digits, which keeps numbers
   // apart ("1 2" is not "12"). Texts that differ only by spaces, line breaks,
   // NBSP or invisible characters get the same key.
-  const isDigit = character => character !== undefined && /[0-9]/.test(character);
+  // Thai digits count too, so "๑ ๒" keeps its space and is not "๑๒".
+  const isDigit = character => character !== undefined && /[0-9๐-๙]/.test(character);
   function normalizeMatchKey(value) {
     return normalizeSellerSku(value).replace(/ /g, (space, offset, text) =>
       isDigit(text[offset - 1]) && isDigit(text[offset + 1]) ? ' ' : '');
@@ -76,15 +77,25 @@
   // Kept as a name for existing callers; it is the same rule, not a second one.
   const normalizeCatalogText = normalizeMatchKey;
 
-  // Thai text skeleton for fuzzy-safe fallback: strips Thai vowels/tones/diacritics
-  // and non-alphanumeric chars to bridge PDF font extraction glitches and reordered marks.
+  // Thai text skeleton for the fuzzy-safe fallback. It bridges PDF glitches: tone marks and
+  // above/below vowels that PDFs reorder are stripped, so their order does not matter.
+  // Numbers stay apart: Thai digits become ASCII digits, and '.', '+', '/' and a space are kept
+  // only between two digits (1.5 is not 15, 5+5 is not 55, 1 2 is not 12). Leading vowels
+  // (U+0E40 to U+0E44) are kept. Everything else that is not a Thai consonant, A-Z or 0-9 is dropped.
   function normalizeThaiSkeleton(value) {
     if (typeof value !== 'string') return '';
-    return repairThaiPdfGlyphs(value)
+    const withAsciiDigits = repairThaiPdfGlyphs(stripInvisible(value))
+      // PDF-font quirk: a doubled sara e is read as \u0E41.
+      .replace(/\u0E40\u0E40/g, '\u0E41')
+      .replace(/[\u0E50-\u0E59]/g, glyph => String.fromCharCode(glyph.charCodeAt(0) - 0x0E50 + 0x30))
+      .replace(/\s+/g, ' ')
       .normalize('NFKD')
       .replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/g, '')
       .normalize('NFKC')
-      .replace(/[^A-Z0-9\u0E00-\u0E2E]/gi, '')
+      // A space around a digit separator is not kept ("5 + 5" is "5+5"), as in normalizeMatchKey.
+      .replace(/([0-9]) ?([.+\/]) ?(?=[0-9])/g, '$1$2');
+    return withAsciiDigits
+      .replace(/(?<=[0-9])([.+\/ ])(?=[0-9])|[^A-Z0-9\u0E00-\u0E2E\u0E40-\u0E44]/gi, (match, separator) => separator ?? '')
       .toUpperCase();
   }
 

@@ -263,6 +263,6 @@ test('normalization changes stay out of the A2-A4 fuzzy rules (regression guards
     'a space between two numbers is a token boundary (existing alias test)');
   assert.equal(sku.normalizeMatchKey('30แผ่น/ ห่อ'), sku.normalizeMatchKey('30แผ่น/ห่อ'),
     'spacing before a pack unit is ignored (existing catalog test)');
-  assert.equal(sku.normalizeThaiSkeleton('1.5'), '15', 'A4 skeleton rule is a later ticket and must not change here');
+  assert.equal(sku.normalizeThaiSkeleton('1.5'), '1.5', 'ticket 15: the skeleton keeps a decimal point between digits (was 15)');
   assert.equal(sku.normalizeSellerSku('SKU Qty Total: 2'), 'SKU QTY TOTAL: 2');
 });

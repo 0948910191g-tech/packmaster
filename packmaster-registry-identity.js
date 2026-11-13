@@ -147,7 +147,7 @@
 
   // Whole-token variant matching. A variant must stand alone: "3" is not inside "30", "3.5" or "5+5".
   const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const isDigitChar = character => /[0-9]/.test(character || '');
+  const isDigitChar = character => /[0-9๐-๙]/.test(character || '');
   const variantPattern = value => {
     const text = normalizeSellerSku(value);
     let pattern = '';
@@ -206,14 +206,24 @@
   // A name prefix alone never matches: the variant must match as a whole token.
   const ELLIPSIS = /\.{3,}|…/;
   const MIN_NAME_KEY = 6;
+  // Length gates count the letters and digits of a skeleton, not its leading vowels or digit
+  // separators (ticket 15 keeps those in the skeleton). Otherwise a leading vowel in the title
+  // would shrink the head's share of it and change which truncated names pass.
+  const gateLength = key => key.replace(/[เ-ไ.+\/ ]/g, '').length;
   // A name head must be long enough to identify the product: at least 12 characters and at
   // least half of the candidate's title. "Synthetic" or "Synthetic Gloves Nit" are not enough.
   const MIN_HEAD_KEY = 12;
   const headIsLongEnough = (headKey, titleSkeleton) =>
-    headKey.length >= MIN_HEAD_KEY && headKey.length * 2 >= titleSkeleton.length;
+    gateLength(headKey) >= MIN_HEAD_KEY && gateLength(headKey) * 2 >= gateLength(titleSkeleton);
   // A head that ends in a digit must not stop inside a longer number ("Pack 3" inside "Pack 30").
-  const cutsNumber = (headKey, skeleton) =>
-    isDigitChar(headKey.charAt(headKey.length - 1)) && isDigitChar(skeleton.charAt(headKey.length));
+  // The row's next character may be a digit, or a kept separator ("." "+" "/" or a space) followed
+  // by a digit: "Pack 5" stops inside "Pack 5+5" and "Pack 1" stops inside "Pack 1.5".
+  const cutsNumber = (headKey, skeleton) => {
+    if (!isDigitChar(headKey.charAt(headKey.length - 1))) return false;
+    const next = skeleton.charAt(headKey.length);
+    return isDigitChar(next) ||
+      (next !== '' && '.+/ '.includes(next) && isDigitChar(skeleton.charAt(headKey.length + 1)));
+  };
   // The head is the complete title of another product, so it is not a truncation for this row.
   const isCompleteTitleOfOtherProduct = (rows, row, headKey) =>
     rows.some(other => other.candidate.productId !== row.candidate.productId && other.titleSkeleton === headKey);
@@ -223,24 +233,36 @@
     !isCompleteTitleOfOtherProduct(rows, row, headKey);
   // A piece after an ellipsis passes when it is the row's whole variant, or when it is a
   // long name fragment that appears in the row (the legacy rule). Short pieces must be the variant.
-  const tailPieceMatches = (row, piece) => {
+  // Ticket 14: the tail pieces follow the head in the row's own order. Each piece must be found
+  // at or after the end of the previous one (the head is first). Returns the end position, or -1.
+  const tailEnd = (row, piece, from) => {
     const variant = row.candidate.variantName;
-    if (variant && variantIsWhole(piece, variant)) return true;
     const key = normalizeThaiSkeleton(piece);
-    return key.length >= MIN_NAME_KEY && row.fullSkeleton.includes(key);
+    const isVariant = Boolean(variant) && variantIsWhole(piece, variant);
+    if (!isVariant && gateLength(key) < MIN_NAME_KEY) return -1;
+    const at = row.fullSkeleton.indexOf(key, from);
+    return at < 0 ? -1 : at + key.length;
+  };
+  const tailsInOrder = (row, headKey, tails) => {
+    let position = headKey.length;
+    for (const piece of tails) {
+      position = tailEnd(row, piece, position);
+      if (position < 0) return false;
+    }
+    return true;
   };
   const truncatedCandidates = (rows, rawText) => {
     if (ELLIPSIS.test(rawText)) {
       const [head, ...rest] = rawText.split(/\.{3,}|…/);
       const headKey = normalizeThaiSkeleton(head);
       const tails = rest.map(piece => piece.trim()).filter(piece => normalizeThaiSkeleton(piece));
-      if (headKey.length < MIN_HEAD_KEY || tails.length === 0) return null;
+      if (gateLength(headKey) < MIN_HEAD_KEY || tails.length === 0) return null;
       return {
         candidates: rows.filter(row =>
           headNamesRow(rows, row, headKey, [row.fullSkeleton, row.titleSkeleton]) &&
           // A row with a variant needs that variant as a whole token somewhere in the text.
           (!row.candidate.variantName || variantAppears(rawText, row.candidate.variantName)) &&
-          tails.every(piece => tailPieceMatches(row, piece))),
+          tailsInOrder(row, headKey, tails)),
         foundReason: 'ellipsis_catalog_match',
         duplicateReason: 'duplicate_ellipsis_catalog_match'
       };
@@ -253,7 +275,7 @@
         const before = textBeforeVariant(rawText, variant);
         if (before === null) return false;
         const headKey = normalizeThaiSkeleton(before);
-        return headKey.length >= MIN_HEAD_KEY && headNamesRow(rows, row, headKey, [row.titleSkeleton]);
+        return gateLength(headKey) >= MIN_HEAD_KEY && headNamesRow(rows, row, headKey, [row.titleSkeleton]);
       }),
       foundReason: 'truncated_catalog_match',
       duplicateReason: 'duplicate_truncated_catalog_match'
