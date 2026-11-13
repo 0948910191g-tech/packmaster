@@ -72,3 +72,33 @@ test('a Local product with no variant uses only the complete exact source text',
   assert.equal(matcher.match(index, 'SHOPEE', {text:local.productText}, matcher.newAssignments(), identity).rule.shortName, 'No variant');
   assert.notEqual(matcher.match(index, 'SHOPEE', {text:local.productText + ' different'}, matcher.newAssignments(), identity).status, 'matched');
 });
+
+for (const change of ['registry', 'assignments']) test(`Local creation preserves concurrent ${change} changes during confirmation`, () => {
+  const html = fs.readFileSync('index.html', 'utf8');
+  const handlers = html.slice(html.indexOf('const handleCreateLocalProduct ='), html.indexOf('const handleLinkNewRegistrySku ='));
+  const base = require('../data/packmaster-marketplace-registry.json');
+  const memory = new Map();
+  const storage = {getItem:k=>memory.get(k)??null,setItem:(k,v)=>memory.set(k,v)};
+  registry.saveStore(storage, base);
+  matcher.saveLocalAssignments(storage, matcher.newAssignments());
+  let changedStore;
+  const context = {cloudMode:false,marketplaceRegistryLoadError:'',registryAssignmentsError:'',registryAssignmentsLoaded:true,
+    marketplaceRegistryBusy:false,workspaceBusy:false,marketplaceRegistry:base,registryAssignments:matcher.newAssignments(),
+    quickMapState:{itemIndex:0,shortName:'New',row:{order:{platform:'SHOPEE',parsedItems:[{text:'Synthetic new item'}]}}},
+    registryIdentityApi:identity,marketplaceRegistryApi:registry,registryMatcherApi:matcher,
+    window:{localStorage:storage,confirm:()=>{
+      if(change==='registry') {
+        changedStore=registry.addLocalProduct(base,{id:'local-other-tab',platform:'SHOPEE',productText:'Other saved product',variantText:'',sellerSku:'',shortName:'Other'});
+        registry.saveStore(storage,changedStore);
+      } else {
+        storage.setItem(matcher.LOCAL_ASSIGNMENTS_KEY,'broken');
+      }
+      return true;
+    }},crypto:{randomUUID:()=> 'new'},showToast(message){context.message=message;},
+    setMarketplaceRegistry(next){context.marketplaceRegistry=next;},advanceReviewItem(){}};
+  vm.createContext(context);
+  vm.runInContext(handlers+'\nglobalThis.create=handleCreateLocalProduct;',context);
+  context.create();
+  assert.deepEqual(registry.loadStore(storage).store,changedStore||base,'must not overwrite or add after concurrent state change');
+  assert.match(context.message,/เปลี่ยน|โหลด|ข้อมูล/);
+});

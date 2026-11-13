@@ -52,11 +52,11 @@ test('actual registry naming pipeline keeps stale/conflicting rows unresolved an
   const pipelineSource = html.slice(pipelineStart, pipelineEnd) +
     '\nglobalThis.rowStatus = registryNameRowMatches.get(registryNamingRows[0]);' +
     'globalThis.nameStats = registryNameStats; globalThis.unresolvedRows = filteredRegistryNameRows;';
-  const runPipeline = assignments => {
+  const runPipeline = (assignments, statusFilter = 'unnamed') => {
     const context = {
       registryMatcherApi: matcher, registryIdentityApi: identityApi, registryAssignments: assignments,
       marketplaceCatalogIndex: catalogIndex, marketplaceRegistry: registry, marketplaceRegistryPlatformFilter: platform,
-      registryNamingRows: [row], marketplaceRegistrySearch: '', registryNameStatusFilter: 'unnamed',
+      registryNamingRows: [row], marketplaceRegistrySearch: '', registryNameStatusFilter: statusFilter,
       registryBrandFilter: 'ALL',
       useMemo: callback => callback()
     };
@@ -69,6 +69,8 @@ test('actual registry naming pipeline keeps stale/conflicting rows unresolved an
 
   const evidenceContext = runPipeline(matcher.newAssignments());
   const evidence = evidenceContext.rowEvidence;
+  assert.equal(evidenceContext.nameStats.unnamed, 1);
+  assert.equal(evidenceContext.nameStats.needsReview, 0);
   assert.equal(evidence.status, 'found');
   assert.equal(evidence.identityType, 'seller_sku');
   const staleOnly = matcher.upsertAssignment(matcher.newAssignments(), platform,
@@ -76,8 +78,9 @@ test('actual registry naming pipeline keeps stale/conflicting rows unresolved an
   const staleResult = runPipeline(staleOnly);
   assert.equal(staleResult.rowStatus.status, 'ambiguous');
   assert.equal(staleResult.rowStatus.reason, 'registry_name_conflict_or_stale');
-  assert.equal(staleResult.nameStats.unnamed, 1);
-  assert.equal(staleResult.unresolvedRows.length, 1);
+  assert.equal(staleResult.nameStats.unnamed, 0);
+  assert.equal(staleResult.nameStats.needsReview, 1);
+  assert.equal(staleResult.unresolvedRows.length, 0);
 
   let conflicting = matcher.upsertAssignment(matcher.newAssignments(), platform, evidence, 'Current SKU name');
   conflicting = matcher.upsertAssignment(conflicting, platform,
@@ -85,8 +88,10 @@ test('actual registry naming pipeline keeps stale/conflicting rows unresolved an
   const conflictResult = runPipeline(conflicting);
   assert.equal(conflictResult.rowStatus.status, 'ambiguous');
   assert.equal(conflictResult.rowStatus.reason, 'registry_name_conflict_or_stale');
-  assert.equal(conflictResult.nameStats.unnamed, 1);
-  assert.equal(conflictResult.unresolvedRows.length, 1);
+  assert.equal(conflictResult.nameStats.unnamed, 0);
+  assert.equal(conflictResult.nameStats.needsReview, 1);
+  assert.equal(conflictResult.unresolvedRows.length, 0);
+  assert.equal(runPipeline(conflicting, 'needsReview').unresolvedRows.length, 1);
   assert.match(html, /rowMatch\?\.reason === 'registry_name_conflict_or_stale'/,
     'the table warning must use the unresolved matcher reason');
 

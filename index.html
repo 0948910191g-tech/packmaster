@@ -2954,6 +2954,16 @@
           if (evidence.status !== 'not_found') throw new Error('พบหรือไม่สามารถแยกสินค้าในทะเบียนได้ชัดเจน กรุณาเลือกทะเบียนเดิมและตรวจใบจริง');
           const sku = registryIdentityApi.extractSellerSku(order.platform, item) || '';
           if (!window.confirm(`สร้างสินค้า Local จากรายการที่เลือก?\n\nสินค้า: ${pair[0]}\nตัวเลือก: ${pair[1] || '(ไม่มีตัวเลือกในใบ)'}\nSeller SKU: ${sku || '(ไม่มี)'}\nชื่อในคลัง: ${name}\n\nรายการในอนาคตต้องมีข้อความและตัวเลือกตรงกัน`)) return;
+          const confirmedRegistry = marketplaceRegistryApi.loadStore(window.localStorage);
+          if (confirmedRegistry.error || JSON.stringify(confirmedRegistry.store) !== JSON.stringify(latest.store)) {
+            throw new Error('ทะเบียนเปลี่ยนระหว่างยืนยัน กรุณาโหลดข้อมูลใหม่ก่อนสร้างสินค้า');
+          }
+          let confirmedAssignments;
+          try { confirmedAssignments = registryMatcherApi.loadLocalAssignments(window.localStorage); }
+          catch { throw new Error('ข้อมูลชื่อถาวรอ่านไม่ได้ กรุณาตรวจข้อมูลก่อนสร้างสินค้า'); }
+          if (JSON.stringify(confirmedAssignments) !== JSON.stringify(registryMatcherApi.validateAssignments(registryAssignments))) {
+            throw new Error('ข้อมูลชื่อถาวรเปลี่ยน กรุณาโหลดข้อมูลใหม่ก่อนสร้างสินค้า');
+          }
           const product = { id: `local-${crypto.randomUUID()}`, platform: order.platform, productText: pair[0], variantText: pair[1], sellerSku: sku, shortName: name };
           const next = marketplaceRegistryApi.addLocalProduct(latest.store, product);
           marketplaceRegistryApi.saveStore(window.localStorage, next);
@@ -4306,9 +4316,13 @@
       }, [registryNamingRows, marketplaceRegistryPlatformFilter, marketplaceRegistry,
         marketplaceCatalogIndex, registryAssignments, registryMatcherApi, registryIdentityApi, preparedRegistryAssignments]);
       const registryNameStats = useMemo(() => {
-        const counts = { all: registryNamingRows.length, unnamed: 0, missingSku: 0, duplicateSku: 0, productOnly: 0 };
+        const counts = { all: registryNamingRows.length, unnamed: 0, needsReview: 0, missingSku: 0, duplicateSku: 0, productOnly: 0 };
         for (const row of registryNamingRows) {
-          if (registryNameRowMatches.get(row)?.status !== 'matched') counts.unnamed++;
+          const result = registryNameRowMatches.get(row);
+          if (result?.status !== 'matched') {
+            if (result?.status === 'ambiguous' || getRegistryRowSavedNames(marketplaceRegistryPlatformFilter, row).length) counts.needsReview++;
+            else counts.unnamed++;
+          }
           if (!String(row.sellerSku || '').trim()) counts.missingSku++;
           if (hasDuplicateRegistrySku(marketplaceRegistryPlatformFilter, row)) counts.duplicateSku++;
           if (row.sourceRowType === 'product_only') counts.productOnly++;
@@ -4336,7 +4350,10 @@
           if (query && ![row.sellerSku, row.productName, row.title, row.variantName,
             row.productId, row.itemId, row.modelId].some(value =>
               String(value || '').toLowerCase().includes(query))) return false;
-          if (registryNameStatusFilter === 'unnamed') return registryNameRowMatches.get(row)?.status !== 'matched';
+          const result = registryNameRowMatches.get(row);
+          const needsReview = result?.status !== 'matched' && (result?.status === 'ambiguous' || getRegistryRowSavedNames(marketplaceRegistryPlatformFilter, row).length > 0);
+          if (registryNameStatusFilter === 'unnamed') return result?.status !== 'matched' && !needsReview;
+          if (registryNameStatusFilter === 'needsReview') return needsReview;
           if (registryNameStatusFilter === 'missingSku') return !String(row.sellerSku || '').trim();
           if (registryNameStatusFilter === 'duplicateSku') return hasDuplicateRegistrySku(marketplaceRegistryPlatformFilter, row);
           if (registryNameStatusFilter === 'productOnly') return row.sourceRowType === 'product_only';
@@ -4354,7 +4371,7 @@
       useEffect(() => {
         if (registryNamePage > registryNamePageCount) setRegistryNamePage(registryNamePageCount);
       }, [registryNamePage, registryNamePageCount]);
-      const selectedMarketplaceAssignmentCoverage = registryNameStats.all - registryNameStats.unnamed;
+      const selectedMarketplaceAssignmentCoverage = registryNameStats.all - registryNameStats.unnamed - registryNameStats.needsReview;
       const filteredMarketplaceRegistryRows = useMemo(() => {
         if (!selectedMarketplaceRegistry) return [];
         const sourceRows = marketplaceRegistryDisplayMode === 'products'
@@ -5068,6 +5085,7 @@
                           {[
                             { value: 'all', label: 'ทั้งหมด', count: registryNameStats.all },
                             { value: 'unnamed', label: 'ยังไม่ตั้งชื่อ', count: registryNameStats.unnamed },
+                            { value: 'needsReview', label: 'มีข้อมูลที่ต้องตรวจ', count: registryNameStats.needsReview },
                             { value: 'missingSku', label: 'ไม่มี Seller SKU', count: registryNameStats.missingSku },
                             { value: 'duplicateSku', label: 'SKU ซ้ำ', count: registryNameStats.duplicateSku },
                             { value: 'productOnly', label: 'ไม่มีแถว SKU/ตัวเลือก', count: registryNameStats.productOnly }
