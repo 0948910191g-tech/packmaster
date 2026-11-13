@@ -36,6 +36,7 @@
   <script src="./packmaster-upload-session.js"></script>
   <script src="./packmaster-batch-source-files.js"></script>
   <script src="./packmaster-print-scope.js"></script>
+  <script src="./packmaster-print-flow.js"></script>
   <script src="./packmaster-archive.js"></script>
   <script src="./packmaster-storage-health.js"></script>
   <script src="./packmaster-diagnostics.js"></script>
@@ -488,12 +489,18 @@
       );
     };
 
+    // Top-level on purpose: the wait helpers below run outside function App.
+    const printFlowApi = window.PackMasterPrintFlow;
     const thermalImagePromiseCache = new Map();
+    // Images whose Thermal conversion failed. Print and Save PDF waits read this so they stop
+    // at once with the cause instead of sitting in the generic timeout.
+    const thermalFailedImages = new Set();
 
     const acquireThermalImage = (pdfImage) => {
       if (!pdfImage) return Promise.resolve('');
       let entry = thermalImagePromiseCache.get(pdfImage);
       if (!entry) {
+        thermalFailedImages.delete(pdfImage);
         const promise = new Promise((resolve, reject) => {
           const img = new Image();
           img.onload = () => {
@@ -507,13 +514,16 @@
               const thermalImage = cvs.toDataURL('image/jpeg', 0.9);
               cvs.width = 1;
               cvs.height = 1;
+              thermalFailedImages.delete(pdfImage);
               resolve(thermalImage);
             } catch (error) {
+              thermalFailedImages.add(pdfImage);
               thermalImagePromiseCache.delete(pdfImage);
               reject(error);
             }
           };
           img.onerror = () => {
+            thermalFailedImages.add(pdfImage);
             thermalImagePromiseCache.delete(pdfImage);
             reject(new Error('แปลงภาพ Thermal ไม่สำเร็จ'));
           };
@@ -1342,15 +1352,19 @@
       return `${cleanBaseName.substring(0, target.index)}${aggregatedQty}${cleanBaseName.substring(target.index + target[0].length)}`;
     };
 
+    const printFlowUnavailable = () => new Error('โมดูลพิมพ์ยังไม่พร้อม — โหลดหน้าใหม่แล้วลองอีกครั้ง');
+
     const waitForLabelRender = async (element, order, thermalMode, timeoutMs = 10000) => {
+      if (!printFlowApi) throw printFlowUnavailable();
+      if (!order || !order.pdfImage) throw new Error(printFlowApi.missingImageMessage([order]));
       const image = element.querySelector('img[alt="Label Base"]');
       if (!image) throw new Error(`ไม่พบรูปใบปะหน้าสำหรับ ${order.id}`);
 
       const startedAt = Date.now();
       while (true) {
-        const imageLoaded = image.complete && image.naturalWidth > 0;
-        const thermalReady = !thermalMode || image.src !== order.pdfImage;
-        if (imageLoaded && thermalReady) return;
+        const readiness = printFlowApi.evaluatePrintReadiness({ images: [image], orders: [order], thermalMode, thermalFailures: thermalFailedImages });
+        if (readiness.status === 'ready') return;
+        if (readiness.status === 'failed') throw new Error(readiness.message);
 
         if (Date.now() - startedAt > timeoutMs) {
           throw new Error(`รอรูปใบปะหน้าไม่สำเร็จภายในเวลาที่กำหนด: ${order.id}`);
@@ -1363,15 +1377,14 @@
 
     const waitForPrintRender = async (container, scopedOrders, thermalMode, timeoutMs = 15000) => {
       if (!container) throw new Error('ไม่พบพื้นที่สำหรับพิมพ์');
+      if (!printFlowApi) throw printFlowUnavailable();
       const orders = Array.isArray(scopedOrders) ? scopedOrders : [];
       const startedAt = Date.now();
       while (true) {
         const images = Array.from(container.querySelectorAll('img[alt="Label Base"]'));
-        const ready = images.length === orders.length && images.every((image, index) => {
-          const sourceOrder = orders[index];
-          return image.complete && image.naturalWidth > 0 && (!thermalMode || !sourceOrder || image.src !== sourceOrder.pdfImage);
-        });
-        if (ready) return;
+        const readiness = printFlowApi.evaluatePrintReadiness({ images, orders, thermalMode, thermalFailures: thermalFailedImages });
+        if (readiness.status === 'ready') return;
+        if (readiness.status === 'failed') throw new Error(readiness.message);
         if (Date.now() - startedAt > timeoutMs) {
           throw new Error('รอเตรียมภาพสำหรับพิมพ์ไม่สำเร็จภายในเวลาที่กำหนด');
         }
@@ -1677,6 +1690,9 @@
       const [exportStatus, setExportStatus] = useState({ active: false, current: 0, total: 0 });
       const [exportRenderOrder, setExportRenderOrder] = useState(null);
       const [printRenderActive, setPrintRenderActive] = useState(false);
+      const [printBusy, setPrintBusy] = useState(false);
+      // Taken synchronously in handlePrint so a double click cannot start a second print flow.
+      const printFlightRef = useRef(printFlowApi ? printFlowApi.createSingleFlight() : null);
       const [previewMode, setPreviewMode] = useState('labels');
       const [testInput, setTestInput] = useState('');
       const [testQty, setTestQty] = useState('1');
@@ -3842,29 +3858,77 @@
       };
 
       const handlePrint = async (mode = 'FULL_BATCH') => {
-        const scopedOrders = printScopeApi
-          ? printScopeApi.selectPrintOrders(MappedOrders, mode, order => getReviewFlags(order).ready)
-          : (mode === 'READY_ONLY' ? MappedOrders.filter(order => getReviewFlags(order).ready) : MappedOrders);
-        if (scopedOrders.length === 0) {
-          showToast('ไม่มีรายการพร้อมพิมพ์ใน Scope นี้', 'error');
+        if (!printFlowApi || !printFlightRef.current) {
+          showToast('โมดูลพิมพ์ยังไม่พร้อม — โหลดหน้าใหม่แล้วลองอีกครั้ง', 'error');
           return;
         }
-        setPrintScopeMode(mode);
-        setPrintRenderActive(true);
-        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-
+        if (!printFlightRef.current.tryStart()) return;
+        setPrintBusy(true);
         try {
-          await waitForPrintRender(document.querySelector('.print-area'), scopedOrders, thermalMode);
-          if (mode === 'FULL_BATCH') {
-            const completed = await markActiveBatchPrinted();
-            if (!completed) return;
+          if (uploadGateRef.current.isActive()) {
+            showToast('กำลังประมวลผล PDF อยู่ — รอให้เสร็จก่อนพิมพ์', 'error');
+            return;
           }
-          window.print();
-        } catch (err) {
-          console.error('PackMaster print preparation failed:', err);
-          showToast(err.message || 'เตรียมหน้าพิมพ์ไม่สำเร็จ', 'error');
+          const scopedOrders = printScopeApi
+            ? printScopeApi.selectPrintOrders(MappedOrders, mode, order => getReviewFlags(order).ready)
+            : (mode === 'READY_ONLY' ? MappedOrders.filter(order => getReviewFlags(order).ready) : MappedOrders);
+          if (scopedOrders.length === 0) {
+            showToast('ไม่มีรายการพร้อมพิมพ์ใน Scope นี้', 'error');
+            return;
+          }
+          const missingImages = printFlowApi.findOrdersWithoutImage(scopedOrders);
+          if (missingImages.length > 0) {
+            showToast(printFlowApi.missingImageMessage(missingImages), 'error');
+            return;
+          }
+          // Reprinting an already completed Batch: validate its saved history before printing, and do not ask again.
+          const reprintingCompleted = mode === 'FULL_BATCH' && Boolean(activeBatch && activeBatch.printedAt);
+          if (reprintingCompleted && !(await markActiveBatchPrinted())) return;
+          if (mode === 'FULL_BATCH' && !reprintingCompleted) {
+            // Do not print a completed-to-be Batch unless its Reprint history can be saved afterwards.
+            if (!activeBatch || !batchApi || !batchStorageReady || !reprintSnapshotApi) {
+              showToast('ยังบันทึก Snapshot สำหรับ Reprint ไม่ได้ จึงยังไม่พิมพ์แบบ Completed', 'error');
+              return;
+            }
+            try {
+              reprintSnapshotApi.validateSnapshot({
+                batchId: activeBatch.id,
+                completedAt: new Date().toISOString(),
+                orders: MappedOrders.map(order => ({ ...order, resolvedAudit: order.resolvedAudit || [] }))
+              });
+            } catch (snapshotError) {
+              console.error('Build resolved print snapshot failed', snapshotError);
+              showToast('สร้าง Snapshot สำหรับ Reprint ไม่สำเร็จ — Batch ยังไม่ Completed', 'error');
+              return;
+            }
+          }
+
+          // A failure left by an earlier attempt must not fail this one before its images re-render.
+          scopedOrders.forEach(order => thermalFailedImages.delete(order.pdfImage));
+          setPrintScopeMode(mode);
+          setPrintRenderActive(true);
+          try {
+            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            await waitForPrintRender(document.querySelector('.print-area'), scopedOrders, thermalMode);
+            // The printed status is written only after the print dialog closes (cancel included) and the operator confirms.
+            await printFlowApi.waitForPrintDialogClose(window);
+            if (mode === 'FULL_BATCH' && !reprintingCompleted) {
+              if (!window.confirm(printFlowApi.PRINT_CONFIRM_MESSAGE)) {
+                showToast('ยังไม่ตั้งสถานะ "พิมพ์แล้ว" — Batch ยังไม่ Completed จนกว่าจะพิมพ์ออกครบและยืนยัน', 'error');
+                return;
+              }
+              const completed = await markActiveBatchPrinted();
+              if (!completed) return;
+            }
+          } catch (err) {
+            console.error('PackMaster print preparation failed:', err);
+            showToast(err.message || 'เตรียมหน้าพิมพ์ไม่สำเร็จ', 'error');
+          } finally {
+            setPrintRenderActive(false);
+          }
         } finally {
-          setPrintRenderActive(false);
+          printFlightRef.current.finish();
+          setPrintBusy(false);
         }
       };
 
@@ -4291,6 +4355,7 @@
           showToast('ไม่มีรายการพร้อมสำหรับ Save PDF ใน Scope นี้', 'error');
           return;
         }
+        ordersToExport.forEach(order => thermalFailedImages.delete(order.pdfImage));
         setExportStatus({ active: true, current: 0, total: ordersToExport.length });
 
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -5222,7 +5287,7 @@
                       <div className="pm-page-actions">
                         <button onClick={()=>setThermalMode(!thermalMode)} className={`pm-secondary-btn ${thermalMode?'!border-emerald-200 !text-emerald-700':''}`}><PMIcon name="printer"/> Thermal {thermalMode?'ON':'OFF'}</button>
                         <button onClick={handleClearActiveBatch} disabled={orders.length===0 || loadingStatus.active} className="pm-ghost-btn"><PMIcon name="refresh"/> ล้างออเดอร์</button>
-                        <button data-pm-action="save-pdf" onClick={()=>handleExportPDF('FULL_BATCH')} disabled={exportStatus.active || orders.length === 0} className="pm-secondary-btn"><PMIcon name="download"/> Save PDF</button><button data-pm-action="print" onClick={()=>handlePrint('FULL_BATCH')} disabled={orders.length === 0} className="pm-primary-btn"><PMIcon name="printer"/> พิมพ์</button>
+                        <button data-pm-action="save-pdf" onClick={()=>handleExportPDF('FULL_BATCH')} disabled={exportStatus.active || orders.length === 0} className="pm-secondary-btn"><PMIcon name="download"/> Save PDF</button><button data-pm-action="print" onClick={()=>handlePrint('FULL_BATCH')} disabled={orders.length === 0 || printBusy} className="pm-primary-btn"><PMIcon name="printer"/> พิมพ์</button>
                       </div>
                     </div>
 
@@ -5280,7 +5345,7 @@
                     )}
 
                     {ReviewDisplayOrders.length>0&&<div className="pm-pagination mt-4"><div className="text-[11px] font-bold text-slate-400">หน้า {reviewPage} / {reviewDisplayPageCount} • แสดง {visibleReviewDisplayOrders.length} รายการ</div><div className="flex items-center gap-2"><select value={reviewPageSize} onChange={(e)=>{setReviewPageSize(Number(e.target.value));setReviewPage(1);}} className="pm-select !py-1.5"><option value="12">12/หน้า</option><option value="24">24/หน้า</option><option value="48">48/หน้า</option></select><button disabled={reviewPage<=1} onClick={()=>setReviewPage(p=>Math.max(1,p-1))} className="pm-page-btn">‹</button><button disabled={reviewPage>=reviewDisplayPageCount} onClick={()=>setReviewPage(p=>Math.min(reviewDisplayPageCount,p+1))} className="pm-page-btn">›</button></div></div>}
-                    {orders.length>0&&<div data-pm-review-action-dock className="pm-review-action-wrap no-print"><div data-pm-review-action-bar className="pm-review-action-bar"><div className="min-w-0"><div className="text-sm font-black text-slate-900">Batch ทั้งหมด {reviewSummary.total} รายการ</div><div className="text-[10px] font-semibold text-slate-400 mt-0.5">{exceptionRows.length>0?`มี ${exceptionRows.length} รายการสำหรับตรวจเพิ่มเติม • ไม่บล็อกการพิมพ์`:'ไม่มีรายการต้องตรวจ'} • สถานะพิมพ์แล้วหมายถึงระบบเริ่มสั่งพิมพ์หรือส่งออก ไม่ยืนยันว่ากระดาษออกจากเครื่องพิมพ์จริง</div></div><div className="flex flex-wrap gap-2">{exceptionRows.length>0&&<button onClick={openExceptionMode} className="pm-secondary-btn"><PMIcon name="alert"/> ตรวจ {exceptionRows.length} รายการ</button>}<button onClick={()=>handleExportPDF('FULL_BATCH')} disabled={exportStatus.active||orders.length===0} className="pm-secondary-btn"><PMIcon name="download"/> Save PDF</button><button onClick={()=>handlePrint('FULL_BATCH')} disabled={orders.length===0} className="pm-primary-btn"><PMIcon name="printer"/> พิมพ์ {reviewSummary.total} ใบ</button></div></div></div>}
+                    {orders.length>0&&<div data-pm-review-action-dock className="pm-review-action-wrap no-print"><div data-pm-review-action-bar className="pm-review-action-bar"><div className="min-w-0"><div className="text-sm font-black text-slate-900">Batch ทั้งหมด {reviewSummary.total} รายการ</div><div className="text-[10px] font-semibold text-slate-400 mt-0.5">{exceptionRows.length>0?`มี ${exceptionRows.length} รายการสำหรับตรวจเพิ่มเติม • ไม่บล็อกการพิมพ์`:'ไม่มีรายการต้องตรวจ'} • สถานะพิมพ์แล้วหมายถึงระบบเริ่มสั่งพิมพ์หรือส่งออก ไม่ยืนยันว่ากระดาษออกจากเครื่องพิมพ์จริง</div></div><div className="flex flex-wrap gap-2">{exceptionRows.length>0&&<button onClick={openExceptionMode} className="pm-secondary-btn"><PMIcon name="alert"/> ตรวจ {exceptionRows.length} รายการ</button>}<button onClick={()=>handleExportPDF('FULL_BATCH')} disabled={exportStatus.active||orders.length===0} className="pm-secondary-btn"><PMIcon name="download"/> Save PDF</button><button data-pm-action="print-ready" onClick={()=>handlePrint('READY_ONLY')} disabled={orders.length===0||printBusy||reviewSummary.ready===0} className="pm-secondary-btn"><PMIcon name="printer"/> พิมพ์เฉพาะที่พร้อม {reviewSummary.ready} ใบ</button><button onClick={()=>handlePrint('FULL_BATCH')} disabled={orders.length===0||printBusy} className="pm-primary-btn"><PMIcon name="printer"/> พิมพ์ {reviewSummary.total} ใบ</button></div></div></div>}
                   </section>
                 )}
 

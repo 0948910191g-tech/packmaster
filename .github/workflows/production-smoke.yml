@@ -35,6 +35,7 @@ jobs:
               && grep -Fq './packmaster-review-keyword-suggestions.js' <<< "$html" \
               && grep -Fq './packmaster-batch-source-files.js' <<< "$html" \
               && grep -Fq './packmaster-print-scope.js' <<< "$html" \
+              && grep -Fq './packmaster-print-flow.js' <<< "$html" \
               && grep -Fq 'ใช้กับ Order นี้' <<< "$html" \
               && grep -Fq "handleExportPDF('FULL_BATCH')" <<< "$html" \
               && grep -Fq "handlePrint('FULL_BATCH')" <<< "$html" \
